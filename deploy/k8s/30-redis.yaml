@@ -16,12 +16,20 @@ spec:
       containers:
         - name: redis
           image: redis:7-alpine
-          args: ["redis-server", "--appendonly", "yes"]
+          # requirepass matches APP_REDIS_PASSWORD so the app can AUTH. k8s
+          # expands $(VAR) from the container env below.
+          args: ["redis-server", "--appendonly", "yes", "--requirepass", "$(APP_REDIS_PASSWORD)"]
+          env:
+            - name: APP_REDIS_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: tsc-forex-secrets
+                  key: APP_REDIS_PASSWORD
           ports:
             - containerPort: 6379
           readinessProbe:
             exec:
-              command: ["redis-cli", "ping"]
+              command: ["sh", "-c", "redis-cli -a \"$APP_REDIS_PASSWORD\" ping"]
             initialDelaySeconds: 3
             periodSeconds: 5
           resources:

@@ -34,20 +34,10 @@ data:
   APP_LOG_LEVEL: "info"
   APP_METRICS_ENABLED: "true"
   APP_NOTIFY_ALERT_COOLDOWN: "60s"
----
-apiVersion: v1
-kind: Secret
-metadata:
-  name: tsc-forex-secrets
-  namespace: tsc-forex
-type: Opaque
-stringData:
-  # PLACEHOLDERS ONLY — real values are injected at deploy time by the CI/CD
-  # pipeline (kubectl create secret ... from GitHub Actions secrets) or applied
-  # manually. Never commit real secrets to git.
-  APP_DATABASE_USER: "tsc_forex"
-  APP_DATABASE_PASSWORD: "REPLACED_BY_CI"
-  APP_JWT_SECRET: "REPLACED_BY_CI"
-  APP_REDIS_PASSWORD: "REPLACED_BY_CI"
-  APP_STORAGE_ACCESS_KEY: "REPLACED_BY_CI"
-  APP_STORAGE_SECRET_KEY: "REPLACED_BY_CI"
+# NOTE: the Secret "tsc-forex-secrets" is intentionally NOT defined here so it is
+# never committed to git and never clobbered by `kubectl apply -k`. It is created
+# out-of-band from real values (CI/CD from GitHub Actions secrets, or manually):
+#   kubectl -n tsc-forex create secret generic tsc-forex-secrets \
+#     --from-literal=APP_DATABASE_USER=... --from-literal=APP_DATABASE_PASSWORD=... \
+#     --from-literal=APP_JWT_SECRET=... --from-literal=APP_REDIS_PASSWORD=... \
+#     --from-literal=APP_STORAGE_ACCESS_KEY=... --from-literal=APP_STORAGE_SECRET_KEY=...

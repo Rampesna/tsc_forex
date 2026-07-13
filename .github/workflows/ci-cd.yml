@@ -85,7 +85,7 @@ jobs:
           set -euo pipefail
           REPO=/www/wwwroot/tsc_forex
           if [ ! -d "\$REPO/.git" ]; then
-            git clone https://github.com/${{ github.repository }}.git "\$REPO"
+            git clone git@github.com:${{ github.repository }}.git "\$REPO"
           fi
           cd "\$REPO"
           git fetch --all && git reset --hard origin/main
