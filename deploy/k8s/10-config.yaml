@@ -31,8 +31,8 @@ data:
   # Social login: accepted Google ID-token audiences (public client IDs).
   APP_OAUTH_GOOGLE_CLIENT_IDS: "83380535128-16nfuuc3p0jok4l4htitlubgpsjah622.apps.googleusercontent.com,83380535128-pr4lcmaerra3sdqf8211t1nc4n4pbksj.apps.googleusercontent.com,83380535128-o4h4v9rc9u1tuis9hggcckqei0idahg3.apps.googleusercontent.com"
   APP_OAUTH_APPLE_BUNDLE_IDS: "talhacan.tscforex"
-  # Apple Team ID for AASA (Sign in with Apple + passkeys). Fill in once known.
-  APP_OAUTH_APPLE_TEAM_ID: ""
+  # Apple Team ID for AASA (Sign in with Apple + passkeys).
+  APP_OAUTH_APPLE_TEAM_ID: "SGQ86WW4J3"
   APP_OAUTH_ANDROID_PACKAGE_NAME: "com.example.tsc.forex"
   APP_OAUTH_ANDROID_SHA256: "0A:AB:C2:DD:D5:A9:70:55:0A:8C:45:E9:A6:5B:82:29:91:28:0B:04:AD:34:3A:BE:FF:0E:1D:CB:F8:31:62:38"
   # Passkey (WebAuthn) usernameless login.
@@ -44,6 +44,19 @@ data:
   APP_LOG_LEVEL: "info"
   APP_METRICS_ENABLED: "true"
   APP_NOTIFY_ALERT_COOLDOWN: "60s"
+  # Push notifications. Credential files are mounted at /etc/push from the
+  # tsc-forex-push secret (created out-of-band, see 40-app.yaml).
+  APP_NOTIFY_APNS_ENABLED: "true"
+  APP_NOTIFY_APNS_TOPIC: "talhacan.tscforex"
+  APP_NOTIFY_APNS_KEY_ID: "2729F227T3"
+  APP_NOTIFY_APNS_TEAM_ID: "SGQ86WW4J3"
+  APP_NOTIFY_APNS_KEY_PATH: "/etc/push/apns.p8"
+  # Development APNs (sandbox) matches development-signed builds. Set to "false"
+  # for TestFlight/App Store (production) builds.
+  APP_NOTIFY_APNS_SANDBOX: "true"
+  APP_NOTIFY_FCM_ENABLED: "true"
+  APP_NOTIFY_FCM_PROJECT_ID: "tscforex-16f7e"
+  APP_NOTIFY_FCM_CREDENTIAL_PATH: "/etc/push/fcm.json"
 # NOTE: the Secret "tsc-forex-secrets" is intentionally NOT defined here so it is
 # never committed to git and never clobbered by `kubectl apply -k`. It is created
 # out-of-band from real values (CI/CD from GitHub Actions secrets, or manually):

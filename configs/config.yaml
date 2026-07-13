@@ -158,8 +158,8 @@ oauth:
   apple_bundle_ids:
     - talhacan.tscforex
   # Apple Developer Team ID — used to build the AASA webcredentials for passkeys
-  # + Sign in with Apple. Set via APP_OAUTH_APPLE_TEAM_ID.
-  apple_team_id: ""
+  # + Sign in with Apple. Overridable via APP_OAUTH_APPLE_TEAM_ID.
+  apple_team_id: SGQ86WW4J3
   android_package_name: com.example.tsc.forex
   android_sha256: []
 

@@ -30,6 +30,15 @@ spec:
                 name: tsc-forex-config
             - secretRef:
                 name: tsc-forex-secrets
+          volumeMounts:
+            # Push credentials (APNs .p8 + Firebase service account) mounted
+            # read-only from the tsc-forex-push secret, created out-of-band:
+            #   kubectl -n tsc-forex create secret generic tsc-forex-push \
+            #     --from-file=apns.p8=AuthKey_XXX.p8 \
+            #     --from-file=fcm.json=firebase-adminsdk.json
+            - name: push-creds
+              mountPath: /etc/push
+              readOnly: true
           livenessProbe:
             httpGet:
               path: /livez
@@ -49,6 +58,11 @@ spec:
             limits:
               cpu: "1"
               memory: "512Mi"
+      volumes:
+        - name: push-creds
+          secret:
+            secretName: tsc-forex-push
+            optional: true
       # Rolling updates keep the WebSocket stream broadcasting during deploys.
 ---
 apiVersion: v1
