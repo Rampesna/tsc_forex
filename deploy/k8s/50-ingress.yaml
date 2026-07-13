@@ -1,0 +1,23 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: tsc-forex
+  namespace: tsc-forex
+  annotations:
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "3600"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "3600"
+    # WebSocket upgrade is handled by the nginx ingress automatically for
+    # long-lived connections; timeouts above keep /ws streams alive.
+spec:
+  ingressClassName: nginx
+  rules:
+    - host: tscforex.local
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: tsc-forex-app
+                port:
+                  number: 80

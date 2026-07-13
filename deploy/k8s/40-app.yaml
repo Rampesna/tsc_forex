@@ -1,0 +1,100 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tsc-forex-app
+  namespace: tsc-forex
+  labels:
+    app: tsc-forex-app
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: tsc-forex-app
+  template:
+    metadata:
+      labels:
+        app: tsc-forex-app
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+    spec:
+      containers:
+        - name: app
+          image: tsc-forex:latest   # push to your registry and update
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 8080
+          envFrom:
+            - configMapRef:
+                name: tsc-forex-config
+            - secretRef:
+                name: tsc-forex-secrets
+          livenessProbe:
+            httpGet:
+              path: /livez
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8080
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+            requests:
+              cpu: "200m"
+              memory: "128Mi"
+            limits:
+              cpu: "1"
+              memory: "512Mi"
+      # Rolling updates keep the WebSocket stream broadcasting during deploys.
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tsc-forex-app
+  namespace: tsc-forex
+  annotations:
+    # aaPanel reverse proxy (proxy project) forwards api.talhacan.com →
+    # http://127.0.0.1:4700. The nodePort is pinned inside the 4700-4900 range
+    # requested so it never collides with other projects on the host.
+    # NOTE: the cluster's node-port range must include 4700-4900, e.g. k3s:
+    #   --service-node-port-range=4700-4900
+    tsc-forex/proxy-target: "127.0.0.1:4700"
+spec:
+  selector:
+    app: tsc-forex-app
+  ports:
+    - name: http
+      port: 80
+      targetPort: 8080
+      nodePort: 4700
+  type: NodePort
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: tsc-forex-app
+  namespace: tsc-forex
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: tsc-forex-app
+  minReplicas: 3
+  maxReplicas: 20
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 70
+    - type: Resource
+      resource:
+        name: memory
+        target:
+          type: Utilization
+          averageUtilization: 80

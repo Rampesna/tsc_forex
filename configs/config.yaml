@@ -1,0 +1,159 @@
+app:
+  name: tsc_forex
+  environment: development
+
+server:
+  host: "0.0.0.0"
+  port: 8080
+  read_timeout: 10s
+  write_timeout: 10s
+  shutdown_timeout: 15s
+  mode: debug
+
+database:
+  host: localhost
+  port: 5432
+  user: tsc_forex
+  password: tsc_forex
+  name: tsc_forex
+  ssl_mode: disable
+  max_open_conns: 25
+  max_idle_conns: 10
+  conn_max_lifetime: 30m
+  conn_max_idle_time: 5m
+
+redis:
+  addr: localhost:6379
+  password: ""
+  db: 0
+  pool_size: 20
+  min_idle_conns: 5
+  dial_timeout: 3s
+  read_timeout: 2s
+  write_timeout: 2s
+  pubsub_channel: gold:gram:updates
+
+nats:
+  enabled: false
+  url: nats://localhost:4222
+  subject: gold.gram.updates
+
+provider:
+  # yahoo: REAL-TIME market data (no API key) via Yahoo Finance chart API.
+  # Polls GC=F (gold USD/oz), USDTRY=X, EURTRY=X, GBPTRY=X, JPYTRY=X every 2s.
+  # Yahoo quotes TRY pairs directly, so no cross-rate math is needed. Reachable
+  # from networks where Binance is blocked/reset. rest (er-api+gold-api) and
+  # synthetic are fallbacks so the stream never stops.
+  primary: yahoo
+  fallbacks: [rest, synthetic]
+  reconnect_initial: 1s
+  reconnect_max: 30s
+  health_interval: 5s
+  stale_threshold: 30s
+  mock:
+    enabled: true
+    tick_interval: 500ms
+    xauusd_base: 4060.0
+    usdtry_base: 47.0
+    jitter_percent: 0.05
+  synthetic:
+    enabled: true
+    tick_interval: 5s          # backend fetches/updates every 5 seconds
+    xauusd_base: 4060.0
+    usdtry_base: 47.0
+    eurtry_base: 53.6
+    gbptry_base: 63.0
+    jpytry_base: 0.29
+    jitter_percent: 0.03
+  rest:
+    enabled: true
+    poll_interval: 2s          # also controls the binance provider poll cadence
+    fx_base_url: "https://open.er-api.com/v6/latest/USD"
+    gold_url: "https://api.gold-api.com/price/XAU"   # XAU USD/oz, returns {"price": <usd>}
+    timeout: 4s
+  twelvedata:
+    enabled: false
+    api_key: ""
+    ws_url: "wss://ws.twelvedata.com/v1/quotes/price"
+    rest_url: "https://api.twelvedata.com"
+    symbols: ["XAU/USD", "USD/TRY"]
+  finnhub:
+    enabled: false
+    api_key: ""
+    ws_url: "wss://ws.finnhub.io"
+    rest_url: "https://finnhub.io/api/v1"
+    symbols: ["OANDA:XAU_USD", "OANDA:USD_TRY"]
+  polygon:
+    enabled: false
+    api_key: ""
+    ws_url: "wss://socket.polygon.io/forex"
+    rest_url: "https://api.polygon.io"
+    symbols: ["C:XAUUSD", "C:USDTRY"]
+  alphavantage:
+    enabled: false
+    api_key: ""
+    ws_url: ""
+    rest_url: "https://www.alphavantage.co/query"
+    symbols: ["XAUUSD", "USDTRY"]
+
+jwt:
+  secret: "CHANGE_ME_TO_A_LONG_RANDOM_SECRET_KEY_32+"
+  issuer: tsc_forex
+  access_token_ttl: 15m
+  refresh_token_ttl: 168h
+
+websocket:
+  path: /ws
+  write_wait: 10s
+  pong_wait: 60s
+  ping_period: 54s
+  max_message_size: 4096
+  send_buffer_size: 256
+  enable_compression: true
+  check_origin: false
+
+cache:
+  latest_price_ttl: 60s
+  latest_price_key: gold:gram:latest
+
+gold:
+  troy_ounce_to_gram: 31.1034768
+  persist_every: true
+  history_workers: 4
+  history_queue_size: 4096
+
+metrics:
+  enabled: true
+  path: /metrics
+
+tracing:
+  enabled: false
+  endpoint: localhost:4317
+  service_name: tsc_forex
+  sample_rate: 0.1
+
+cors:
+  allowed_origins: ["*"]
+  allowed_methods: ["GET", "POST", "DELETE", "OPTIONS"]
+  allowed_headers: ["Authorization", "Content-Type", "X-Request-ID"]
+  allow_credentials: false
+  max_age: 86400
+
+notify:
+  alert_cooldown: 60s
+  apns_enabled: false
+  apns_topic: talhacan.tscforex   # iOS bundle id
+  apns_key_id: ""
+  apns_team_id: ""
+  apns_key_path: ""
+  apns_sandbox: true
+
+rate_limit:
+  enabled: true
+  requests: 100
+  window_sec: 60
+
+log:
+  level: info
+  encoding: json
+  development: true

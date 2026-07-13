@@ -1,0 +1,239 @@
+openapi: 3.0.3
+info:
+  title: TSC Forex — Gram Gold API
+  description: >
+    Production-grade backend that calculates and streams live Gram Gold
+    (XAU gram TRY) from XAU/USD and USD/TRY feeds.
+    Formula: GramGoldTRY = (XAUUSD / 31.1034768) * USDTRY.
+  version: "1.0.0"
+  license:
+    name: MIT
+servers:
+  - url: /api/v1
+    description: API v1
+tags:
+  - name: gold
+  - name: instruments
+  - name: user
+  - name: system
+  - name: auth
+paths:
+  /gold/current:
+    get:
+      tags: [gold]
+      summary: Current gram gold price
+      responses:
+        "200":
+          description: Latest price
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GoldResponse" }
+        "503":
+          description: Price not available yet
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+  /gold/history:
+    get:
+      tags: [gold]
+      summary: Historical prices or OHLC candles
+      parameters:
+        - { name: symbol, in: query, schema: { type: string }, description: "Default XAU_GRAM_TRY" }
+        - { name: from, in: query, schema: { type: string }, description: "RFC3339 or unix seconds" }
+        - { name: to, in: query, schema: { type: string }, description: "RFC3339 or unix seconds" }
+        - { name: limit, in: query, schema: { type: integer }, description: "Raw mode row cap" }
+        - { name: interval, in: query, schema: { type: string, enum: [1m,5m,15m,30m,1h,4h,1d] }, description: "Aggregate into OHLC" }
+      responses:
+        "200": { description: History or candles }
+        "400":
+          description: Invalid interval
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/ErrorResponse" }
+        "503": { description: History storage not configured }
+  /providers:
+    get:
+      tags: [system]
+      summary: Provider status and failover chain
+      responses:
+        "200": { description: Provider statuses }
+  /health:
+    get:
+      tags: [system]
+      summary: Service and dependency health
+      responses:
+        "200": { description: Healthy }
+        "503": { description: Degraded }
+  /version:
+    get:
+      tags: [system]
+      summary: Build version
+      responses:
+        "200": { description: Version info }
+  /auth/register:
+    post:
+      tags: [auth]
+      summary: Register a new user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/RegisterRequest" }
+      responses:
+        "201": { description: Created }
+        "400": { description: Validation error }
+        "409": { description: Email already registered }
+  /auth/login:
+    post:
+      tags: [auth]
+      summary: Log in and receive JWT tokens
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/LoginRequest" }
+      responses:
+        "200":
+          description: Tokens
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/TokenResponse" }
+        "401": { description: Invalid credentials }
+  /auth/refresh:
+    post:
+      tags: [auth]
+      summary: Rotate refresh token
+      responses:
+        "200": { description: New token pair }
+        "401": { description: Invalid or expired refresh token }
+  /auth/logout:
+    post:
+      tags: [auth]
+      summary: Revoke a refresh token
+      responses:
+        "200": { description: Logged out }
+  /instruments:
+    get:
+      tags: [instruments]
+      summary: Full instrument catalog (all gold products + currencies)
+      responses:
+        "200": { description: Catalog }
+  /instruments/prices:
+    get:
+      tags: [instruments]
+      summary: Live prices for all instruments
+      responses:
+        "200": { description: Prices }
+        "503": { description: Not ready }
+  /instruments/{code}:
+    get:
+      tags: [instruments]
+      summary: Latest price for one instrument
+      parameters:
+        - { name: code, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Price }
+        "404": { description: Unknown instrument }
+  /instruments/{code}/history:
+    get:
+      tags: [instruments]
+      summary: Per-instrument history / OHLC
+      parameters:
+        - { name: code, in: path, required: true, schema: { type: string } }
+        - { name: interval, in: query, schema: { type: string }, description: "1m,5m,15m,30m,1h,4h,1d" }
+        - { name: from, in: query, schema: { type: string } }
+        - { name: to, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer } }
+      responses:
+        "200": { description: History }
+  /me/watchlist:
+    get:
+      tags: [user]
+      summary: List tracked instruments
+      security: [{ bearerAuth: [] }]
+      responses: { "200": { description: Codes } }
+    post:
+      tags: [user]
+      summary: Add instrument to watchlist
+      security: [{ bearerAuth: [] }]
+      responses: { "201": { description: Added } }
+  /me/watchlist/{code}:
+    delete:
+      tags: [user]
+      summary: Remove instrument from watchlist
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: code, in: path, required: true, schema: { type: string } }
+      responses: { "200": { description: Removed } }
+  /me/alerts:
+    get:
+      tags: [user]
+      summary: List price alerts
+      security: [{ bearerAuth: [] }]
+      responses: { "200": { description: Alerts } }
+    post:
+      tags: [user]
+      summary: Create a price-threshold alert
+      security: [{ bearerAuth: [] }]
+      responses: { "201": { description: Created } }
+  /me/alerts/{id}:
+    delete:
+      tags: [user]
+      summary: Delete an alert
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+      responses: { "200": { description: Deleted } }
+  /me/notifications:
+    get:
+      tags: [user]
+      summary: Notification history
+      security: [{ bearerAuth: [] }]
+      responses: { "200": { description: Notifications } }
+  /me/devices:
+    post:
+      tags: [user]
+      summary: Register a push (APNs/FCM) token
+      security: [{ bearerAuth: [] }]
+      responses: { "201": { description: Registered } }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    GoldResponse:
+      type: object
+      properties:
+        symbol: { type: string }
+        price: { type: number }
+        mid_price: { type: number }
+        spread: { type: number }
+        xauusd: { type: number }
+        usdtry: { type: number }
+        provider: { type: string }
+        timestamp: { type: string, format: date-time }
+        source: { type: string, enum: [calculator, cache] }
+    RegisterRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, minLength: 8 }
+    LoginRequest:
+      type: object
+      required: [email, password]
+      properties:
+        email: { type: string, format: email }
+        password: { type: string, minLength: 8 }
+    TokenResponse:
+      type: object
+      properties:
+        access_token: { type: string }
+        refresh_token: { type: string }
+        token_type: { type: string }
+    ErrorResponse:
+      type: object
+      properties:
+        error: { type: string }

@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!-- Allow cleartext HTTP/WS to the local backend over Wi-Fi during development.
+	     Tighten (remove NSAllowsArbitraryLoads) once you serve the API over HTTPS. -->
+	<key>NSAppTransportSecurity</key>
+	<dict>
+		<key>NSAllowsArbitraryLoads</key>
+		<true/>
+		<key>NSAllowsLocalNetworking</key>
+		<true/>
+	</dict>
+	<!-- iOS prompts for local network access on first connection. -->
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>TSC Forex canlı fiyatları yerel ağdaki sunucudan alır.</string>
+</dict>
+</plist>

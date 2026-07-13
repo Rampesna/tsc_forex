@@ -1,0 +1,37 @@
+# Local overrides — never commit secrets. See .env.example in Step 3.
+.env
+.env.local
+*.pem
+
+# Binaries / build
+/bin/
+/dist/
+*.exe
+*.test
+coverage.out
+coverage.html
+
+# IDE / OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+
+# Vendor (we use modules)
+/vendor/
+
+# iOS / Xcode
+ios/**/xcuserdata/
+ios/**/*.xcuserstate
+ios/**/DerivedData/
+ios/**/build/
+*.mobileprovision
+*.p8
+*.p12
+*.certSigningRequest
+
+# Secrets / kube
+*.kubeconfig
+kubeconfig
+secrets.local.*
+
