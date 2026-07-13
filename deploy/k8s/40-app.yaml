@@ -57,7 +57,7 @@ metadata:
   name: tsc-forex-app
   namespace: tsc-forex
   annotations:
-    # aaPanel reverse proxy (proxy project) forwards api.talhacan.com →
+    # aaPanel reverse proxy (proxy project) forwards tsc-api.talhacan.com →
     # http://127.0.0.1:4700. The nodePort is pinned inside the 4700-4900 range
     # requested so it never collides with other projects on the host.
     # NOTE: the cluster's node-port range must include 4700-4900, e.g. k3s:

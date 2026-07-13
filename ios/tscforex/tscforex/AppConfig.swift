@@ -12,7 +12,7 @@ import Foundation
 
 enum AppConfig {
     /// Production API host (served behind TLS via the aaPanel reverse proxy).
-    static let productionHost = "api.talhacan.com"
+    static let productionHost = "tsc-api.talhacan.com"
 
     static let defaultsHostKey = "server_host"
 

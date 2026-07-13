@@ -1,8 +1,8 @@
 # MinIO — S3-compatible object storage for profile pictures. Runs as a shared
 # service so every app pod reads/writes the same avatar bucket (no "image shows
 # on one pod but not another" problem). Exposed to aaPanel via NodePorts:
-#   - 4710 → S3 API   (cdn.talhacan.com serves the public "avatars" bucket)
-#   - 4711 → Console  (minio.talhacan.com, admin only)
+#   - 4710 → S3 API   (tsc-cdn.talhacan.com serves the public "avatars" bucket)
+#   - 4711 → Console  (tsc-minio.talhacan.com, admin only)
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
@@ -89,8 +89,8 @@ metadata:
   name: minio-external
   namespace: tsc-forex
   annotations:
-    tsc-forex/proxy-target-s3: "127.0.0.1:4710"   # cdn.talhacan.com
-    tsc-forex/proxy-target-console: "127.0.0.1:4711"  # minio.talhacan.com
+    tsc-forex/proxy-target-s3: "127.0.0.1:4710"   # tsc-cdn.talhacan.com
+    tsc-forex/proxy-target-console: "127.0.0.1:4711"  # tsc-minio.talhacan.com
 spec:
   type: NodePort
   selector:
