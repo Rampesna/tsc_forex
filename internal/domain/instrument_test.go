@@ -23,8 +23,9 @@ func TestCatalogIntegrity(t *testing.T) {
 			t.Fatalf("currency %s missing base symbol", in.Code)
 		}
 	}
-	if len(domain.BaseSymbols()) != 5 {
-		t.Fatalf("expected 5 base symbols, got %d", len(domain.BaseSymbols()))
+	// Base symbols = XAUUSD + every world currency vs TRY.
+	if want := 1 + len(domain.Currencies); len(domain.BaseSymbols()) != want {
+		t.Fatalf("expected %d base symbols, got %d", want, len(domain.BaseSymbols()))
 	}
 }
 

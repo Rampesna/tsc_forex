@@ -221,8 +221,24 @@ func (p *Provider) Fetch(ctx context.Context) ([]domain.Tick, error) {
 	go func() { wg.Wait(); close(results) }()
 
 	now := time.Now().UTC()
-	out := make([]domain.Tick, 0, len(symbolMap))
+	out := make([]domain.Tick, 0, len(symbolMap)+len(domain.Currencies))
+	add := func(sym string, price float64) {
+		if price <= 0 {
+			return
+		}
+		spread := price * 0.001
+		out = append(out, domain.Tick{
+			Symbol:    sym,
+			Bid:       price - spread/2,
+			Ask:       price + spread/2,
+			Price:     price,
+			Timestamp: now,
+			Provider:  name,
+		})
+	}
+
 	var firstErr error
+	var usdtry float64
 	for r := range results {
 		if r.err != nil {
 			if firstErr == nil {
@@ -233,16 +249,33 @@ func (p *Provider) Fetch(ctx context.Context) ([]domain.Tick, error) {
 		if r.price <= 0 {
 			continue
 		}
-		spread := r.price * 0.001
-		out = append(out, domain.Tick{
-			Symbol:    r.canonical,
-			Bid:       r.price - spread/2,
-			Ask:       r.price + spread/2,
-			Price:     r.price,
-			Timestamp: now,
-			Provider:  name,
-		})
+		if r.canonical == domain.SymbolUSDTRY {
+			usdtry = r.price
+		}
+		add(r.canonical, r.price)
 	}
+
+	// Global breadth: derive every other world currency vs TRY from one FX call
+	// (USD-based cross rates) × the live USD/TRY leg. This scales to all
+	// currencies with a single request instead of one Yahoo call per symbol.
+	if fx, err := p.fetchFXAll(ctx); err == nil {
+		if usdtry <= 0 {
+			usdtry = fx["TRY"] // fall back to FX source if Yahoo USDTRY failed
+			add(domain.SymbolUSDTRY, usdtry)
+		}
+		if usdtry > 0 {
+			for _, c := range domain.Currencies {
+				switch c.ISO {
+				case "USD", "EUR", "GBP", "JPY":
+					continue // already live from Yahoo above
+				}
+				if rate := fx[c.ISO]; rate > 0 {
+					add(c.ISO+"TRY", usdtry/rate)
+				}
+			}
+		}
+	}
+
 	if len(out) == 0 {
 		if firstErr != nil {
 			return nil, firstErr
@@ -250,6 +283,40 @@ func (p *Provider) Fetch(ctx context.Context) ([]domain.Tick, error) {
 		return nil, fmt.Errorf("no prices parsed from yahoo response")
 	}
 	return out, nil
+}
+
+// erAPIResponse matches the open.er-api.com "latest" shape (USD base).
+type erAPIResponse struct {
+	Rates map[string]float64 `json:"rates"`
+}
+
+// fetchFXAll returns USD-based cross rates for all world currencies in one call.
+func (p *Provider) fetchFXAll(ctx context.Context) (map[string]float64, error) {
+	url := p.cfg.FXBaseURL
+	if url == "" {
+		url = "https://open.er-api.com/v6/latest/USD"
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", "application/json")
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("fx http %d", resp.StatusCode)
+	}
+	var r erAPIResponse
+	if err := json.NewDecoder(resp.Body).Decode(&r); err != nil {
+		return nil, err
+	}
+	if len(r.Rates) == 0 {
+		return nil, fmt.Errorf("empty fx rates")
+	}
+	return r.Rates, nil
 }
 
 func (p *Provider) fetchSymbol(ctx context.Context, yahooSym string) (float64, error) {

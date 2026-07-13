@@ -91,13 +91,13 @@ func (e *Engine) Get(code string) (domain.InstrumentPrice, bool) {
 
 func (e *Engine) onTick(t domain.Tick) {
 	e.mu.Lock()
-	switch t.Symbol {
-	case domain.SymbolXAUUSD:
+	switch {
+	case t.Symbol == domain.SymbolXAUUSD:
 		e.xau = t.Mid()
-	case domain.SymbolUSDTRY:
+	case t.Symbol == domain.SymbolUSDTRY:
 		e.usd = t.Mid()
 		e.currency[domain.SymbolUSDTRY] = t.Mid()
-	case domain.SymbolEURTRY, domain.SymbolGBPTRY, domain.SymbolJPYTRY:
+	case domain.IsCurrencySymbol(t.Symbol):
 		e.currency[t.Symbol] = t.Mid()
 	default:
 		e.mu.Unlock()

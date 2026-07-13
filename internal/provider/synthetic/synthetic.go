@@ -66,17 +66,54 @@ func New(cfg config.SyntheticConfig) *Provider {
 		cfg.JitterPercent = 0.03
 	}
 	return &Provider{
-		cfg: cfg,
-		out: make(chan domain.Tick, 512),
-		legs: []leg{
-			{symbol: domain.SymbolXAUUSD, price: cfg.XAUUSDBase},
-			{symbol: domain.SymbolUSDTRY, price: cfg.USDTRYBase},
-			{symbol: domain.SymbolEURTRY, price: cfg.EURTRYBase},
-			{symbol: domain.SymbolGBPTRY, price: cfg.GBPTRYBase},
-			{symbol: domain.SymbolJPYTRY, price: cfg.JPYTRYBase},
-		},
-		rng: rand.New(rand.NewSource(time.Now().UnixNano())),
+		cfg:  cfg,
+		out:  make(chan domain.Tick, 1024),
+		legs: buildLegs(cfg),
+		rng:  rand.New(rand.NewSource(time.Now().UnixNano())),
 	}
+}
+
+// approxUSDRate is roughly "units of currency per 1 USD" — used only to seed
+// realistic offline synthetic prices. Real prices come from live providers.
+var approxUSDRate = map[string]float64{
+	"USD": 1, "EUR": 0.92, "GBP": 0.79, "JPY": 157, "CHF": 0.88, "CAD": 1.37,
+	"AUD": 1.52, "NZD": 1.64, "CNY": 7.25, "RUB": 90, "SAR": 3.75, "AED": 3.67,
+	"KWD": 0.31, "QAR": 3.64, "BHD": 0.38, "OMR": 0.38, "JOD": 0.71, "ILS": 3.7,
+	"INR": 83.5, "PKR": 278, "IQD": 1310, "EGP": 48, "ZAR": 18.5, "SEK": 10.6,
+	"NOK": 10.7, "DKK": 6.9, "PLN": 3.95, "CZK": 23, "HUF": 360, "RON": 4.6,
+	"BGN": 1.8, "UAH": 41, "KRW": 1360, "SGD": 1.35, "HKD": 7.8, "TWD": 32.5,
+	"THB": 36, "MYR": 4.7, "IDR": 16000, "PHP": 58, "VND": 25400, "MXN": 18.5,
+	"BRL": 5.4, "ARS": 900, "CLP": 950, "COP": 4000, "AZN": 1.7, "KZT": 470,
+	"GEL": 2.7, "MAD": 9.9, "DZD": 134, "TND": 3.1, "NGN": 1500, "KES": 129,
+	"UZS": 12600, "ISK": 138,
+}
+
+// buildLegs seeds XAUUSD plus every world currency vs TRY. Majors use the
+// configured bases; the rest derive from USDTRYBase × approximate cross rates.
+func buildLegs(cfg config.SyntheticConfig) []leg {
+	usdtry := cfg.USDTRYBase
+	legs := []leg{{symbol: domain.SymbolXAUUSD, price: cfg.XAUUSDBase}}
+	for _, c := range domain.Currencies {
+		var price float64
+		switch c.ISO {
+		case "USD":
+			price = cfg.USDTRYBase
+		case "EUR":
+			price = cfg.EURTRYBase
+		case "GBP":
+			price = cfg.GBPTRYBase
+		case "JPY":
+			price = cfg.JPYTRYBase
+		default:
+			if r := approxUSDRate[c.ISO]; r > 0 {
+				price = usdtry / r
+			} else {
+				price = usdtry // safe fallback so the leg is always positive
+			}
+		}
+		legs = append(legs, leg{symbol: c.ISO + "TRY", price: price})
+	}
+	return legs
 }
 
 func (p *Provider) Name() string { return name }

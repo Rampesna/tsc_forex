@@ -202,17 +202,17 @@ func (p *Provider) Fetch(ctx context.Context) ([]domain.Tick, error) {
 		})
 	}
 
-	// open.er-api base=USD → rates are "target per 1 USD".
+	// open.er-api base=USD → rates are "target per 1 USD". Derive every world
+	// currency vs TRY: XXX/TRY = (TRY per USD) / (XXX per USD).
 	tryPerUSD := fx["TRY"]
 	add(domain.SymbolUSDTRY, tryPerUSD)
-	if eur := fx["EUR"]; eur > 0 {
-		add(domain.SymbolEURTRY, tryPerUSD/eur)
-	}
-	if gbp := fx["GBP"]; gbp > 0 {
-		add(domain.SymbolGBPTRY, tryPerUSD/gbp)
-	}
-	if jpy := fx["JPY"]; jpy > 0 {
-		add(domain.SymbolJPYTRY, tryPerUSD/jpy)
+	for _, c := range domain.Currencies {
+		if c.ISO == "USD" {
+			continue
+		}
+		if rate := fx[c.ISO]; rate > 0 {
+			add(c.ISO+"TRY", tryPerUSD/rate)
+		}
 	}
 
 	if p.cfg.GoldURL != "" {

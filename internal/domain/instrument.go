@@ -37,27 +37,84 @@ type Instrument struct {
 	Unit        string         // display unit
 }
 
-// Catalog is the full set of instruments the platform tracks.
-// Weights follow common Turkish market conventions.
-var Catalog = []Instrument{
-	// --- Currencies (vs TRY) ---
-	{Code: "USDTRY", DisplayName: "Amerikan Doları", Kind: KindCurrency, Base: SymbolUSDTRY, Unit: "₺"},
-	{Code: "EURTRY", DisplayName: "Euro", Kind: KindCurrency, Base: SymbolEURTRY, Unit: "₺"},
-	{Code: "GBPTRY", DisplayName: "İngiliz Sterlini", Kind: KindCurrency, Base: SymbolGBPTRY, Unit: "₺"},
-	{Code: "JPYTRY", DisplayName: "Japon Yeni", Kind: KindCurrency, Base: SymbolJPYTRY, Unit: "₺"},
+// CurrencyDef defines a world fiat currency quoted against TRY. The provider
+// base symbol and instrument code are both "<ISO>TRY" (e.g. "USDTRY").
+type CurrencyDef struct {
+	ISO         string // ISO-4217 code, e.g. "USD"
+	DisplayName string // Turkish name
+}
 
-	// --- Gold products (derived from XAUUSD + USDTRY) ---
-	// ONS: 1 troy ounce in USD → shown in TRY here for consistency.
-	{Code: "ONS_GOLD", DisplayName: "Ons Altın", Kind: KindGold, GramWeight: TroyOunceToGram, Fineness: 1.0, Unit: "₺"},
-	{Code: "GRAM_GOLD", DisplayName: "Gram Altın (Has)", Kind: KindGold, GramWeight: 1.0, Fineness: Fineness24K, Unit: "₺"},
-	{Code: "CEYREK_GOLD", DisplayName: "Çeyrek Altın", Kind: KindGold, GramWeight: 1.754, Fineness: Fineness22K, Unit: "₺"},
-	{Code: "YARIM_GOLD", DisplayName: "Yarım Altın", Kind: KindGold, GramWeight: 3.508, Fineness: Fineness22K, Unit: "₺"},
-	{Code: "TAM_GOLD", DisplayName: "Tam Altın", Kind: KindGold, GramWeight: 7.016, Fineness: Fineness22K, Unit: "₺"},
-	{Code: "CUMHURIYET_GOLD", DisplayName: "Cumhuriyet Altını", Kind: KindGold, GramWeight: 7.216, Fineness: Fineness22K, Unit: "₺"},
-	{Code: "ATA_GOLD", DisplayName: "Ata Altın", Kind: KindGold, GramWeight: 7.216, Fineness: Fineness22K, Unit: "₺"},
-	{Code: "GRAM_22K", DisplayName: "22 Ayar Bilezik", Kind: KindGold, GramWeight: 1.0, Fineness: Fineness22K, Unit: "₺"},
-	{Code: "GRAM_18K", DisplayName: "18 Ayar Altın", Kind: KindGold, GramWeight: 1.0, Fineness: Fineness18K, Unit: "₺"},
-	{Code: "GRAM_14K", DisplayName: "14 Ayar Altın", Kind: KindGold, GramWeight: 1.0, Fineness: Fineness14K, Unit: "₺"},
+// Currencies is the full set of world currencies the platform tracks against
+// TRY. USD/EUR/GBP/JPY lead (most traded in TR); the rest give global coverage.
+// All are quoted in TRY and derived from live USD/TRY × USD-based cross rates.
+var Currencies = []CurrencyDef{
+	{"USD", "Amerikan Doları"}, {"EUR", "Euro"}, {"GBP", "İngiliz Sterlini"}, {"JPY", "Japon Yeni"},
+	{"CHF", "İsviçre Frangı"}, {"CAD", "Kanada Doları"}, {"AUD", "Avustralya Doları"}, {"NZD", "Yeni Zelanda Doları"},
+	{"CNY", "Çin Yuanı"}, {"RUB", "Rus Rublesi"}, {"SAR", "Suudi Arabistan Riyali"}, {"AED", "BAE Dirhemi"},
+	{"KWD", "Kuveyt Dinarı"}, {"QAR", "Katar Riyali"}, {"BHD", "Bahreyn Dinarı"}, {"OMR", "Umman Riyali"},
+	{"JOD", "Ürdün Dinarı"}, {"ILS", "İsrail Şekeli"}, {"INR", "Hindistan Rupisi"}, {"PKR", "Pakistan Rupisi"},
+	{"IQD", "Irak Dinarı"}, {"EGP", "Mısır Lirası"}, {"ZAR", "Güney Afrika Randı"}, {"SEK", "İsveç Kronu"},
+	{"NOK", "Norveç Kronu"}, {"DKK", "Danimarka Kronu"}, {"PLN", "Polonya Zlotisi"}, {"CZK", "Çek Korunası"},
+	{"HUF", "Macar Forinti"}, {"RON", "Rumen Leyi"}, {"BGN", "Bulgar Levası"}, {"UAH", "Ukrayna Grivnası"},
+	{"KRW", "Güney Kore Wonu"}, {"SGD", "Singapur Doları"}, {"HKD", "Hong Kong Doları"}, {"TWD", "Tayvan Doları"},
+	{"THB", "Tayland Bahtı"}, {"MYR", "Malezya Ringiti"}, {"IDR", "Endonezya Rupiahı"}, {"PHP", "Filipin Pesosu"},
+	{"VND", "Vietnam Dongu"}, {"MXN", "Meksika Pesosu"}, {"BRL", "Brezilya Reali"}, {"ARS", "Arjantin Pesosu"},
+	{"CLP", "Şili Pesosu"}, {"COP", "Kolombiya Pesosu"}, {"AZN", "Azerbaycan Manatı"}, {"KZT", "Kazakistan Tengesi"},
+	{"GEL", "Gürcü Larisi"}, {"MAD", "Fas Dirhemi"}, {"DZD", "Cezayir Dinarı"}, {"TND", "Tunus Dinarı"},
+	{"NGN", "Nijerya Nairası"}, {"KES", "Kenya Şilini"}, {"UZS", "Özbekistan Somu"}, {"ISK", "İzlanda Kronu"},
+}
+
+// goldProducts are derived from XAUUSD + USDTRY using Turkish market weights.
+func goldProducts() []Instrument {
+	return []Instrument{
+		{Code: "ONS_GOLD", DisplayName: "Ons Altın", Kind: KindGold, GramWeight: TroyOunceToGram, Fineness: 1.0, Unit: "₺"},
+		{Code: "GRAM_GOLD", DisplayName: "Gram Altın (Has)", Kind: KindGold, GramWeight: 1.0, Fineness: Fineness24K, Unit: "₺"},
+		{Code: "CEYREK_GOLD", DisplayName: "Çeyrek Altın", Kind: KindGold, GramWeight: 1.754, Fineness: Fineness22K, Unit: "₺"},
+		{Code: "YARIM_GOLD", DisplayName: "Yarım Altın", Kind: KindGold, GramWeight: 3.508, Fineness: Fineness22K, Unit: "₺"},
+		{Code: "TAM_GOLD", DisplayName: "Tam Altın", Kind: KindGold, GramWeight: 7.016, Fineness: Fineness22K, Unit: "₺"},
+		{Code: "CUMHURIYET_GOLD", DisplayName: "Cumhuriyet Altını", Kind: KindGold, GramWeight: 7.216, Fineness: Fineness22K, Unit: "₺"},
+		{Code: "ATA_GOLD", DisplayName: "Ata Altın", Kind: KindGold, GramWeight: 7.216, Fineness: Fineness22K, Unit: "₺"},
+		{Code: "GRAM_22K", DisplayName: "22 Ayar Bilezik", Kind: KindGold, GramWeight: 1.0, Fineness: Fineness22K, Unit: "₺"},
+		{Code: "GRAM_18K", DisplayName: "18 Ayar Altın", Kind: KindGold, GramWeight: 1.0, Fineness: Fineness18K, Unit: "₺"},
+		{Code: "GRAM_14K", DisplayName: "14 Ayar Altın", Kind: KindGold, GramWeight: 1.0, Fineness: Fineness14K, Unit: "₺"},
+	}
+}
+
+// Catalog is the full set of instruments the platform tracks: every world
+// currency (vs TRY) followed by the Turkish gold products.
+var Catalog = func() []Instrument {
+	out := make([]Instrument, 0, len(Currencies)+10)
+	for _, c := range Currencies {
+		out = append(out, Instrument{
+			Code:        c.ISO + "TRY",
+			DisplayName: c.DisplayName,
+			Kind:        KindCurrency,
+			Base:        c.ISO + "TRY",
+			Unit:        "₺",
+		})
+	}
+	return append(out, goldProducts()...)
+}()
+
+// currencySymbolSet indexes every currency base symbol for O(1) membership.
+var currencySymbolSet = func() map[string]bool {
+	m := make(map[string]bool, len(Currencies))
+	for _, c := range Currencies {
+		m[c.ISO+"TRY"] = true
+	}
+	return m
+}()
+
+// IsCurrencySymbol reports whether a provider symbol is a tracked TRY currency.
+func IsCurrencySymbol(sym string) bool { return currencySymbolSet[sym] }
+
+// CurrencyBaseSymbols returns every "<ISO>TRY" feed symbol.
+func CurrencyBaseSymbols() []string {
+	out := make([]string, 0, len(Currencies))
+	for _, c := range Currencies {
+		out = append(out, c.ISO+"TRY")
+	}
+	return out
 }
 
 // CatalogByCode indexes the catalog for O(1) lookup.
@@ -69,9 +126,10 @@ var CatalogByCode = func() map[string]Instrument {
 	return m
 }()
 
-// BaseSymbols returns the provider feed symbols required to compute the catalog.
+// BaseSymbols returns the provider feed symbols required to compute the catalog:
+// gold (XAUUSD) plus every world currency vs TRY.
 func BaseSymbols() []string {
-	return []string{SymbolXAUUSD, SymbolUSDTRY, SymbolEURTRY, SymbolGBPTRY, SymbolJPYTRY}
+	return append([]string{SymbolXAUUSD}, CurrencyBaseSymbols()...)
 }
 
 // InstrumentPrice is a computed, user-facing price for a single instrument.

@@ -23,16 +23,15 @@ func TestEngineComputesCatalog(t *testing.T) {
 	})
 
 	now := time.Now().UTC()
-	feed := []domain.Tick{
-		{Symbol: domain.SymbolXAUUSD, Price: 2350, Bid: 2349, Ask: 2351, Timestamp: now, Provider: "test"},
-		{Symbol: domain.SymbolUSDTRY, Price: 34.5, Bid: 34.4, Ask: 34.6, Timestamp: now, Provider: "test"},
-		{Symbol: domain.SymbolEURTRY, Price: 37.5, Timestamp: now, Provider: "test"},
-		{Symbol: domain.SymbolGBPTRY, Price: 44.0, Timestamp: now, Provider: "test"},
-		{Symbol: domain.SymbolJPYTRY, Price: 0.23, Timestamp: now, Provider: "test"},
+	bus.Publish(eventbus.TopicTickReceived, domain.Tick{Symbol: domain.SymbolXAUUSD, Price: 2350, Bid: 2349, Ask: 2351, Timestamp: now, Provider: "test"})
+	// Feed a price for every world currency so the full catalog computes.
+	for i, c := range domain.Currencies {
+		bus.Publish(eventbus.TopicTickReceived, domain.Tick{
+			Symbol: c.ISO + "TRY", Price: 34.5 + float64(i), Timestamp: now, Provider: "test",
+		})
 	}
-	for _, tk := range feed {
-		bus.Publish(eventbus.TopicTickReceived, tk)
-	}
+	// USDTRY must be exactly 34.5 for the assertion below.
+	bus.Publish(eventbus.TopicTickReceived, domain.Tick{Symbol: domain.SymbolUSDTRY, Price: 34.5, Bid: 34.4, Ask: 34.6, Timestamp: now, Provider: "test"})
 
 	snap := e.Snapshot()
 	if len(snap) != len(domain.Catalog) {
