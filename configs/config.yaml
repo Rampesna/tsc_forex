@@ -108,7 +108,9 @@ websocket:
   pong_wait: 60s
   ping_period: 54s
   max_message_size: 4096
-  send_buffer_size: 256
+  # Per-client outbound queue. Larger buffer absorbs broadcast bursts at 10k+
+  # fan-out so transient write slowness drops messages later, not connections.
+  send_buffer_size: 512
   enable_compression: true
   check_origin: false
 
