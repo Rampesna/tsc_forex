@@ -1,0 +1,123 @@
+name: CI/CD
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}
+
+jobs:
+  test:
+    name: Test (Go)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+          cache: true
+      - name: go vet
+        run: go vet ./...
+      - name: go test
+        run: go test ./... -count=1
+
+  build-push:
+    name: Build & push image
+    needs: test
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build & push (multi-stage → minimal runtime image)
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: tsc_docker/Dockerfile
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:latest
+            ${{ env.IMAGE }}:${{ github.sha }}
+          build-args: |
+            VERSION=${{ github.sha }}
+          # GitHub cache keeps CI fast; ephemeral runners leave nothing behind.
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy:
+    name: Deploy to Kubernetes
+    needs: build-push
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Set up SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H "${{ secrets.SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+      - name: Deploy (pull repo, sync secrets, apply manifests, prune)
+        env:
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+          SSH_USER: ${{ secrets.SSH_USER }}
+          IMAGE_REF: ${{ env.IMAGE }}:${{ github.sha }}
+          DB_PASSWORD: ${{ secrets.APP_DATABASE_PASSWORD }}
+          JWT_SECRET: ${{ secrets.APP_JWT_SECRET }}
+          REDIS_PASSWORD: ${{ secrets.APP_REDIS_PASSWORD }}
+          STORAGE_ACCESS_KEY: ${{ secrets.APP_STORAGE_ACCESS_KEY }}
+          STORAGE_SECRET_KEY: ${{ secrets.APP_STORAGE_SECRET_KEY }}
+          GHCR_USER: ${{ github.actor }}
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          ssh -i ~/.ssh/id_ed25519 "$SSH_USER@$SSH_HOST" bash -s <<EOF
+          set -euo pipefail
+          REPO=/www/wwwroot/tsc_forex
+          if [ ! -d "\$REPO/.git" ]; then
+            git clone https://github.com/${{ github.repository }}.git "\$REPO"
+          fi
+          cd "\$REPO"
+          git fetch --all && git reset --hard origin/main
+
+          NS=tsc-forex
+          kubectl get ns \$NS >/dev/null 2>&1 || kubectl create ns \$NS
+
+          # Real secrets injected from GitHub Actions secrets (never in git).
+          kubectl -n \$NS create secret generic tsc-forex-secrets \
+            --from-literal=APP_DATABASE_USER=tsc_forex \
+            --from-literal=APP_DATABASE_PASSWORD="$DB_PASSWORD" \
+            --from-literal=APP_JWT_SECRET="$JWT_SECRET" \
+            --from-literal=APP_REDIS_PASSWORD="$REDIS_PASSWORD" \
+            --from-literal=APP_STORAGE_ACCESS_KEY="$STORAGE_ACCESS_KEY" \
+            --from-literal=APP_STORAGE_SECRET_KEY="$STORAGE_SECRET_KEY" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+          # Image pull secret for GHCR.
+          kubectl -n \$NS create secret docker-registry ghcr-pull \
+            --docker-server=ghcr.io --docker-username="$GHCR_USER" \
+            --docker-password="$GHCR_TOKEN" \
+            --dry-run=client -o yaml | kubectl apply -f -
+
+          # Apply manifests (ConfigMap, Postgres, MinIO, Redis, app, HPA).
+          kubectl apply -k deploy/k8s
+
+          # Roll out the freshly built image.
+          kubectl -n \$NS set image deployment/tsc-forex-app app="$IMAGE_REF"
+          kubectl -n \$NS patch serviceaccount default -p '{"imagePullSecrets":[{"name":"ghcr-pull"}]}' || true
+          kubectl -n \$NS rollout status deployment/tsc-forex-app --timeout=180s
+
+          # Prune leftover images/build cache so nothing accumulates on the host.
+          docker image prune -af >/dev/null 2>&1 || true
+          docker builder prune -af >/dev/null 2>&1 || true
+          EOF

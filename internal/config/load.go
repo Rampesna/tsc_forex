@@ -181,7 +181,9 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("nats.url", "nats://localhost:4222")
 	v.SetDefault("nats.subject", "gold.gram.updates")
 
-	v.SetDefault("provider.primary", "binance")
+	// Safe default when no config file/env is present (tests, bare runs): the
+	// mock provider needs no network. Production sets yahoo via config/ConfigMap.
+	v.SetDefault("provider.primary", "mock")
 	v.SetDefault("provider.fallbacks", []string{"rest", "synthetic"})
 	v.SetDefault("provider.reconnect_initial", "1s")
 	v.SetDefault("provider.reconnect_max", "30s")

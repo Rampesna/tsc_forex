@@ -12,8 +12,21 @@ data:
   APP_DATABASE_NAME: "tsc_forex"
   APP_DATABASE_SSL_MODE: "disable"
   APP_REDIS_ADDR: "redis:6379"
-  APP_PROVIDER_PRIMARY: "synthetic"
+  APP_REDIS_PUBSUB_CHANNEL: "gold:gram:updates"
+  # Real-time market data via Yahoo Finance (no API key; reachable where
+  # Binance is blocked). rest+synthetic are always-on fallbacks.
+  APP_PROVIDER_PRIMARY: "yahoo"
+  APP_PROVIDER_FALLBACKS: "rest,synthetic"
+  APP_PROVIDER_REST_ENABLED: "true"
+  APP_PROVIDER_REST_POLL_INTERVAL: "2s"
+  APP_PROVIDER_REST_FX_BASE_URL: "https://open.er-api.com/v6/latest/USD"
+  APP_PROVIDER_REST_GOLD_URL: "https://api.gold-api.com/price/XAU"
   APP_PROVIDER_SYNTHETIC_TICK_INTERVAL: "5s"
+  # Object storage (MinIO) for profile pictures — shared across all pods.
+  APP_STORAGE_ENDPOINT: "minio:9000"
+  APP_STORAGE_BUCKET: "avatars"
+  APP_STORAGE_USE_SSL: "false"
+  APP_STORAGE_PUBLIC_BASE_URL: "https://cdn.talhacan.com"
   APP_LOG_ENCODING: "json"
   APP_LOG_LEVEL: "info"
   APP_METRICS_ENABLED: "true"
@@ -26,7 +39,12 @@ metadata:
   namespace: tsc-forex
 type: Opaque
 stringData:
-  # Replace these before deploying to a real cluster (use a real secret manager).
+  # PLACEHOLDERS ONLY — real values are injected at deploy time by the CI/CD
+  # pipeline (kubectl create secret ... from GitHub Actions secrets) or applied
+  # manually. Never commit real secrets to git.
   APP_DATABASE_USER: "tsc_forex"
-  APP_DATABASE_PASSWORD: "tsc_forex"
-  APP_JWT_SECRET: "change_me_to_a_very_long_random_secret_key_32chars_min"
+  APP_DATABASE_PASSWORD: "REPLACED_BY_CI"
+  APP_JWT_SECRET: "REPLACED_BY_CI"
+  APP_REDIS_PASSWORD: "REPLACED_BY_CI"
+  APP_STORAGE_ACCESS_KEY: "REPLACED_BY_CI"
+  APP_STORAGE_SECRET_KEY: "REPLACED_BY_CI"
