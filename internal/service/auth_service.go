@@ -6,6 +6,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
@@ -36,10 +37,11 @@ type Claims struct {
 // When a RefreshTokenRepository is attached, refresh tokens become opaque,
 // stored hashed, and rotated on every refresh (revocable per-session).
 type AuthService struct {
-	users  repository.UserRepository
-	tokens repository.RefreshTokenRepository // optional
-	cfg    config.JWTConfig
-	oauth  config.OAuthConfig
+	users      repository.UserRepository
+	tokens     repository.RefreshTokenRepository // optional
+	identities repository.AuthIdentityRepository // optional: multi-provider linking
+	cfg        config.JWTConfig
+	oauth      config.OAuthConfig
 	// googleVerify/appleVerify are swappable in tests; nil uses the real verifier.
 	googleVerify func(ctx context.Context, idToken string, allowedAuds []string) (*GoogleIdentity, error)
 	appleVerify  func(ctx context.Context, idToken string, allowedAuds []string) (*AppleIdentity, error)
@@ -61,6 +63,132 @@ func (s *AuthService) WithOAuth(cfg config.OAuthConfig) *AuthService {
 	s.oauth = cfg
 	return s
 }
+
+// WithIdentities enables multi-provider account linking (Google + Apple on one
+// account, including Apple private-relay emails).
+func (s *AuthService) WithIdentities(ids repository.AuthIdentityRepository) *AuthService {
+	s.identities = ids
+	return s
+}
+
+// ErrProviderLinkedElsewhere is returned when linking an identity that already
+// belongs to a different account.
+var ErrProviderLinkedElsewhere = errors.New("this provider account is already linked to another user")
+
+// resolveSocialUser maps a verified provider identity to a local user, creating
+// or linking as needed:
+//  1. known (provider, subject) → that user;
+//  2. else known email → reuse & link this provider to it;
+//  3. else create a fresh account and record the identity.
+func (s *AuthService) resolveSocialUser(ctx context.Context, provider, subject, email, name, avatar string) (models.User, error) {
+	email = normalizeEmail(email)
+
+	// 1) Resolve by provider identity (stable across email changes / relay).
+	if s.identities != nil && subject != "" {
+		if idn, err := s.identities.ByProviderSubject(ctx, provider, subject); err == nil {
+			if u, uerr := s.users.ByID(ctx, idn.UserID); uerr == nil {
+				s.backfillProfile(ctx, &u, name, avatar)
+				return u, nil
+			}
+		}
+	}
+
+	// 2) Resolve by email — reuse the existing account and link this provider.
+	if u, err := s.users.ByEmail(ctx, email); err == nil {
+		s.linkIdentity(ctx, u.ID, provider, subject, email)
+		s.backfillProfile(ctx, &u, name, avatar)
+		return u, nil
+	}
+
+	// 3) Brand-new account.
+	u := models.User{
+		ID:          uuid.New(),
+		Email:       email,
+		Role:        "user",
+		Provider:    provider,
+		DisplayName: strings.TrimSpace(name),
+		AvatarURL:   avatar,
+	}
+	if err := s.users.Create(ctx, &u); err != nil {
+		return models.User{}, err
+	}
+	s.linkIdentity(ctx, u.ID, provider, subject, email)
+	return u, nil
+}
+
+func (s *AuthService) linkIdentity(ctx context.Context, userID uuid.UUID, provider, subject, email string) {
+	if s.identities == nil || subject == "" {
+		return
+	}
+	if _, err := s.identities.ByProviderSubject(ctx, provider, subject); err == nil {
+		return // already recorded
+	}
+	_ = s.identities.Create(ctx, &models.AuthIdentity{
+		UserID:   userID,
+		Provider: provider,
+		Subject:  subject,
+		Email:    email,
+	})
+}
+
+func (s *AuthService) backfillProfile(ctx context.Context, u *models.User, name, avatar string) {
+	changed := false
+	if u.DisplayName == "" && strings.TrimSpace(name) != "" {
+		u.DisplayName = strings.TrimSpace(name)
+		changed = true
+	}
+	if u.AvatarURL == "" && avatar != "" {
+		u.AvatarURL = avatar
+		changed = true
+	}
+	if changed {
+		_ = s.users.Update(ctx, u)
+	}
+}
+
+// LinkProvider attaches a verified provider identity to an already
+// authenticated user. Used by the in-app "connect account" flow so a user who
+// signed in with Google can also sign in with Apple (and vice versa).
+func (s *AuthService) LinkProvider(ctx context.Context, userID uuid.UUID, provider, subject, email string) error {
+	if s.identities == nil {
+		return ErrNoTokenStore
+	}
+	if idn, err := s.identities.ByProviderSubject(ctx, provider, subject); err == nil {
+		if idn.UserID != userID {
+			return ErrProviderLinkedElsewhere
+		}
+		return nil // idempotent
+	}
+	return s.identities.Create(ctx, &models.AuthIdentity{
+		UserID:   userID,
+		Provider: provider,
+		Subject:  subject,
+		Email:    normalizeEmail(email),
+	})
+}
+
+// LinkedProviders lists the providers currently bound to a user (for profile).
+func (s *AuthService) LinkedProviders(ctx context.Context, userID uuid.UUID) []string {
+	seen := map[string]bool{}
+	out := []string{}
+	if u, err := s.users.ByID(ctx, userID); err == nil && u.Provider != "" {
+		seen[u.Provider] = true
+		out = append(out, u.Provider)
+	}
+	if s.identities != nil {
+		if ids, err := s.identities.ListByUser(ctx, userID); err == nil {
+			for _, idn := range ids {
+				if !seen[idn.Provider] {
+					seen[idn.Provider] = true
+					out = append(out, idn.Provider)
+				}
+			}
+		}
+	}
+	return out
+}
+
+func normalizeEmail(e string) string { return strings.ToLower(strings.TrimSpace(e)) }
 
 // IssueSession mints a fresh access+refresh pair for a known user. Used by
 // passwordless flows (passkey) after the user has been authenticated elsewhere.

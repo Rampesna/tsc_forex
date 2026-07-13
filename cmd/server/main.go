@@ -9,6 +9,7 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+	_ "time/tzdata" // embed the IANA tz database (Europe/Istanbul) for change % day boundaries
 
 	"github.com/google/uuid"
 	"go.uber.org/zap"
@@ -150,6 +151,12 @@ func run() error {
 		goldRepo = repository.NewGoldRepository(db, m)
 		priceRepo = repository.NewPriceRepository(db, m)
 		instrRepo = priceRepo
+		// Seed day-open baselines from today's stored prices so change % is
+		// correct immediately after a restart (not reset to the first live tick).
+		if opens, derr := priceRepo.DayOpen(context.Background(), engine.DayStart()); derr == nil && len(opens) > 0 {
+			engine.SeedDayOpen(opens, engine.DayKey())
+			log.Info("seeded day-open baselines", zap.Int("instruments", len(opens)))
+		}
 		userRepo := repository.NewUserRepository(db, m)
 		refreshRepo := repository.NewRefreshTokenRepository(db, m)
 		watchRepo := repository.NewWatchlistRepository(db, m)
@@ -157,9 +164,11 @@ func run() error {
 		notifRepo := repository.NewNotificationRepository(db, m)
 		deviceRepo := repository.NewDeviceTokenRepository(db, m)
 
+		identityRepo := repository.NewAuthIdentityRepository(db, m)
 		authSvc = service.NewAuthService(userRepo, cfg.JWT).
 			WithRefreshStore(refreshRepo).
-			WithOAuth(cfg.OAuth)
+			WithOAuth(cfg.OAuth).
+			WithIdentities(identityRepo)
 		authH = api.NewAuthHandler(authSvc)
 
 		// Object storage (avatars): shared MinIO/S3 so every pod sees uploads.

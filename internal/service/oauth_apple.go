@@ -14,9 +14,6 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/google/uuid"
-
-	"github.com/tsc-forex/tsc_forex/internal/models"
 )
 
 const appleIssuer = "https://appleid.apple.com"
@@ -138,30 +135,29 @@ func (s *AuthService) LoginWithApple(ctx context.Context, idToken, fullName stri
 	}
 
 	// Apple may hide the real email (private relay) or omit it on later logins;
-	// fall back to a stable synthetic address keyed by the Apple subject.
+	// fall back to a stable synthetic address keyed by the Apple subject. The
+	// subject-based identity linking makes this robust regardless of the email.
 	email := strings.ToLower(strings.TrimSpace(id.Email))
 	if email == "" {
 		email = "apple_" + id.Sub + "@users.tscforex"
 	}
 
-	u, err := s.users.ByEmail(ctx, email)
+	u, err := s.resolveSocialUser(ctx, "apple", id.Sub, email, strings.TrimSpace(fullName), "")
 	if err != nil {
-		u = models.User{
-			ID:          uuid.New(),
-			Email:       email,
-			Role:        "user",
-			Provider:    "apple",
-			DisplayName: strings.TrimSpace(fullName),
-		}
-		if cerr := s.users.Create(ctx, &u); cerr != nil {
-			return "", "", cerr
-		}
-		return s.issueSession(ctx, u)
-	}
-
-	if u.DisplayName == "" && strings.TrimSpace(fullName) != "" {
-		u.DisplayName = strings.TrimSpace(fullName)
-		_ = s.users.Update(ctx, &u)
+		return "", "", err
 	}
 	return s.issueSession(ctx, u)
+}
+
+// VerifyApple validates an Apple identity token and returns the trusted
+// identity, used by the authenticated "link account" flow.
+func (s *AuthService) VerifyApple(ctx context.Context, idToken string) (*AppleIdentity, error) {
+	if len(s.oauth.AppleBundleIDs) == 0 {
+		return nil, ErrOAuthNotConfigured
+	}
+	verify := s.appleVerify
+	if verify == nil {
+		verify = verifyAppleToken
+	}
+	return verify(ctx, idToken, s.oauth.AppleBundleIDs)
 }

@@ -60,12 +60,21 @@ final class PriceStore: ObservableObject {
         favoriteOrder.compactMap { prices[$0] }.filter { favorites.contains($0.code) }
     }
 
-    // Top gainers / losers by 24h change (for the movers strip).
+    // Top gainers / losers by daily change (for the movers strip).
     func topMovers(_ n: Int = 5) -> (gainers: [InstrumentPrice], losers: [InstrumentPrice]) {
         let all = prices.values.sorted { $0.changePct > $1.changePct }
         let gainers = all.prefix(n).filter { $0.changePct > 0 }
         let losers = all.suffix(n).sorted { $0.changePct < $1.changePct }.filter { $0.changePct < 0 }
         return (Array(gainers), Array(losers))
+    }
+
+    // The N currencies with the biggest daily gain — the "top gainers" strip.
+    func topGainerCurrencies(_ n: Int = 10) -> [InstrumentPrice] {
+        currencies()
+            .filter { $0.changePct > 0 }
+            .sorted { $0.changePct > $1.changePct }
+            .prefix(n)
+            .map { $0 }
     }
 
     // MARK: Notifications (live buffer)

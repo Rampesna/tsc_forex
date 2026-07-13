@@ -16,20 +16,9 @@ struct SettingsView: View {
         ZStack {
             Theme.bg.ignoresSafeArea()
             VStack(spacing: 0) {
-                ScreenHeader(title: "Ayarlar", subtitle: "Sunucu & hesap")
+                ScreenHeader(title: "Ayarlar", subtitle: "Hesap & uygulama")
                 ScrollView {
                     VStack(spacing: 14) {
-                        Card {
-                            VStack(alignment: .leading, spacing: 12) {
-                                sectionLabel("BAĞLANTI")
-                                HStack {
-                                    Text("Sunucu durumu").font(.system(size: 13)).foregroundStyle(Theme.textDim)
-                                    Spacer()
-                                    ConnectionDot(connected: prices.connected)
-                                }
-                            }
-                        }
-
                         if AppConfig.allowsServerOverride {
                             Card {
                                 VStack(alignment: .leading, spacing: 12) {
@@ -101,8 +90,22 @@ struct SettingsView: View {
                                 .buttonStyle(FilledButtonStyle(color: Theme.down.opacity(0.16), textColor: Theme.down))
                             }
                         }
+
+                        Card {
+                            VStack(alignment: .leading, spacing: 12) {
+                                sectionLabel("UYGULAMA")
+                                infoRow("Sürüm", AppConfig.appVersion)
+                                Divider().overlay(Theme.stroke)
+                                infoRow("İzlenen varlık", "\(prices.prices.count)")
+                            }
+                        }
+
+                        Text("TSC Forex · Canlı Altın & Döviz")
+                            .font(.system(size: 11)).foregroundStyle(Theme.textFaint)
+                            .frame(maxWidth: .infinity)
+                            .padding(.top, 4)
                     }
-                    .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 100)
+                    .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 120)
                 }
             }
         }
@@ -128,5 +131,13 @@ struct SettingsView: View {
 
     private func sectionLabel(_ t: String) -> some View {
         Text(t).font(.system(size: 11, weight: .bold)).foregroundStyle(Theme.textDim).tracking(1)
+    }
+
+    private func infoRow(_ label: String, _ value: String) -> some View {
+        HStack {
+            Text(label).font(.system(size: 13)).foregroundStyle(Theme.textDim)
+            Spacer()
+            Text(value).font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
+        }
     }
 }

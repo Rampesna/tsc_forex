@@ -24,8 +24,8 @@ struct ProfileView: View {
                     VStack(spacing: 16) {
                         avatarCard
                         nameCard
+                        linkedAccountsCard
                         passkeyCard
-                        infoCard
                     }
                     .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 40)
                 }
@@ -33,7 +33,10 @@ struct ProfileView: View {
         }
         .onAppear {
             name = auth.displayName
-            Task { await auth.loadProfile(); name = auth.displayName }
+            Task {
+                await auth.loadProfile(); name = auth.displayName
+                await auth.loadLinkedProviders()
+            }
         }
         .onChange(of: pickerItem) { _, newItem in
             guard let newItem else { return }
@@ -150,28 +153,73 @@ struct ProfileView: View {
         }
     }
 
-    private var infoCard: some View {
+    @State private var linkingGoogle = false
+    @State private var linkingApple = false
+
+    private var linkedAccountsCard: some View {
         Card {
-            VStack(alignment: .leading, spacing: 10) {
-                sectionLabel("HESAP")
-                row(icon: "checkmark.seal", label: "Sağlayıcı", value: providerLabel)
+            VStack(alignment: .leading, spacing: 12) {
+                sectionLabel("BAĞLI HESAPLAR")
+                Text("Aynı hesaba birden fazla giriş yöntemi bağlayabilirsin.")
+                    .font(.system(size: 12)).foregroundStyle(Theme.textDim)
+
+                providerRow(
+                    name: "Google", system: "g.circle.fill", tint: Color(hex: 0x4285F4),
+                    linked: auth.linkedProviders.contains("google"),
+                    busy: linkingGoogle
+                ) {
+                    linkingGoogle = true
+                    Task { _ = await auth.linkGoogle(); linkingGoogle = false }
+                }
+
+                providerRow(
+                    name: "Apple", system: "apple.logo", tint: Theme.text,
+                    linked: auth.linkedProviders.contains("apple"),
+                    busy: linkingApple
+                ) {
+                    linkingApple = true
+                    Task { _ = await auth.linkApple(); linkingApple = false }
+                }
+
+                if auth.linkedProviders.contains("local") {
+                    HStack(spacing: 10) {
+                        Image(systemName: "envelope.fill").foregroundStyle(Theme.textDim).frame(width: 24)
+                        Text("E-posta / Parola").font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.text)
+                        Spacer()
+                        linkedBadge
+                    }
+                }
             }
         }
     }
 
-    private var providerLabel: String {
-        // Best-effort from cached email domain; backend owns the truth.
-        if auth.email?.contains("privaterelay.appleid.com") == true { return "Apple" }
-        return auth.avatarURL.contains("googleusercontent") ? "Google" : "E-posta"
+    @ViewBuilder
+    private func providerRow(name: String, system: String, tint: Color,
+                             linked: Bool, busy: Bool, action: @escaping () -> Void) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: system).foregroundStyle(tint).frame(width: 24)
+            Text(name).font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.text)
+            Spacer()
+            if busy {
+                ProgressView().tint(Theme.accent).scaleEffect(0.8)
+            } else if linked {
+                linkedBadge
+            } else {
+                Button(action: action) {
+                    Text("Bağla").font(.system(size: 13, weight: .bold)).foregroundStyle(Theme.accent)
+                        .padding(.horizontal, 14).padding(.vertical, 7)
+                        .background(Theme.accentSoft, in: Capsule())
+                }
+            }
+        }
     }
 
-    private func row(icon: String, label: String, value: String) -> some View {
-        HStack {
-            Image(systemName: icon).foregroundStyle(Theme.textDim).frame(width: 22)
-            Text(label).font(.system(size: 13)).foregroundStyle(Theme.textDim)
-            Spacer()
-            Text(value).font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
+    private var linkedBadge: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "checkmark.circle.fill")
+            Text("Bağlı")
         }
+        .font(.system(size: 12, weight: .bold)).foregroundStyle(Theme.up)
     }
 
     private func sectionLabel(_ t: String) -> some View {

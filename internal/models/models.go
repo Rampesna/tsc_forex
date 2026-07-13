@@ -201,6 +201,27 @@ func (d *DeviceToken) BeforeCreate(_ *gorm.DB) error {
 	return nil
 }
 
+// AuthIdentity links an external provider identity (Google/Apple subject) to a
+// local user, so one account can have MULTIPLE providers bound to it (e.g. sign
+// in with Google, then link Apple — including Apple private-relay emails).
+type AuthIdentity struct {
+	ID        uuid.UUID `gorm:"type:uuid;primaryKey" json:"id"`
+	UserID    uuid.UUID `gorm:"type:uuid;index;not null" json:"user_id"`
+	Provider  string    `gorm:"type:varchar(32);not null;uniqueIndex:idx_provider_subject" json:"provider"`
+	Subject   string    `gorm:"type:varchar(255);not null;uniqueIndex:idx_provider_subject" json:"subject"`
+	Email     string    `gorm:"type:varchar(255)" json:"email"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+func (AuthIdentity) TableName() string { return "auth_identities" }
+
+func (a *AuthIdentity) BeforeCreate(_ *gorm.DB) error {
+	if a.ID == uuid.Nil {
+		a.ID = uuid.New()
+	}
+	return nil
+}
+
 // WebAuthnCredential stores a registered passkey for a user. CredentialID and
 // PublicKey are the WebAuthn credential bytes; SignCount guards against cloned
 // authenticators.

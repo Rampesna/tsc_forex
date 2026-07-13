@@ -42,6 +42,15 @@ enum AppTab: Int, CaseIterable {
         case .settings: return "gearshape"
         }
     }
+    var iconFilled: String {
+        switch self {
+        case .markets: return "chart.bar.xaxis"
+        case .portfolio: return "briefcase.fill"
+        case .alerts: return "bell.fill"
+        case .notifications: return "tray.full.fill"
+        case .settings: return "gearshape.fill"
+        }
+    }
 }
 
 struct MainTabView: View {
@@ -50,18 +59,17 @@ struct MainTabView: View {
     @State private var tab: AppTab = .markets
 
     var body: some View {
-        ZStack(alignment: .bottom) {
-            Group {
-                switch tab {
-                case .markets:        MarketsView()
-                case .portfolio:      PortfolioView()
-                case .alerts:         AlertsView()
-                case .notifications:  NotificationsView()
-                case .settings:       SettingsView()
-                }
+        Group {
+            switch tab {
+            case .markets:        MarketsView()
+            case .portfolio:      PortfolioView()
+            case .alerts:         AlertsView()
+            case .notifications:  NotificationsView()
+            case .settings:       SettingsView()
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .safeAreaInset(edge: .bottom) {
             CustomTabBar(selection: $tab, badge: prices.liveNotifications.count)
         }
         .onAppear {
@@ -89,40 +97,77 @@ struct MainTabView: View {
     }
 }
 
+// Floating, glass-style tab bar: a rounded capsule with a sliding accent pill
+// behind the active item and a filled-icon state on selection.
 struct CustomTabBar: View {
     @Binding var selection: AppTab
     var badge: Int = 0
+    @Namespace private var ns
 
     var body: some View {
-        HStack {
+        HStack(spacing: 2) {
             ForEach(AppTab.allCases, id: \.self) { t in
-                Button {
-                    Haptics.tap()
-                    withAnimation(.easeInOut(duration: 0.15)) { selection = t }
-                } label: {
-                    VStack(spacing: 4) {
-                        ZStack(alignment: .topTrailing) {
-                            Image(systemName: t.icon)
-                                .font(.system(size: 19, weight: .semibold))
-                            if t == .notifications && badge > 0 {
-                                Circle().fill(Theme.down).frame(width: 8, height: 8).offset(x: 6, y: -2)
-                            }
-                        }
-                        Text(t.title).font(.system(size: 10, weight: .medium))
-                    }
-                    .foregroundStyle(selection == t ? Theme.accent : Theme.textDim)
-                    .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.plain)
+                item(t)
             }
         }
-        .padding(.top, 10)
-        .padding(.bottom, 26)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 8)
         .background(
-            Theme.bgElevated
-                .overlay(Rectangle().fill(Theme.stroke).frame(height: 1), alignment: .top)
-                .ignoresSafeArea(edges: .bottom)
+            ZStack {
+                RoundedRectangle(cornerRadius: 26, style: .continuous)
+                    .fill(.ultraThinMaterial)
+                RoundedRectangle(cornerRadius: 26, style: .continuous)
+                    .fill(Theme.bgElevated.opacity(0.72))
+                RoundedRectangle(cornerRadius: 26, style: .continuous)
+                    .stroke(Theme.strokeStrong, lineWidth: 1)
+            }
         )
+        .clipShape(RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .shadow(color: .black.opacity(0.45), radius: 18, x: 0, y: 8)
+        .padding(.horizontal, 14)
+        .padding(.bottom, 8)
+    }
+
+    @ViewBuilder
+    private func item(_ t: AppTab) -> some View {
+        let active = selection == t
+        Button {
+            Haptics.tap()
+            withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) { selection = t }
+        } label: {
+            VStack(spacing: 3) {
+                ZStack(alignment: .topTrailing) {
+                    Image(systemName: active ? t.iconFilled : t.icon)
+                        .font(.system(size: 18, weight: .semibold))
+                        .frame(height: 22)
+                    if t == .notifications && badge > 0 {
+                        Text(badge > 9 ? "9+" : "\(badge)")
+                            .font(.system(size: 9, weight: .bold))
+                            .foregroundStyle(.white)
+                            .padding(.horizontal, 4).padding(.vertical, 1)
+                            .background(Theme.down, in: Capsule())
+                            .offset(x: 12, y: -6)
+                    }
+                }
+                Text(t.title)
+                    .font(.system(size: 9.5, weight: active ? .bold : .medium))
+                    .lineLimit(1)
+            }
+            .foregroundStyle(active ? Theme.accent : Theme.textDim)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 8)
+            .background(
+                ZStack {
+                    if active {
+                        RoundedRectangle(cornerRadius: 18, style: .continuous)
+                            .fill(Theme.accentSoft)
+                            .matchedGeometryEffect(id: "tabPill", in: ns)
+                    }
+                }
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 }
 

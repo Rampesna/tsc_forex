@@ -162,7 +162,9 @@ func (h *InstrumentHandler) Stats(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"code": code, "last": last})
 		return
 	}
-	s, err := h.repo.Stats(c.Request.Context(), code, time.Now().Add(-24*time.Hour))
+	// "Open" is the day's first price in Istanbul time (local midnight), so the
+	// detail header change matches the market list (day open → latest).
+	s, err := h.repo.Stats(c.Request.Context(), code, startOfMarketDay())
 	if err != nil {
 		c.JSON(http.StatusServiceUnavailable, ErrorResponse{Error: "stats query failed"})
 		return
@@ -204,6 +206,22 @@ func (h *InstrumentHandler) Sparklines(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"points": series})
+}
+
+// marketLoc is the timezone whose local midnight defines the trading day used
+// for change % (Istanbul). Falls back to UTC if tzdata is unavailable.
+var marketLoc = func() *time.Location {
+	loc, err := time.LoadLocation("Europe/Istanbul")
+	if err != nil {
+		return time.UTC
+	}
+	return loc
+}()
+
+// startOfMarketDay returns local (Istanbul) midnight for today, in UTC.
+func startOfMarketDay() time.Time {
+	now := time.Now().In(marketLoc)
+	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, marketLoc).UTC()
 }
 
 func toInstrumentResponse(ip domain.InstrumentPrice) InstrumentResponse {

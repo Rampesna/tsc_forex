@@ -113,13 +113,18 @@ func NewEngine(d Deps) *gin.Engine {
 			authed := v1.Group("")
 			authed.Use(middleware.JWTAuth(d.AuthService))
 			{
-			authed.GET("/me/profile", d.User.Profile)
-			authed.PATCH("/me/profile", d.User.UpdateProfile)
-			authed.POST("/me/avatar", d.User.UploadAvatar)
+				authed.GET("/me/profile", d.User.Profile)
+				authed.PATCH("/me/profile", d.User.UpdateProfile)
+				authed.POST("/me/avatar", d.User.UploadAvatar)
 
-			authed.GET("/me/watchlist", d.User.ListWatchlist)
-			authed.POST("/me/watchlist", d.User.AddWatchlist)
-			authed.DELETE("/me/watchlist/:code", d.User.RemoveWatchlist)
+				// Multi-provider account linking (Google + Apple on one account).
+				authed.GET("/me/providers", d.Auth.LinkedProviders)
+				authed.POST("/me/link/google", d.Auth.LinkGoogle)
+				authed.POST("/me/link/apple", d.Auth.LinkApple)
+
+				authed.GET("/me/watchlist", d.User.ListWatchlist)
+				authed.POST("/me/watchlist", d.User.AddWatchlist)
+				authed.DELETE("/me/watchlist/:code", d.User.RemoveWatchlist)
 
 				authed.GET("/me/alerts", d.User.ListAlerts)
 				authed.POST("/me/alerts", d.User.CreateAlert)

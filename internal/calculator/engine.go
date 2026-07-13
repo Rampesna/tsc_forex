@@ -30,6 +30,9 @@ type Engine struct {
 	usd      float64
 	currency map[string]float64 // base symbol (e.g. USDTRY) → TRY rate
 	prev     map[string]float64 // instrument code → last published price
+	dayOpen  map[string]float64 // instrument code → first price of the day (baseline)
+	dayKey   string             // current day (Istanbul) the baselines belong to
+	loc      *time.Location     // market day timezone (Europe/Istanbul)
 	provider string
 
 	// latest is an atomic snapshot for REST readers.
@@ -43,15 +46,50 @@ func NewEngine(bus *eventbus.Bus, log *zap.Logger) *Engine {
 	if log == nil {
 		log = zap.NewNop()
 	}
+	// Market day boundary in Istanbul time (change % is measured against the
+	// first price observed after local midnight). Fall back to UTC if the tzdata
+	// is unavailable in the runtime image.
+	loc, err := time.LoadLocation("Europe/Istanbul")
+	if err != nil {
+		loc = time.UTC
+	}
 	e := &Engine{
 		bus:      bus,
 		log:      log,
 		epsilon:  1e-6,
 		currency: make(map[string]float64),
 		prev:     make(map[string]float64),
+		dayOpen:  make(map[string]float64),
+		loc:      loc,
 	}
 	e.latest.Store(map[string]domain.InstrumentPrice{})
 	return e
+}
+
+// SeedDayOpen sets the per-instrument day-open baselines (loaded from the DB at
+// startup) for the given Istanbul day key (YYYY-MM-DD). Safe to call before the
+// engine starts receiving ticks so change % survives restarts.
+func (e *Engine) SeedDayOpen(opens map[string]float64, dayKey string) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	for code, v := range opens {
+		if v > 0 {
+			e.dayOpen[code] = v
+		}
+	}
+	if dayKey != "" {
+		e.dayKey = dayKey
+	}
+}
+
+// DayKey returns today's market-day key in the engine timezone.
+func (e *Engine) DayKey() string { return time.Now().In(e.loc).Format("2006-01-02") }
+
+// DayStart returns local (Istanbul) midnight for today, in UTC — the lower
+// bound for loading today's opening prices from the DB.
+func (e *Engine) DayStart() time.Time {
+	now := time.Now().In(e.loc)
+	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, e.loc).UTC()
 }
 
 // Attach subscribes the engine to tick events on the bus.
@@ -120,6 +158,13 @@ func (e *Engine) onTick(t domain.Tick) {
 		now = time.Now().UTC()
 	}
 
+	// Roll the day-open baselines at local (Istanbul) midnight so change % is
+	// measured from the day's first price.
+	if dk := now.In(e.loc).Format("2006-01-02"); dk != e.dayKey {
+		e.dayKey = dk
+		e.dayOpen = make(map[string]float64, len(domain.Catalog))
+	}
+
 	changed := make([]domain.InstrumentPrice, 0, 4)
 	// Rebuild the latest map (copy-on-write for atomic snapshot).
 	prevMap, _ := e.latest.Load().(map[string]domain.InstrumentPrice)
@@ -137,12 +182,19 @@ func (e *Engine) onTick(t domain.Tick) {
 		if had && math.Abs(price-last) < e.epsilon {
 			continue
 		}
-		var change, changePct float64
-		if had && last != 0 {
-			change = price - last
-			changePct = (change / last) * 100
-		}
 		e.prev[in.Code] = price
+		// Establish the day-open baseline on the first price seen today, then
+		// report change relative to it (day open → latest), not tick-over-tick.
+		open, hasOpen := e.dayOpen[in.Code]
+		if !hasOpen || open == 0 {
+			open = price
+			e.dayOpen[in.Code] = price
+		}
+		var change, changePct float64
+		if open != 0 {
+			change = price - open
+			changePct = (change / open) * 100
+		}
 		ip := domain.InstrumentPrice{
 			Code:        in.Code,
 			DisplayName: in.DisplayName,

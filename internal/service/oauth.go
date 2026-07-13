@@ -5,10 +5,7 @@ import (
 	"errors"
 	"strings"
 
-	"github.com/google/uuid"
 	"google.golang.org/api/idtoken"
-
-	"github.com/tsc-forex/tsc_forex/internal/models"
 )
 
 // Social-login errors.
@@ -73,38 +70,24 @@ func (s *AuthService) LoginWithGoogle(ctx context.Context, idToken string) (acce
 	if err != nil {
 		return "", "", err
 	}
-	email := strings.ToLower(strings.TrimSpace(id.Email))
-
-	u, err := s.users.ByEmail(ctx, email)
+	u, err := s.resolveSocialUser(ctx, "google", id.Sub, id.Email, id.Name, id.Picture)
 	if err != nil {
-		u = models.User{
-			ID:          uuid.New(),
-			Email:       email,
-			Role:        "user",
-			Provider:    "google",
-			DisplayName: id.Name,
-			AvatarURL:   id.Picture,
-		}
-		if cerr := s.users.Create(ctx, &u); cerr != nil {
-			return "", "", cerr
-		}
-		return s.issueSession(ctx, u)
-	}
-
-	// Existing account: backfill profile fields we don't have yet.
-	changed := false
-	if u.DisplayName == "" && id.Name != "" {
-		u.DisplayName = id.Name
-		changed = true
-	}
-	if u.AvatarURL == "" && id.Picture != "" {
-		u.AvatarURL = id.Picture
-		changed = true
-	}
-	if changed {
-		_ = s.users.Update(ctx, &u)
+		return "", "", err
 	}
 	return s.issueSession(ctx, u)
+}
+
+// VerifyGoogle validates a Google ID token and returns the trusted identity,
+// used by the authenticated "link account" flow.
+func (s *AuthService) VerifyGoogle(ctx context.Context, idToken string) (*GoogleIdentity, error) {
+	if len(s.oauth.GoogleClientIDs) == 0 {
+		return nil, ErrOAuthNotConfigured
+	}
+	verify := s.googleVerify
+	if verify == nil {
+		verify = verifyGoogleToken
+	}
+	return verify(ctx, idToken, s.oauth.GoogleClientIDs)
 }
 
 func containsFold(list []string, v string) bool {

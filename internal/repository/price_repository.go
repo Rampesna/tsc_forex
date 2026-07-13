@@ -20,6 +20,7 @@ type PriceRepository interface {
 	Aggregate(ctx context.Context, code, interval string, from, to time.Time) ([]models.OHLC, error)
 	Stats(ctx context.Context, code string, since time.Time) (models.PriceStats, error)
 	Sparklines(ctx context.Context, points int) (map[string][]float64, error)
+	DayOpen(ctx context.Context, since time.Time) (map[string]float64, error)
 }
 
 type priceRepository struct {
@@ -144,6 +145,35 @@ ORDER BY code ASC, created_at ASC;`
 	out := make(map[string][]float64, 32)
 	for _, rr := range rows {
 		out[rr.Code] = append(out[rr.Code], rr.Price)
+	}
+	return out, nil
+}
+
+// DayOpen returns the first (earliest) price per instrument since `since`,
+// used to seed the engine's day-open baselines so change % survives restarts.
+func (r *priceRepository) DayOpen(ctx context.Context, since time.Time) (map[string]float64, error) {
+	start := time.Now()
+	if since.IsZero() {
+		since = time.Now().Add(-24 * time.Hour)
+	}
+	query := `
+SELECT DISTINCT ON (code) code, price
+FROM price_ticks
+WHERE created_at >= ?
+ORDER BY code, created_at ASC;`
+	type row struct {
+		Code  string
+		Price float64
+	}
+	var rows []row
+	err := r.db.WithContext(ctx).Raw(query, since).Scan(&rows).Error
+	r.observe(start, err)
+	if err != nil {
+		return nil, err
+	}
+	out := make(map[string]float64, len(rows))
+	for _, rr := range rows {
+		out[rr.Code] = rr.Price
 	}
 	return out, nil
 }

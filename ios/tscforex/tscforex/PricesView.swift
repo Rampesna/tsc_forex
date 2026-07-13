@@ -125,27 +125,41 @@ struct MarketsView: View {
     // MARK: Top movers
 
     private var moversStrip: some View {
-        let movers = prices.topMovers(6)
-        let items = movers.gainers + movers.losers
+        let items = prices.topGainerCurrencies(10)
         return Group {
             if !items.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(spacing: 10) {
-                        ForEach(items) { p in
-                            Button { Haptics.tap(); path.append(p.code) } label: {
-                                moverCard(p)
-                            }.buttonStyle(.plain)
-                        }
+                VStack(alignment: .leading, spacing: 8) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "flame.fill").font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(Theme.up)
+                        Text("Günün en çok kazandıranları")
+                            .font(.system(size: 12, weight: .bold)).foregroundStyle(Theme.text)
                     }
                     .padding(.horizontal, 16)
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 10) {
+                            ForEach(Array(items.enumerated()), id: \.element.id) { idx, p in
+                                Button { Haptics.tap(); path.append(p.code) } label: {
+                                    moverCard(p, rank: idx + 1)
+                                }.buttonStyle(.plain)
+                            }
+                        }
+                        .padding(.horizontal, 16)
+                    }
                 }
                 .padding(.top, 12)
             }
         }
     }
 
-    private func moverCard(_ p: InstrumentPrice) -> some View {
+    private func moverCard(_ p: InstrumentPrice, rank: Int) -> some View {
         VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 6) {
+                AssetIcon(code: p.code, kind: p.kind, size: 22)
+                Text("#\(rank)").font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(Theme.textFaint)
+                Spacer(minLength: 0)
+            }
             Text(p.displayName).font(.system(size: 12, weight: .semibold))
                 .foregroundStyle(Theme.text).lineLimit(1).truncationMode(.tail)
             Text(Fmt.tl(p.price)).font(Theme.number(14, weight: .bold)).foregroundStyle(Theme.text)
@@ -154,7 +168,7 @@ struct MarketsView: View {
                 .foregroundStyle(Theme.trend(p.changePct)).lineLimit(1)
         }
         .padding(12)
-        .frame(width: 130, alignment: .leading)
+        .frame(width: 138, alignment: .leading)
         .background(Theme.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
         .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.stroke, lineWidth: 1))
     }

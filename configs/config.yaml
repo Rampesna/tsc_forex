@@ -171,16 +171,15 @@ oauth:
   android_package_name: com.example.tsc.forex
   android_sha256: []
 
-# Passkey (WebAuthn) — usernameless login. RP ID is the registrable parent
-# domain (talhacan.com) so the SAME credentials work across the web app
-# (tsc.talhacan.com) and the native apps (associated with any *.talhacan.com).
-# For iOS/Android, the AASA/assetlinks must be served at https://talhacan.com.
+# Passkey (WebAuthn) — usernameless login. RP ID matches the API domain the
+# native apps are associated with (AASA served at tsc-api.talhacan.com), so iOS
+# passkeys registered against this RP keep working. (Web passkeys at
+# tsc.talhacan.com would need RP ID = talhacan.com + apex AASA; deferred.)
 webauthn:
   enabled: true
   rp_display_name: TSC Forex
-  rp_id: talhacan.com
+  rp_id: tsc-api.talhacan.com
   rp_origins:
-    - https://tsc.talhacan.com
     - https://tsc-api.talhacan.com
 
 rate_limit:

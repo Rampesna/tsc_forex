@@ -61,6 +61,7 @@ func Migrate(db *gorm.DB) error {
 		&models.RefreshToken{},
 		&models.DeviceToken{},
 		&models.WebAuthnCredential{},
+		&models.AuthIdentity{},
 	); err != nil {
 		return err
 	}

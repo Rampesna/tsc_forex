@@ -131,6 +131,80 @@ func (h *AuthHandler) Apple(c *gin.Context) {
 	c.JSON(http.StatusOK, TokenResponse{AccessToken: access, RefreshToken: refresh, TokenType: "Bearer"})
 }
 
+// LinkGoogle attaches a verified Google identity to the authenticated account,
+// so the user can subsequently sign in with Google too.
+// @Summary  Link a Google account to the current user
+// @Tags     auth
+// @Router   /me/link/google [post]
+func (h *AuthHandler) LinkGoogle(c *gin.Context) {
+	h.link(c, "google")
+}
+
+// LinkApple attaches a verified Apple identity to the authenticated account.
+// @Summary  Link an Apple account to the current user
+// @Tags     auth
+// @Router   /me/link/apple [post]
+func (h *AuthHandler) LinkApple(c *gin.Context) {
+	h.link(c, "apple")
+}
+
+func (h *AuthHandler) link(c *gin.Context, provider string) {
+	uid, ok := currentUserID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, ErrorResponse{Error: "unauthorized"})
+		return
+	}
+	var sub, email string
+	switch provider {
+	case "google":
+		var req GoogleAuthRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+			return
+		}
+		id, err := h.auth.VerifyGoogle(c.Request.Context(), req.IDToken)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, ErrorResponse{Error: "google verification failed"})
+			return
+		}
+		sub, email = id.Sub, id.Email
+	case "apple":
+		var req AppleAuthRequest
+		if err := c.ShouldBindJSON(&req); err != nil {
+			c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+			return
+		}
+		id, err := h.auth.VerifyApple(c.Request.Context(), req.IDToken)
+		if err != nil {
+			c.JSON(http.StatusUnauthorized, ErrorResponse{Error: "apple verification failed"})
+			return
+		}
+		sub, email = id.Sub, id.Email
+	}
+	if err := h.auth.LinkProvider(c.Request.Context(), uid, provider, sub, email); err != nil {
+		if errors.Is(err, service.ErrProviderLinkedElsewhere) {
+			c.JSON(http.StatusConflict, ErrorResponse{Error: "this account is already linked to another user"})
+			return
+		}
+		c.JSON(http.StatusServiceUnavailable, ErrorResponse{Error: "account linking not available"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "linked", "providers": h.auth.LinkedProviders(c.Request.Context(), uid)})
+}
+
+// LinkedProviders returns the providers currently bound to the account.
+// @Summary  List linked login providers
+// @Tags     auth
+// @Router   /me/providers [get]
+func (h *AuthHandler) LinkedProviders(c *gin.Context) {
+	uid, ok := currentUserID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, ErrorResponse{Error: "unauthorized"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"providers": h.auth.LinkedProviders(c.Request.Context(), uid)})
+}
+
 // Refresh rotates a refresh token, returning a new access + refresh pair.
 // @Summary  Rotate refresh token
 // @Tags     auth

@@ -17,6 +17,7 @@ final class AuthStore: ObservableObject {
     @Published var avatarURL: String = ""
     @Published var errorMessage: String?
     @Published var isBusy = false
+    @Published var linkedProviders: [String] = []
 
     var isLoggedIn: Bool { accessToken != nil }
 
@@ -142,6 +143,50 @@ final class AuthStore: ObservableObject {
             errorMessage = error.localizedDescription
             return false
         }
+    }
+
+    /// Loads the providers currently linked to this account (Google/Apple/email).
+    func loadLinkedProviders() async {
+        guard accessToken != nil else { return }
+        if let list = try? await APIClient(token: accessToken).linkedProviders() {
+            linkedProviders = list
+        }
+    }
+
+    /// Links a Google account to the signed-in user. Returns true on success.
+    func linkGoogle() async -> Bool {
+        do {
+            let idToken = try await GoogleAuth.signIn()
+            linkedProviders = try await APIClient(token: accessToken).linkGoogle(idToken: idToken)
+            Haptics.success()
+            return true
+        } catch GoogleAuthError.cancelled {
+            return false
+        } catch {
+            errorMessage = friendlyLinkError(error); return false
+        }
+    }
+
+    /// Links an Apple account to the signed-in user. Returns true on success.
+    func linkApple() async -> Bool {
+        do {
+            let cred = try await AppleAuth.shared.signIn()
+            linkedProviders = try await APIClient(token: accessToken)
+                .linkApple(idToken: cred.idToken, fullName: cred.fullName)
+            Haptics.success()
+            return true
+        } catch AppleAuthError.cancelled {
+            return false
+        } catch {
+            errorMessage = friendlyLinkError(error); return false
+        }
+    }
+
+    private func friendlyLinkError(_ error: Error) -> String {
+        if case APIError.http(409, _) = error {
+            return "Bu hesap başka bir kullanıcıya bağlı."
+        }
+        return error.localizedDescription
     }
 
     /// Fetches the server-side profile (email, name, avatar) and caches it.

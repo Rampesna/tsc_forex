@@ -129,6 +129,27 @@ struct APIClient {
         return tok
     }
 
+    // MARK: Account linking (multiple providers → one account)
+
+    private struct ProvidersResp: Decodable { let providers: [String] }
+
+    func linkedProviders() async throws -> [String] {
+        let data = try await request("me/providers", authed: true)
+        return (try? makeDecoder().decode(ProvidersResp.self, from: data).providers) ?? []
+    }
+
+    func linkGoogle(idToken: String) async throws -> [String] {
+        let data = try await request("me/link/google", method: "POST",
+                                     body: ["id_token": idToken], authed: true)
+        return (try? makeDecoder().decode(ProvidersResp.self, from: data).providers) ?? []
+    }
+
+    func linkApple(idToken: String, fullName: String) async throws -> [String] {
+        let data = try await request("me/link/apple", method: "POST",
+                                     body: ["id_token": idToken, "full_name": fullName], authed: true)
+        return (try? makeDecoder().decode(ProvidersResp.self, from: data).providers) ?? []
+    }
+
     // MARK: Profile
 
     func profile() async throws -> ProfileResponse {

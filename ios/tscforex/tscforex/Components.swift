@@ -138,24 +138,64 @@ struct AssetIcon: View {
     let kind: String
     var size: CGFloat = 38
 
-    private var symbol: String {
-        switch kind {
-        case "gold": return "g.circle.fill"
-        default: return "turkishlirasign.circle.fill"
-        }
-    }
-    private var tint: Color {
-        kind == "gold" ? Theme.accent : Color(hex: 0x4A90E2)
-    }
-
     var body: some View {
         ZStack {
-            Circle().fill(tint.opacity(0.16))
-            Image(systemName: kind == "gold" ? "circle.hexagongrid.fill" : "banknote.fill")
-                .font(.system(size: size * 0.42, weight: .semibold))
-                .foregroundStyle(tint)
+            if kind == "gold" {
+                Circle().fill(Theme.accent.opacity(0.16))
+                Image(systemName: "circle.hexagongrid.fill")
+                    .font(.system(size: size * 0.44, weight: .semibold))
+                    .foregroundStyle(LinearGradient(colors: [Color(hex: 0xFFD65A), Color(hex: 0xE0A21E)],
+                                                    startPoint: .top, endPoint: .bottom))
+            } else if let flag = Flags.emoji(forCurrencyPair: code) {
+                Circle().fill(Theme.surfaceHi)
+                Text(flag)
+                    .font(.system(size: size * 0.58))
+                    .minimumScaleFactor(0.5)
+            } else {
+                Circle().fill(Color(hex: 0x4A90E2).opacity(0.16))
+                Image(systemName: "banknote.fill")
+                    .font(.system(size: size * 0.42, weight: .semibold))
+                    .foregroundStyle(Color(hex: 0x4A90E2))
+            }
         }
         .frame(width: size, height: size)
+        .clipShape(Circle())
+        .overlay(Circle().stroke(Theme.stroke, lineWidth: 1))
+    }
+}
+
+// Flags maps a currency (or XXXTRY pair) to its country flag emoji. ISO-4217
+// codes are built as <ISO-3166 country><currency initial>, so the first two
+// letters of the base currency are (almost always) the country code, which we
+// convert to regional-indicator symbols. A few non-geographic codes are mapped
+// explicitly.
+enum Flags {
+    private static let overrides: [String: String] = [
+        "EUR": "🇪🇺", "XAU": "🥇", "XAG": "🥈", "XDR": "🌐", "XOF": "🌍", "XAF": "🌍",
+        "XCD": "🌎", "ANG": "🇳🇱", "TRY": "🇹🇷",
+    ]
+
+    /// `pair` is a code like "USDTRY" or a bare currency like "USD".
+    static func emoji(forCurrencyPair pair: String) -> String? {
+        let up = pair.uppercased()
+        var base = up
+        if up.count == 6 && up.hasSuffix("TRY") { base = String(up.prefix(3)) }
+        if base.count > 3 { base = String(base.prefix(3)) }
+        if let o = overrides[base] { return o }
+        return regionalIndicators(String(base.prefix(2)))
+    }
+
+    private static func regionalIndicators(_ two: String) -> String? {
+        let letters = Array(two.uppercased())
+        guard letters.count == 2,
+              letters.allSatisfy({ $0.isLetter && $0.isASCII }) else { return nil }
+        var s = ""
+        for ch in letters {
+            guard let scalar = ch.unicodeScalars.first,
+                  let flagScalar = Unicode.Scalar(0x1F1E6 + (scalar.value - 65)) else { return nil }
+            s.unicodeScalars.append(flagScalar)
+        }
+        return s
     }
 }
 
