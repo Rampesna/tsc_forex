@@ -109,6 +109,16 @@ struct APIClient {
         return try makeDecoder().decode(TokenResponse.self, from: data)
     }
 
+    /// Exchanges a Google ID token (from the OAuth flow) for our own session.
+    func googleLogin(idToken: String) async throws -> TokenResponse {
+        let data = try await request("auth/google", method: "POST",
+                                     body: ["id_token": idToken])
+        guard let tok = try? makeDecoder().decode(TokenResponse.self, from: data) else {
+            throw APIError.decoding
+        }
+        return tok
+    }
+
     // MARK: Instruments
 
     func catalog() async throws -> [CatalogItem] {

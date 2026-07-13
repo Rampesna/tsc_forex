@@ -14,5 +14,17 @@
 	<!-- iOS prompts for local network access on first connection. -->
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>TSC Forex canlı fiyatları yerel ağdaki sunucudan alır.</string>
+	<!-- Google Sign-In OAuth callback (reversed iOS client ID). -->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>com.googleusercontent.apps.83380535128-16nfuuc3p0jok4l4htitlubgpsjah622</string>
+			</array>
+		</dict>
+	</array>
 </dict>
 </plist>

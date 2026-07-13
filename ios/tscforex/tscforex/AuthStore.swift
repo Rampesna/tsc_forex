@@ -73,6 +73,22 @@ final class AuthStore: ObservableObject {
         }
     }
 
+    func loginWithGoogle() async {
+        isBusy = true; errorMessage = nil
+        defer { isBusy = false }
+        do {
+            let idToken = try await GoogleAuth.signIn()
+            let tok = try await APIClient().googleLogin(idToken: idToken)
+            // We don't know the email locally; backend owns it. Persist tokens and
+            // let the app read profile from the session as features land.
+            persist(tok, email: email ?? "")
+        } catch GoogleAuthError.cancelled {
+            // Silent: the user chose to cancel.
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
     func logout() {
         accessToken = nil; refreshToken = nil; email = nil
         UserDefaults.standard.removeObject(forKey: accessKey)

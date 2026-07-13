@@ -64,6 +64,25 @@ struct LoginView: View {
                 .buttonStyle(FilledButtonStyle())
                 .disabled(auth.isBusy || email.isEmpty || password.count < 8)
 
+                dividerOr
+
+                Button {
+                    Task { await auth.loginWithGoogle() }
+                } label: {
+                    HStack(spacing: 10) {
+                        Text("G")
+                            .font(.system(size: 17, weight: .heavy, design: .rounded))
+                            .foregroundStyle(Color(red: 0.26, green: 0.52, blue: 0.96))
+                        Text("Google ile devam et")
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(.black.opacity(0.85))
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(Color.white, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                }
+                .disabled(auth.isBusy)
+
                 Button {
                     isRegister.toggle(); auth.errorMessage = nil
                 } label: {
@@ -73,15 +92,25 @@ struct LoginView: View {
 
                 Spacer()
 
-                Button { showSettings = true } label: {
-                    Label("Sunucu Ayarları", systemImage: "server.rack")
-                        .font(.system(size: 12)).foregroundStyle(Theme.textDim)
+                if AppConfig.allowsServerOverride {
+                    Button { showSettings = true } label: {
+                        Label("Sunucu Ayarları", systemImage: "server.rack")
+                            .font(.system(size: 12)).foregroundStyle(Theme.textDim)
+                    }
                 }
             }
             .padding(.horizontal, 28)
         }
         .sheet(isPresented: $showSettings) {
             NavigationStack { SettingsView() }.preferredColorScheme(.dark)
+        }
+    }
+
+    private var dividerOr: some View {
+        HStack(spacing: 12) {
+            Rectangle().fill(Theme.stroke).frame(height: 1)
+            Text("veya").font(.system(size: 12)).foregroundStyle(Theme.textFaint)
+            Rectangle().fill(Theme.stroke).frame(height: 1)
         }
     }
 
