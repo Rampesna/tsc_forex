@@ -170,6 +170,11 @@ oauth:
   apple_team_id: SGQ86WW4J3
   android_package_name: com.example.tsc.forex
   android_sha256: []
+  # Sign in with Apple (web) domain verification file content (from the Services
+  # ID config screen). Served at
+  # /.well-known/apple-developer-domain-association.txt. Set via
+  # APP_OAUTH_APPLE_DOMAIN_ASSOCIATION in production.
+  apple_domain_association: ""
 
 # Passkey (WebAuthn) — usernameless login. RP ID matches the API domain the
 # native apps are associated with (AASA served at tsc-api.talhacan.com), so iOS

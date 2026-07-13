@@ -34,10 +34,10 @@ type Config struct {
 // every instance. Populated via APP_STORAGE_* env vars.
 type StorageConfig struct {
 	Enabled       bool   `mapstructure:"enabled"`
-	Endpoint      string `mapstructure:"endpoint"`        // host:port of the S3 API (e.g. minio:9000)
+	Endpoint      string `mapstructure:"endpoint"` // host:port of the S3 API (e.g. minio:9000)
 	AccessKey     string `mapstructure:"access_key"`
 	SecretKey     string `mapstructure:"secret_key"`
-	Bucket        string `mapstructure:"bucket"`          // e.g. "avatars"
+	Bucket        string `mapstructure:"bucket"` // e.g. "avatars"
 	UseSSL        bool   `mapstructure:"use_ssl"`
 	PublicBaseURL string `mapstructure:"public_base_url"` // e.g. https://tsc-cdn.talhacan.com
 	Region        string `mapstructure:"region"`
@@ -55,6 +55,10 @@ type OAuthConfig struct {
 	// AndroidSHA256 fingerprints for Digital Asset Links (assetlinks.json).
 	AndroidPackageName string   `mapstructure:"android_package_name"`
 	AndroidSHA256      []string `mapstructure:"android_sha256"`
+	// AppleDomainAssociation is the verbatim content of the file Apple issues
+	// when configuring "Sign in with Apple" for a web Services ID. Served at
+	// /.well-known/apple-developer-domain-association.txt for domain verification.
+	AppleDomainAssociation string `mapstructure:"apple_domain_association"`
 }
 
 // WebAuthnConfig configures passkey (WebAuthn) registration/login.
@@ -163,8 +167,8 @@ type SyntheticConfig struct {
 type RESTProviderConfig struct {
 	Enabled      bool          `mapstructure:"enabled"`
 	PollInterval time.Duration `mapstructure:"poll_interval"`
-	FXBaseURL    string        `mapstructure:"fx_base_url"`  // e.g. https://open.er-api.com/v6/latest/USD
-	GoldURL      string        `mapstructure:"gold_url"`     // XAUUSD source (optional)
+	FXBaseURL    string        `mapstructure:"fx_base_url"` // e.g. https://open.er-api.com/v6/latest/USD
+	GoldURL      string        `mapstructure:"gold_url"`    // XAUUSD source (optional)
 	APIKey       string        `mapstructure:"api_key"`
 	Timeout      time.Duration `mapstructure:"timeout"`
 }

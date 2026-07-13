@@ -168,6 +168,18 @@ func registerWellKnown(r *gin.Engine, cfg *config.Config) {
 		})
 	})
 
+	// Sign in with Apple (web) domain verification. Apple fetches this exact
+	// file from the Services ID's registered domain. Content comes from config
+	// (paste the file Apple issues in the Services ID configuration screen).
+	r.GET("/.well-known/apple-developer-domain-association.txt", func(c *gin.Context) {
+		if cfg.OAuth.AppleDomainAssociation == "" {
+			c.String(http.StatusNotFound, "not configured")
+			return
+		}
+		c.Header("Content-Type", "text/plain; charset=utf-8")
+		c.String(http.StatusOK, cfg.OAuth.AppleDomainAssociation)
+	})
+
 	r.GET("/.well-known/assetlinks.json", func(c *gin.Context) {
 		out := []any{}
 		if cfg.OAuth.AndroidPackageName != "" && len(cfg.OAuth.AndroidSHA256) > 0 {

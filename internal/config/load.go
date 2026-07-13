@@ -185,6 +185,7 @@ func setDefaults(v *viper.Viper) {
 	// Google/Apple client IDs via config file or APP_OAUTH_* env vars.
 	v.SetDefault("oauth.google_client_ids", []string{})
 	v.SetDefault("oauth.apple_bundle_ids", []string{})
+	v.SetDefault("oauth.apple_domain_association", "")
 
 	// Safe default when no config file/env is present (tests, bare runs): the
 	// mock provider needs no network. Production sets yahoo via config/ConfigMap.

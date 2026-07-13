@@ -36,6 +36,11 @@ data:
   APP_OAUTH_APPLE_TEAM_ID: "SGQ86WW4J3"
   APP_OAUTH_ANDROID_PACKAGE_NAME: "com.example.tsc.forex"
   APP_OAUTH_ANDROID_SHA256: "0A:AB:C2:DD:D5:A9:70:55:0A:8C:45:E9:A6:5B:82:29:91:28:0B:04:AD:34:3A:BE:FF:0E:1D:CB:F8:31:62:38"
+  # Sign in with Apple (web) domain verification. Paste the verbatim content of
+  # the file Apple issues on the Services ID (talhacan.tscforex.web) config
+  # screen; it is then served at
+  # https://tsc.talhacan.com/.well-known/apple-developer-domain-association.txt
+  APP_OAUTH_APPLE_DOMAIN_ASSOCIATION: ""
   # Passkey (WebAuthn) usernameless login. RP ID = the API domain the native
   # apps are associated with (AASA at tsc-api.talhacan.com) so iOS passkeys work.
   APP_WEBAUTHN_ENABLED: "true"
