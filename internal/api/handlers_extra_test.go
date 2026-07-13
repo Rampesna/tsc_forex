@@ -130,6 +130,18 @@ func (r *memRepo) ByEmail(_ context.Context, e string) (models.User, error) {
 	}
 	return u, nil
 }
+func (r *memRepo) ByID(_ context.Context, id uuid.UUID) (models.User, error) {
+	for _, u := range r.m {
+		if u.ID == id {
+			return u, nil
+		}
+	}
+	return models.User{}, repository.ErrUserNotFound
+}
+func (r *memRepo) Update(_ context.Context, u *models.User) error {
+	r.m[u.Email] = *u
+	return nil
+}
 
 func TestAuthHandlerRegisterLogin(t *testing.T) {
 	gin.SetMode(gin.TestMode)

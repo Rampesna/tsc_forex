@@ -34,6 +34,18 @@ func (r *authMemRepo) ByEmail(_ context.Context, e string) (models.User, error) 
 	}
 	return u, nil
 }
+func (r *authMemRepo) ByID(_ context.Context, id uuid.UUID) (models.User, error) {
+	for _, u := range r.m {
+		if u.ID == id {
+			return u, nil
+		}
+	}
+	return models.User{}, repository.ErrUserNotFound
+}
+func (r *authMemRepo) Update(_ context.Context, u *models.User) error {
+	r.m[u.Email] = *u
+	return nil
+}
 
 func TestJWTAuthSuccess(t *testing.T) {
 	gin.SetMode(gin.TestMode)

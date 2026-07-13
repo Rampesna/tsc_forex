@@ -19,6 +19,8 @@ var ErrUserNotFound = errors.New("user not found")
 type UserRepository interface {
 	Create(ctx context.Context, u *models.User) error
 	ByEmail(ctx context.Context, email string) (models.User, error)
+	ByID(ctx context.Context, id uuid.UUID) (models.User, error)
+	Update(ctx context.Context, u *models.User) error
 }
 
 type userRepository struct {
@@ -56,6 +58,14 @@ func (r *userRepository) ByEmail(ctx context.Context, email string) (models.User
 		return models.User{}, ErrUserNotFound
 	}
 	return u, err
+}
+
+// Update persists mutable user fields (profile, avatar, provider).
+func (r *userRepository) Update(ctx context.Context, u *models.User) error {
+	start := time.Now()
+	err := r.db.WithContext(ctx).Save(u).Error
+	r.observe(start, err)
+	return err
 }
 
 // ByID fetches a user by primary key. Used by the refresh-token rotation flow.

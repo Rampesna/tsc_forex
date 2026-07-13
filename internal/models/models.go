@@ -35,10 +35,14 @@ func (g *GoldPrice) BeforeCreate(_ *gorm.DB) error {
 type User struct {
 	ID           uuid.UUID `gorm:"type:uuid;primaryKey" json:"id"`
 	Email        string    `gorm:"type:varchar(255);uniqueIndex;not null" json:"email"`
-	PasswordHash string    `gorm:"type:varchar(255);not null" json:"-"`
+	PasswordHash string    `gorm:"type:varchar(255)" json:"-"` // empty for social-login users
 	Role         string    `gorm:"type:varchar(32);not null;default:'user'" json:"role"`
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	// Provider identifies how the account was created: "local", "google", "apple".
+	Provider    string    `gorm:"type:varchar(32);not null;default:'local'" json:"provider"`
+	DisplayName string    `gorm:"type:varchar(255)" json:"display_name"`
+	AvatarURL   string    `gorm:"type:varchar(512)" json:"avatar_url"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 
 // TableName pins the table name.

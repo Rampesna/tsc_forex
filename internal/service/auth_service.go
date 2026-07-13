@@ -39,6 +39,9 @@ type AuthService struct {
 	users  repository.UserRepository
 	tokens repository.RefreshTokenRepository // optional
 	cfg    config.JWTConfig
+	oauth  config.OAuthConfig
+	// googleVerify is swappable in tests; nil uses the real Google verifier.
+	googleVerify func(ctx context.Context, idToken string, allowedAuds []string) (*GoogleIdentity, error)
 }
 
 // NewAuthService builds the auth service.
@@ -49,6 +52,12 @@ func NewAuthService(users repository.UserRepository, cfg config.JWTConfig) *Auth
 // WithRefreshStore enables persistent, rotating, revocable refresh tokens.
 func (s *AuthService) WithRefreshStore(tokens repository.RefreshTokenRepository) *AuthService {
 	s.tokens = tokens
+	return s
+}
+
+// WithOAuth enables social login by supplying the accepted client IDs.
+func (s *AuthService) WithOAuth(cfg config.OAuthConfig) *AuthService {
+	s.oauth = cfg
 	return s
 }
 
@@ -150,15 +159,9 @@ func (s *AuthService) issueSession(ctx context.Context, u models.User) (access, 
 	return access, raw, nil
 }
 
-// userByID fetches a user through the repository. UserRepository only exposes
-// ByEmail, so we keep the interface small; auth verifies email inside claims.
+// userByID fetches a user through the repository.
 func (s *AuthService) userByID(ctx context.Context, id uuid.UUID) (models.User, error) {
-	if ur, ok := s.users.(interface {
-		ByID(context.Context, uuid.UUID) (models.User, error)
-	}); ok {
-		return ur.ByID(ctx, id)
-	}
-	return models.User{}, errors.New("ByID not supported")
+	return s.users.ByID(ctx, id)
 }
 
 func randomToken() (string, error) {

@@ -148,6 +148,15 @@ notify:
   apns_key_path: ""
   apns_sandbox: true
 
+# Social login. These are public OAuth client IDs (not secrets); they are the
+# accepted "aud" values when verifying Google ID tokens from the mobile apps.
+oauth:
+  google_client_ids:
+    - 83380535128-16nfuuc3p0jok4l4htitlubgpsjah622.apps.googleusercontent.com   # iOS
+    - 83380535128-pr4lcmaerra3sdqf8211t1nc4n4pbksj.apps.googleusercontent.com   # Android
+  apple_bundle_ids:
+    - talhacan.tscforex
+
 rate_limit:
   enabled: true
   requests: 100

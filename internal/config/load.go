@@ -181,6 +181,11 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("nats.url", "nats://localhost:4222")
 	v.SetDefault("nats.subject", "gold.gram.updates")
 
+	// Social login (optional). Empty by default; production sets the accepted
+	// Google/Apple client IDs via config file or APP_OAUTH_* env vars.
+	v.SetDefault("oauth.google_client_ids", []string{})
+	v.SetDefault("oauth.apple_bundle_ids", []string{})
+
 	// Safe default when no config file/env is present (tests, bare runs): the
 	// mock provider needs no network. Production sets yahoo via config/ConfigMap.
 	v.SetDefault("provider.primary", "mock")

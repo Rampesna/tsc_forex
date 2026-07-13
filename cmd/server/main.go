@@ -154,7 +154,9 @@ func run() error {
 		notifRepo := repository.NewNotificationRepository(db, m)
 		deviceRepo := repository.NewDeviceTokenRepository(db, m)
 
-		authSvc = service.NewAuthService(userRepo, cfg.JWT).WithRefreshStore(refreshRepo)
+		authSvc = service.NewAuthService(userRepo, cfg.JWT).
+			WithRefreshStore(refreshRepo).
+			WithOAuth(cfg.OAuth)
 		authH = api.NewAuthHandler(authSvc)
 		userH = api.NewUserHandler(watchRepo, alertRepo, notifRepo, deviceRepo, log)
 

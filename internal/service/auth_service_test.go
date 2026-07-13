@@ -36,6 +36,20 @@ func (m *memUserRepo) ByEmail(_ context.Context, email string) (models.User, err
 	return u, nil
 }
 
+func (m *memUserRepo) ByID(_ context.Context, id uuid.UUID) (models.User, error) {
+	for _, u := range m.byEmail {
+		if u.ID == id {
+			return u, nil
+		}
+	}
+	return models.User{}, repository.ErrUserNotFound
+}
+
+func (m *memUserRepo) Update(_ context.Context, u *models.User) error {
+	m.byEmail[u.Email] = *u
+	return nil
+}
+
 func testJWTCfg() config.JWTConfig {
 	return config.JWTConfig{
 		Secret:          "abcdefghijklmnopqrstuvwxyz012345",

@@ -26,6 +26,12 @@ type RefreshRequest struct {
 	RefreshToken string `json:"refresh_token" binding:"required"`
 }
 
+// GoogleAuthRequest carries a Google ID token obtained by the mobile client
+// via the Google Sign-In SDK.
+type GoogleAuthRequest struct {
+	IDToken string `json:"id_token" binding:"required"`
+}
+
 // InstrumentResponse is a single computed instrument price.
 type InstrumentResponse struct {
 	Code        string    `json:"code"`

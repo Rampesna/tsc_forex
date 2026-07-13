@@ -90,6 +90,7 @@ func NewEngine(d Deps) *gin.Engine {
 		if d.Auth != nil {
 			v1.POST("/auth/register", d.Auth.Register)
 			v1.POST("/auth/login", d.Auth.Login)
+			v1.POST("/auth/google", d.Auth.Google)
 			v1.POST("/auth/refresh", d.Auth.Refresh)
 			v1.POST("/auth/logout", d.Auth.Logout)
 		}

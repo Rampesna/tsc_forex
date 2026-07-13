@@ -23,7 +23,16 @@ type Config struct {
 	CORS      CORSConfig      `mapstructure:"cors"`
 	RateLimit RateLimitConfig `mapstructure:"rate_limit"`
 	Notify    NotifyConfig    `mapstructure:"notify"`
+	OAuth     OAuthConfig     `mapstructure:"oauth"`
 	Log       LogConfig       `mapstructure:"log" validate:"required"`
+}
+
+// OAuthConfig holds social-login settings. GoogleClientIDs is the set of
+// accepted "aud" values for Google ID tokens (iOS + Android + Web clients).
+// Populated via APP_OAUTH_GOOGLE_CLIENT_IDS (comma-separated) or config file.
+type OAuthConfig struct {
+	GoogleClientIDs []string `mapstructure:"google_client_ids"`
+	AppleBundleIDs  []string `mapstructure:"apple_bundle_ids"`
 }
 
 // NotifyConfig controls the alert/notification subsystem.
