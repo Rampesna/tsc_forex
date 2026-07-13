@@ -15,8 +15,12 @@ object Th {
 
     val up = Color(0xFF0ECB81)
     val down = Color(0xFFF6465D)
-    val accent = Color(0xFFF0B90B)   // Binance gold/yellow
-    val accentDim = Color(0xFF3A2E05)
+    // Brand palette from the logo (deep teal #003D4D). The deep tone is illegible
+    // on the near-black bg, so interactive elements use a readable brand teal and
+    // brandDeep is reserved for tiles/gradients.
+    val brandDeep = Color(0xFF003D4D)
+    val accent = Color(0xFF17A2B8)   // readable brand teal
+    val accentDim = Color(0xFF07333B)
 
     fun trend(v: Double) = when {
         v > 0 -> up
