@@ -7,7 +7,8 @@ on:
     branches: [main]
 
 env:
-  IMAGE: ghcr.io/${{ github.repository }}
+  # GHCR requires a lowercase path; the owner "Rampesna" has an uppercase letter.
+  IMAGE: ghcr.io/rampesna/tsc_forex
 
 jobs:
   test:
