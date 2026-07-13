@@ -24,7 +24,23 @@ type Config struct {
 	RateLimit RateLimitConfig `mapstructure:"rate_limit"`
 	Notify    NotifyConfig    `mapstructure:"notify"`
 	OAuth     OAuthConfig     `mapstructure:"oauth"`
+	WebAuthn  WebAuthnConfig  `mapstructure:"webauthn"`
+	Storage   StorageConfig   `mapstructure:"storage"`
 	Log       LogConfig       `mapstructure:"log" validate:"required"`
+}
+
+// StorageConfig configures the S3/MinIO object store used for user avatars and
+// other shared assets. Shared across pods so an uploaded image is visible from
+// every instance. Populated via APP_STORAGE_* env vars.
+type StorageConfig struct {
+	Enabled       bool   `mapstructure:"enabled"`
+	Endpoint      string `mapstructure:"endpoint"`        // host:port of the S3 API (e.g. minio:9000)
+	AccessKey     string `mapstructure:"access_key"`
+	SecretKey     string `mapstructure:"secret_key"`
+	Bucket        string `mapstructure:"bucket"`          // e.g. "avatars"
+	UseSSL        bool   `mapstructure:"use_ssl"`
+	PublicBaseURL string `mapstructure:"public_base_url"` // e.g. https://tsc-cdn.talhacan.com
+	Region        string `mapstructure:"region"`
 }
 
 // OAuthConfig holds social-login settings. GoogleClientIDs is the set of
@@ -33,6 +49,20 @@ type Config struct {
 type OAuthConfig struct {
 	GoogleClientIDs []string `mapstructure:"google_client_ids"`
 	AppleBundleIDs  []string `mapstructure:"apple_bundle_ids"`
+	// AppleTeamID is the Apple Developer Team ID, used to build the
+	// apple-app-site-association (AASA) webcredentials for passkeys.
+	AppleTeamID string `mapstructure:"apple_team_id"`
+	// AndroidSHA256 fingerprints for Digital Asset Links (assetlinks.json).
+	AndroidPackageName string   `mapstructure:"android_package_name"`
+	AndroidSHA256      []string `mapstructure:"android_sha256"`
+}
+
+// WebAuthnConfig configures passkey (WebAuthn) registration/login.
+type WebAuthnConfig struct {
+	Enabled       bool     `mapstructure:"enabled"`
+	RPDisplayName string   `mapstructure:"rp_display_name"`
+	RPID          string   `mapstructure:"rp_id"`      // e.g. tsc-api.talhacan.com
+	RPOrigins     []string `mapstructure:"rp_origins"` // e.g. https://tsc-api.talhacan.com
 }
 
 // NotifyConfig controls the alert/notification subsystem.
@@ -45,6 +75,12 @@ type NotifyConfig struct {
 	APNsTeamID    string        `mapstructure:"apns_team_id"`
 	APNsKeyPath   string        `mapstructure:"apns_key_path"`
 	APNsSandbox   bool          `mapstructure:"apns_sandbox"`
+
+	// FCM (Android background push) via Firebase HTTP v1. Requires a service
+	// account JSON with the cloudmessaging scope.
+	FCMEnabled        bool   `mapstructure:"fcm_enabled"`
+	FCMProjectID      string `mapstructure:"fcm_project_id"`
+	FCMCredentialPath string `mapstructure:"fcm_credential_path"`
 }
 
 type AppConfig struct {

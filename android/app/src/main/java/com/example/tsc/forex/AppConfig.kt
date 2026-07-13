@@ -10,6 +10,14 @@ package com.example.tsc.forex
 object AppConfig {
     const val PRODUCTION_HOST = "tsc-api.talhacan.com"
 
+    /**
+     * Web OAuth client ID used as the Credential Manager serverClientId. The
+     * Google ID token minted for the app carries this as its audience, which the
+     * backend accepts (see APP_OAUTH_GOOGLE_CLIENT_IDS).
+     */
+    const val GOOGLE_WEB_CLIENT_ID =
+        "83380535128-o4h4v9rc9u1tuis9hggcckqei0idahg3.apps.googleusercontent.com"
+
     @Volatile
     var hostOverride: String? = null
 

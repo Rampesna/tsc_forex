@@ -4,6 +4,7 @@ import com.example.tsc.forex.AppConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
@@ -38,6 +39,10 @@ class ApiClient(
 
     suspend fun googleLogin(idToken: String): TokenResponse =
         TokenResponse.from(postJson("auth/google", JSONObject().put("id_token", idToken), auth = false))
+
+    suspend fun appleLogin(idToken: String, fullName: String): TokenResponse =
+        TokenResponse.from(postJson("auth/apple",
+            JSONObject().put("id_token", idToken).put("full_name", fullName), auth = false))
 
     suspend fun refresh(refreshToken: String): TokenResponse =
         TokenResponse.from(postJson("auth/refresh", JSONObject().put("refresh_token", refreshToken), auth = false))
@@ -98,6 +103,40 @@ class ApiClient(
         postJson("me/devices", JSONObject().put("token", token).put("platform", platform))
     }
 
+    // ---- Profile ----
+
+    suspend fun profile(): Profile = Profile.from(unwrap(JSONObject(getRaw("me/profile"))))
+
+    suspend fun updateProfile(displayName: String): Profile =
+        Profile.from(unwrap(postJson("me/profile", JSONObject().put("display_name", displayName), auth = true, method = "PATCH")))
+
+    /** Uploads avatar bytes as multipart/form-data; returns the public URL. */
+    suspend fun uploadAvatar(bytes: ByteArray): String = withContext(Dispatchers.IO) {
+        val part = MultipartBody.Builder().setType(MultipartBody.FORM)
+            .addFormDataPart("avatar", "avatar.jpg",
+                bytes.toRequestBody("image/jpeg".toMediaType(), 0, bytes.size))
+            .build()
+        val b = Request.Builder().url(url("me/avatar")).post(part).header("Accept", "application/json")
+        tokenProvider()?.let { b.header("Authorization", "Bearer $it") }
+        client.newCall(b.build()).execute().use { resp ->
+            val text = resp.body?.string().orEmpty()
+            if (resp.code == 401 && onRefresh != null) {
+                val nt = onRefresh.invoke()
+                if (!nt.isNullOrEmpty()) {
+                    val retry = Request.Builder().url(url("me/avatar")).post(part)
+                        .header("Accept", "application/json").header("Authorization", "Bearer $nt")
+                    return@withContext client.newCall(retry.build()).execute().use { r2 ->
+                        val t2 = r2.body?.string().orEmpty()
+                        if (!r2.isSuccessful) throw ApiException(r2.code, t2.ifBlank { r2.message })
+                        JSONObject(t2).optString("avatar_url")
+                    }
+                }
+            }
+            if (!resp.isSuccessful) throw ApiException(resp.code, text.ifBlank { resp.message })
+            JSONObject(text).optString("avatar_url")
+        }
+    }
+
     // ---- Core HTTP ----
 
     private fun url(path: String) = "${AppConfig.apiBaseUrl}/$path"
@@ -106,11 +145,15 @@ class ApiClient(
         Request.Builder().url(url(path)).get()
     )
 
-    private suspend fun postJson(path: String, body: JSONObject, auth: Boolean = true): JSONObject {
-        val raw = execute(
-            Request.Builder().url(url(path)).post(body.toString().toRequestBody(json)),
-            auth = auth,
-        )
+    private suspend fun postJson(path: String, body: JSONObject, auth: Boolean = true, method: String = "POST"): JSONObject {
+        val reqBody = body.toString().toRequestBody(json)
+        val builder = Request.Builder().url(url(path))
+        when (method) {
+            "PATCH" -> builder.patch(reqBody)
+            "PUT" -> builder.put(reqBody)
+            else -> builder.post(reqBody)
+        }
+        val raw = execute(builder, auth = auth)
         return if (raw.isBlank()) JSONObject() else JSONObject(raw)
     }
 

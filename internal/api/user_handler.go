@@ -1,8 +1,12 @@
 package api
 
 import (
+	"fmt"
+	"io"
 	"net/http"
 	"strconv"
+	"strings"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
@@ -13,15 +17,18 @@ import (
 	"github.com/tsc-forex/tsc_forex/internal/models"
 	"github.com/tsc-forex/tsc_forex/internal/repository"
 	"github.com/tsc-forex/tsc_forex/internal/service"
+	"github.com/tsc-forex/tsc_forex/internal/storage"
 )
 
-// UserHandler exposes authenticated per-user features: watchlist, price
-// alerts, notifications and device (push) token registration.
+// UserHandler exposes authenticated per-user features: profile, watchlist,
+// price alerts, notifications and device (push) token registration.
 type UserHandler struct {
 	watch   repository.WatchlistRepository
 	alerts  repository.AlertRepository
 	notifs  repository.NotificationRepository
 	devices repository.DeviceTokenRepository
+	users   repository.UserRepository
+	store   storage.Store // may be nil when object storage is disabled
 	log     *zap.Logger
 }
 
@@ -31,12 +38,160 @@ func NewUserHandler(
 	alerts repository.AlertRepository,
 	notifs repository.NotificationRepository,
 	devices repository.DeviceTokenRepository,
+	users repository.UserRepository,
+	store storage.Store,
 	log *zap.Logger,
 ) *UserHandler {
 	if log == nil {
 		log = zap.NewNop()
 	}
-	return &UserHandler{watch: watch, alerts: alerts, notifs: notifs, devices: devices, log: log}
+	return &UserHandler{watch: watch, alerts: alerts, notifs: notifs, devices: devices, users: users, store: store, log: log}
+}
+
+// --- Profile ---
+
+// maxAvatarBytes caps avatar uploads at 5 MB.
+const maxAvatarBytes = 5 << 20
+
+// Profile returns the authenticated user's profile.
+func (h *UserHandler) Profile(c *gin.Context) {
+	uid, ok := currentUserID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, ErrorResponse{Error: "unauthorized"})
+		return
+	}
+	u, err := h.users.ByID(c.Request.Context(), uid)
+	if err != nil {
+		c.JSON(http.StatusNotFound, ErrorResponse{Error: "user not found"})
+		return
+	}
+	c.JSON(http.StatusOK, ProfileResponse{
+		ID:          u.ID.String(),
+		Email:       u.Email,
+		DisplayName: u.DisplayName,
+		AvatarURL:   u.AvatarURL,
+		Provider:    u.Provider,
+		Role:        u.Role,
+		CreatedAt:   u.CreatedAt,
+	})
+}
+
+// UpdateProfile updates mutable profile fields (currently display name).
+func (h *UserHandler) UpdateProfile(c *gin.Context) {
+	uid, ok := currentUserID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, ErrorResponse{Error: "unauthorized"})
+		return
+	}
+	var req UpdateProfileRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		return
+	}
+	u, err := h.users.ByID(c.Request.Context(), uid)
+	if err != nil {
+		c.JSON(http.StatusNotFound, ErrorResponse{Error: "user not found"})
+		return
+	}
+	if req.DisplayName != nil {
+		u.DisplayName = strings.TrimSpace(*req.DisplayName)
+	}
+	if err := h.users.Update(c.Request.Context(), &u); err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "update failed"})
+		return
+	}
+	c.JSON(http.StatusOK, ProfileResponse{
+		ID:          u.ID.String(),
+		Email:       u.Email,
+		DisplayName: u.DisplayName,
+		AvatarURL:   u.AvatarURL,
+		Provider:    u.Provider,
+		Role:        u.Role,
+		CreatedAt:   u.CreatedAt,
+	})
+}
+
+// UploadAvatar accepts a multipart "avatar" image, stores it in object storage
+// and saves the resulting public URL on the user's profile.
+func (h *UserHandler) UploadAvatar(c *gin.Context) {
+	uid, ok := currentUserID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, ErrorResponse{Error: "unauthorized"})
+		return
+	}
+	if h.store == nil {
+		c.JSON(http.StatusServiceUnavailable, ErrorResponse{Error: "avatar storage not configured"})
+		return
+	}
+	fileHeader, err := c.FormFile("avatar")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "avatar file required"})
+		return
+	}
+	if fileHeader.Size > maxAvatarBytes {
+		c.JSON(http.StatusRequestEntityTooLarge, ErrorResponse{Error: "avatar too large (max 5MB)"})
+		return
+	}
+	ext := avatarExtension(fileHeader.Filename, fileHeader.Header.Get("Content-Type"))
+	if ext == "" {
+		c.JSON(http.StatusUnsupportedMediaType, ErrorResponse{Error: "only jpg/png/webp allowed"})
+		return
+	}
+	f, err := fileHeader.Open()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "read failed"})
+		return
+	}
+	defer func() { _ = f.Close() }()
+	data, err := io.ReadAll(io.LimitReader(f, maxAvatarBytes))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "read failed"})
+		return
+	}
+	// Unique key per upload to bust CDN caches on change.
+	key := fmt.Sprintf("users/%s/%d.%s", uid.String(), time.Now().UnixNano(), ext)
+	url, err := h.store.Put(c.Request.Context(), key, contentTypeForExt(ext), data)
+	if err != nil {
+		h.log.Warn("avatar upload failed", zap.Error(err))
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "upload failed"})
+		return
+	}
+	u, err := h.users.ByID(c.Request.Context(), uid)
+	if err != nil {
+		c.JSON(http.StatusNotFound, ErrorResponse{Error: "user not found"})
+		return
+	}
+	u.AvatarURL = url
+	if err := h.users.Update(c.Request.Context(), &u); err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "profile update failed"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"avatar_url": url})
+}
+
+func avatarExtension(filename, contentType string) string {
+	switch {
+	case strings.Contains(contentType, "png") || strings.HasSuffix(strings.ToLower(filename), ".png"):
+		return "png"
+	case strings.Contains(contentType, "webp") || strings.HasSuffix(strings.ToLower(filename), ".webp"):
+		return "webp"
+	case strings.Contains(contentType, "jpeg") || strings.Contains(contentType, "jpg") ||
+		strings.HasSuffix(strings.ToLower(filename), ".jpg") || strings.HasSuffix(strings.ToLower(filename), ".jpeg"):
+		return "jpg"
+	default:
+		return ""
+	}
+}
+
+func contentTypeForExt(ext string) string {
+	switch ext {
+	case "png":
+		return "image/png"
+	case "webp":
+		return "image/webp"
+	default:
+		return "image/jpeg"
+	}
 }
 
 // currentUserID extracts the authenticated user's UUID from JWT claims.

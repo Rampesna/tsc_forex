@@ -20,6 +20,14 @@ class Prefs(context: Context) {
         get() = sp.getString(KEY_EMAIL, null)
         set(v) = sp.edit().putString(KEY_EMAIL, v).apply()
 
+    var displayName: String?
+        get() = sp.getString(KEY_NAME, null)
+        set(v) = sp.edit().putString(KEY_NAME, v).apply()
+
+    var avatarUrl: String?
+        get() = sp.getString(KEY_AVATAR, null)
+        set(v) = sp.edit().putString(KEY_AVATAR, v).apply()
+
     var hostOverride: String?
         get() = sp.getString(KEY_HOST, null)
         set(v) = sp.edit().putString(KEY_HOST, v).apply()
@@ -39,13 +47,15 @@ class Prefs(context: Context) {
         set(v) = sp.edit().putString(KEY_HOLDINGS, v).apply()
 
     fun clearSession() {
-        sp.edit().remove(KEY_ACCESS).remove(KEY_REFRESH).apply()
+        sp.edit().remove(KEY_ACCESS).remove(KEY_REFRESH).remove(KEY_NAME).remove(KEY_AVATAR).apply()
     }
 
     companion object {
         private const val KEY_ACCESS = "access_token"
         private const val KEY_REFRESH = "refresh_token"
         private const val KEY_EMAIL = "email"
+        private const val KEY_NAME = "display_name"
+        private const val KEY_AVATAR = "avatar_url"
         private const val KEY_HOST = "host_override"
         private const val KEY_FAVS = "favorites"
         private const val KEY_FAV_ORDER = "favorite_order"

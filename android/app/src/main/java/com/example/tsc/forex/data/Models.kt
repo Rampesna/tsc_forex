@@ -87,6 +87,24 @@ data class TokenResponse(
     }
 }
 
+data class Profile(
+    val id: String,
+    val email: String,
+    val displayName: String,
+    val avatarUrl: String,
+    val provider: String,
+) {
+    companion object {
+        fun from(o: JSONObject) = Profile(
+            id = o.optString("id"),
+            email = o.optString("email"),
+            displayName = o.optString("display_name"),
+            avatarUrl = o.optString("avatar_url"),
+            provider = o.optString("provider"),
+        )
+    }
+}
+
 data class PriceAlert(
     val id: String,
     val code: String,

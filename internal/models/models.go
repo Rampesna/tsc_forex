@@ -200,3 +200,26 @@ func (d *DeviceToken) BeforeCreate(_ *gorm.DB) error {
 	}
 	return nil
 }
+
+// WebAuthnCredential stores a registered passkey for a user. CredentialID and
+// PublicKey are the WebAuthn credential bytes; SignCount guards against cloned
+// authenticators.
+type WebAuthnCredential struct {
+	ID           uuid.UUID `gorm:"type:uuid;primaryKey" json:"id"`
+	UserID       uuid.UUID `gorm:"type:uuid;index;not null" json:"user_id"`
+	CredentialID []byte    `gorm:"type:bytea;uniqueIndex;not null" json:"-"`
+	PublicKey    []byte    `gorm:"type:bytea;not null" json:"-"`
+	AAGUID       []byte    `gorm:"type:bytea" json:"-"`
+	SignCount    uint32    `gorm:"not null;default:0" json:"-"`
+	Transports   string    `gorm:"type:varchar(128)" json:"-"` // comma-separated
+	CreatedAt    time.Time `json:"created_at"`
+}
+
+func (WebAuthnCredential) TableName() string { return "webauthn_credentials" }
+
+func (w *WebAuthnCredential) BeforeCreate(_ *gorm.DB) error {
+	if w.ID == uuid.Nil {
+		w.ID = uuid.New()
+	}
+	return nil
+}

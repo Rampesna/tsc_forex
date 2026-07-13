@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -25,6 +26,7 @@ import (
 	"github.com/tsc-forex/tsc_forex/internal/repository"
 	"github.com/tsc-forex/tsc_forex/internal/routes"
 	"github.com/tsc-forex/tsc_forex/internal/service"
+	"github.com/tsc-forex/tsc_forex/internal/storage"
 	"github.com/tsc-forex/tsc_forex/internal/utils"
 	ws "github.com/tsc-forex/tsc_forex/internal/websocket"
 	"github.com/tsc-forex/tsc_forex/pkg/eventbus"
@@ -132,6 +134,7 @@ func run() error {
 		authSvc     *service.AuthService
 		authH       *api.AuthHandler
 		userH       *api.UserHandler
+		passkeyH    *api.PasskeyHandler
 		instrRepo   repository.PriceRepository
 		histWriter  *service.HistoryWriter
 		instrWriter *service.InstrumentWriter
@@ -158,17 +161,43 @@ func run() error {
 			WithRefreshStore(refreshRepo).
 			WithOAuth(cfg.OAuth)
 		authH = api.NewAuthHandler(authSvc)
-		userH = api.NewUserHandler(watchRepo, alertRepo, notifRepo, deviceRepo, log)
 
-		// Push sender: real APNs when configured, otherwise no-op.
-		var sender service.PushSender = service.NopSender{}
+		// Object storage (avatars): shared MinIO/S3 so every pod sees uploads.
+		var avatarStore storage.Store
+		if cfg.Storage.Enabled {
+			if s, err := storage.New(cfg.Storage); err != nil {
+				log.Warn("object storage unavailable — avatars disabled", zap.Error(err))
+			} else {
+				avatarStore = s
+				log.Info("object storage enabled", zap.String("bucket", cfg.Storage.Bucket))
+			}
+		}
+		userH = api.NewUserHandler(watchRepo, alertRepo, notifRepo, deviceRepo, userRepo, avatarStore, log)
+
+		// Push senders, routed by device platform (ios → APNs, android → FCM).
+		senders := map[string]service.PushSender{}
 		if s, err := service.NewAPNsSender(cfg.Notify, log); err == nil {
-			sender = s
+			senders["ios"] = s
 			log.Info("apns push enabled", zap.String("topic", cfg.Notify.APNsTopic))
 		}
-		notifier := service.NewNotifier(notifRepo, deviceRepo, hub, sender, log)
+		if s, err := service.NewFCMSender(cfg.Notify, log); err == nil {
+			senders["android"] = s
+			log.Info("fcm push enabled", zap.String("project", cfg.Notify.FCMProjectID))
+		}
+		notifier := service.NewNotifier(notifRepo, deviceRepo, hub, senders, log)
 		alertEngine = service.NewAlertEngine(bus, alertRepo, notifier, cfg.Notify.AlertCooldown, log)
 		alertEngine.Start(ctx)
+
+		// Passkey (WebAuthn) — optional; enabled when configured.
+		credRepo := repository.NewWebAuthnCredentialRepository(db, m)
+		if ps, err := service.NewPasskeyService(cfg.WebAuthn, cfg.JWT.Secret, credRepo, authSvc, log); err != nil {
+			if !errors.Is(err, service.ErrPasskeyDisabled) {
+				log.Warn("passkey disabled", zap.Error(err))
+			}
+		} else {
+			passkeyH = api.NewPasskeyHandler(ps)
+			log.Info("passkey enabled", zap.String("rp_id", cfg.WebAuthn.RPID))
+		}
 
 		if cfg.Gold.PersistEvery {
 			histWriter = service.NewHistoryWriter(bus, goldRepo, cfg.Gold.HistoryWorkers, cfg.Gold.HistoryQueueSize, log)
@@ -226,6 +255,7 @@ func run() error {
 		}),
 		Auth:        authH,
 		User:        userH,
+		Passkey:     passkeyH,
 		AuthService: authSvc,
 	})
 

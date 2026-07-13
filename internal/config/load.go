@@ -259,6 +259,16 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("notify.apns_enabled", false)
 	v.SetDefault("notify.apns_topic", "talhacan.tscforex")
 	v.SetDefault("notify.apns_sandbox", true)
+	v.SetDefault("notify.fcm_enabled", false)
+
+	v.SetDefault("storage.enabled", false)
+	v.SetDefault("storage.endpoint", "minio:9000")
+	v.SetDefault("storage.bucket", "avatars")
+	v.SetDefault("storage.use_ssl", false)
+	v.SetDefault("storage.region", "us-east-1")
+
+	v.SetDefault("webauthn.enabled", false)
+	v.SetDefault("webauthn.rp_display_name", "TSC Forex")
 
 	v.SetDefault("log.level", "info")
 	v.SetDefault("log.encoding", "json")

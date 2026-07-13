@@ -1,6 +1,8 @@
 package routes
 
 import (
+	"net/http"
+
 	"github.com/gin-gonic/gin"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
@@ -24,7 +26,8 @@ type Deps struct {
 	Instrument *api.InstrumentHandler
 	System     *api.SystemHandler
 	Auth       *api.AuthHandler
-	User       *api.UserHandler // protected per-user features; may be nil
+	User       *api.UserHandler    // protected per-user features; may be nil
+	Passkey    *api.PasskeyHandler // WebAuthn; may be nil
 
 	AuthService *service.AuthService // for protected-route middleware; may be nil
 }
@@ -51,6 +54,9 @@ func NewEngine(d Deps) *gin.Engine {
 	// Kubernetes probes (unauthenticated, no rate limit).
 	r.GET("/livez", func(c *gin.Context) { c.String(200, "ok") })
 	r.GET("/readyz", func(c *gin.Context) { c.String(200, "ready") })
+
+	// Well-known association files for passkeys / Google credential sharing.
+	registerWellKnown(r, d.Config)
 
 	// Swagger UI + OpenAPI spec.
 	docs.Register(r)
@@ -91,8 +97,15 @@ func NewEngine(d Deps) *gin.Engine {
 			v1.POST("/auth/register", d.Auth.Register)
 			v1.POST("/auth/login", d.Auth.Login)
 			v1.POST("/auth/google", d.Auth.Google)
+			v1.POST("/auth/apple", d.Auth.Apple)
 			v1.POST("/auth/refresh", d.Auth.Refresh)
 			v1.POST("/auth/logout", d.Auth.Logout)
+		}
+
+		// Passkey (WebAuthn) usernameless login (public begin/finish).
+		if d.Passkey != nil {
+			v1.POST("/auth/passkey/login/begin", d.Passkey.LoginBegin)
+			v1.POST("/auth/passkey/login/finish", d.Passkey.LoginFinish)
 		}
 
 		// Protected per-user features (watchlist, alerts, notifications, devices).
@@ -100,9 +113,13 @@ func NewEngine(d Deps) *gin.Engine {
 			authed := v1.Group("")
 			authed.Use(middleware.JWTAuth(d.AuthService))
 			{
-				authed.GET("/me/watchlist", d.User.ListWatchlist)
-				authed.POST("/me/watchlist", d.User.AddWatchlist)
-				authed.DELETE("/me/watchlist/:code", d.User.RemoveWatchlist)
+			authed.GET("/me/profile", d.User.Profile)
+			authed.PATCH("/me/profile", d.User.UpdateProfile)
+			authed.POST("/me/avatar", d.User.UploadAvatar)
+
+			authed.GET("/me/watchlist", d.User.ListWatchlist)
+			authed.POST("/me/watchlist", d.User.AddWatchlist)
+			authed.DELETE("/me/watchlist/:code", d.User.RemoveWatchlist)
 
 				authed.GET("/me/alerts", d.User.ListAlerts)
 				authed.POST("/me/alerts", d.User.CreateAlert)
@@ -114,9 +131,50 @@ func NewEngine(d Deps) *gin.Engine {
 				authed.DELETE("/me/notifications", d.User.ClearNotifications)
 
 				authed.POST("/me/devices", d.User.RegisterDevice)
+
+				// Passkey registration for the signed-in user.
+				if d.Passkey != nil {
+					authed.POST("/me/passkey/register/begin", d.Passkey.RegisterBegin)
+					authed.POST("/me/passkey/register/finish", d.Passkey.RegisterFinish)
+				}
 			}
 		}
 	}
 
 	return r
+}
+
+// registerWellKnown serves the Apple App Site Association (passkeys / Sign in
+// with Apple) and Android Digital Asset Links (Google credential sharing).
+func registerWellKnown(r *gin.Engine, cfg *config.Config) {
+	// apple-app-site-association MUST be served without a file extension and as
+	// application/json (no redirects) at the RP domain.
+	r.GET("/.well-known/apple-app-site-association", func(c *gin.Context) {
+		apps := []string{}
+		if cfg.OAuth.AppleTeamID != "" {
+			for _, bundle := range cfg.OAuth.AppleBundleIDs {
+				apps = append(apps, cfg.OAuth.AppleTeamID+"."+bundle)
+			}
+		}
+		c.Header("Content-Type", "application/json")
+		c.JSON(http.StatusOK, gin.H{
+			"webcredentials": gin.H{"apps": apps},
+			"applinks":       gin.H{"apps": []string{}, "details": []any{}},
+		})
+	})
+
+	r.GET("/.well-known/assetlinks.json", func(c *gin.Context) {
+		out := []any{}
+		if cfg.OAuth.AndroidPackageName != "" && len(cfg.OAuth.AndroidSHA256) > 0 {
+			out = append(out, gin.H{
+				"relation": []string{"delegate_permission/common.get_login_creds"},
+				"target": gin.H{
+					"namespace":                "android_app",
+					"package_name":             cfg.OAuth.AndroidPackageName,
+					"sha256_cert_fingerprints": cfg.OAuth.AndroidSHA256,
+				},
+			})
+		}
+		c.JSON(http.StatusOK, out)
+	})
 }

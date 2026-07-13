@@ -17,6 +17,22 @@ struct TokenResponse: Codable {
     }
 }
 
+// Authenticated user's profile (GET/PATCH /me/profile).
+struct ProfileResponse: Codable {
+    let id: String
+    let email: String
+    let displayName: String
+    let avatarURL: String
+    let provider: String
+    let role: String
+
+    enum CodingKeys: String, CodingKey {
+        case id, email, provider, role
+        case displayName = "display_name"
+        case avatarURL = "avatar_url"
+    }
+}
+
 struct InstrumentPrice: Codable, Identifiable, Equatable {
     var id: String { code }
     let code: String

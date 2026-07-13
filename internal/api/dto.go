@@ -32,6 +32,30 @@ type GoogleAuthRequest struct {
 	IDToken string `json:"id_token" binding:"required"`
 }
 
+// AppleAuthRequest carries an Apple identity token from Sign in with Apple.
+// FullName is only provided by Apple on the very first authorization.
+type AppleAuthRequest struct {
+	IDToken  string `json:"id_token" binding:"required"`
+	FullName string `json:"full_name"`
+}
+
+// ProfileResponse is the authenticated user's profile.
+type ProfileResponse struct {
+	ID          string    `json:"id"`
+	Email       string    `json:"email"`
+	DisplayName string    `json:"display_name"`
+	AvatarURL   string    `json:"avatar_url"`
+	Provider    string    `json:"provider"`
+	Role        string    `json:"role"`
+	CreatedAt   time.Time `json:"created_at"`
+}
+
+// UpdateProfileRequest updates mutable profile fields. Pointers distinguish
+// "not provided" from "set to empty".
+type UpdateProfileRequest struct {
+	DisplayName *string `json:"display_name"`
+}
+
 // InstrumentResponse is a single computed instrument price.
 type InstrumentResponse struct {
 	Code        string    `json:"code"`

@@ -10,6 +10,7 @@ struct SettingsView: View {
     @EnvironmentObject var prices: PriceStore
     @State private var host = AppConfig.host
     @State private var saved = false
+    @State private var showProfile = false
 
     var body: some View {
         ZStack {
@@ -75,22 +76,29 @@ struct SettingsView: View {
                             }
                         }
 
-                        if let email = auth.email {
-                            Card {
-                                VStack(alignment: .leading, spacing: 12) {
-                                    sectionLabel("HESAP")
-                                    HStack {
-                                        Image(systemName: "person.circle.fill").foregroundStyle(Theme.accent)
-                                        Text(email).font(.system(size: 14)).foregroundStyle(Theme.text)
+                        Card {
+                            VStack(alignment: .leading, spacing: 12) {
+                                sectionLabel("HESAP")
+                                Button { showProfile = true } label: {
+                                    HStack(spacing: 12) {
+                                        avatarThumb
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(auth.displayName.isEmpty ? (auth.email ?? "Kullanıcı") : auth.displayName)
+                                                .font(.system(size: 15, weight: .semibold))
+                                                .foregroundStyle(Theme.text)
+                                            Text("Profili düzenle")
+                                                .font(.system(size: 12)).foregroundStyle(Theme.textDim)
+                                        }
                                         Spacer()
+                                        Image(systemName: "chevron.right").foregroundStyle(Theme.textFaint)
                                     }
-                                    Button(role: .destructive) {
-                                        prices.disconnect(); auth.logout()
-                                    } label: {
-                                        Label("Çıkış Yap", systemImage: "arrow.right.square")
-                                    }
-                                    .buttonStyle(FilledButtonStyle(color: Theme.down.opacity(0.16), textColor: Theme.down))
                                 }
+                                Button(role: .destructive) {
+                                    prices.disconnect(); auth.logout()
+                                } label: {
+                                    Label("Çıkış Yap", systemImage: "arrow.right.square")
+                                }
+                                .buttonStyle(FilledButtonStyle(color: Theme.down.opacity(0.16), textColor: Theme.down))
                             }
                         }
                     }
@@ -99,6 +107,23 @@ struct SettingsView: View {
             }
         }
         .onChange(of: host) { _, _ in saved = false }
+        .sheet(isPresented: $showProfile) {
+            NavigationStack { ProfileView() }.preferredColorScheme(.dark)
+        }
+    }
+
+    @ViewBuilder
+    private var avatarThumb: some View {
+        if let url = URL(string: auth.avatarURL), !auth.avatarURL.isEmpty {
+            AsyncImage(url: url) { phase in
+                if case .success(let img) = phase { img.resizable().scaledToFill() }
+                else { Image(systemName: "person.circle.fill").resizable().foregroundStyle(Theme.accent) }
+            }
+            .frame(width: 44, height: 44).clipShape(Circle())
+        } else {
+            Image(systemName: "person.circle.fill")
+                .resizable().frame(width: 44, height: 44).foregroundStyle(Theme.accent)
+        }
     }
 
     private func sectionLabel(_ t: String) -> some View {

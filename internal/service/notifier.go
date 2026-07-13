@@ -39,19 +39,21 @@ type Notifier struct {
 	notifs  repository.NotificationRepository
 	devices repository.DeviceTokenRepository
 	hub     UserBroadcaster
-	sender  PushSender
+	// senders routes push by device platform ("ios" → APNs, "android" → FCM).
+	senders map[string]PushSender
 	log     *zap.Logger
 }
 
-// NewNotifier builds a notifier. repo/devices/sender may be nil (degraded mode).
-func NewNotifier(notifs repository.NotificationRepository, devices repository.DeviceTokenRepository, hub UserBroadcaster, sender PushSender, log *zap.Logger) *Notifier {
+// NewNotifier builds a notifier. senders maps a device platform to its push
+// backend; missing platforms are silently skipped. Any arg may be nil.
+func NewNotifier(notifs repository.NotificationRepository, devices repository.DeviceTokenRepository, hub UserBroadcaster, senders map[string]PushSender, log *zap.Logger) *Notifier {
 	if log == nil {
 		log = zap.NewNop()
 	}
-	if sender == nil {
-		sender = NopSender{}
+	if senders == nil {
+		senders = map[string]PushSender{}
 	}
-	return &Notifier{notifs: notifs, devices: devices, hub: hub, sender: sender, log: log}
+	return &Notifier{notifs: notifs, devices: devices, hub: hub, senders: senders, log: log}
 }
 
 // Notify records and delivers a notification to a user across all channels.
@@ -85,16 +87,22 @@ func (n *Notifier) Notify(ctx context.Context, userID uuid.UUID, alertID *uuid.U
 		}
 	}
 
-	// Background push via APNs/FCM.
-	if n.devices != nil {
+	// Background push via APNs/FCM, routed per device platform.
+	if n.devices != nil && len(n.senders) > 0 {
 		tokens, err := n.devices.ListByUser(ctx, userID)
 		if err == nil && len(tokens) > 0 {
-			addrs := make([]string, 0, len(tokens))
+			byPlatform := make(map[string][]string, len(n.senders))
 			for _, t := range tokens {
-				addrs = append(addrs, t.Token)
+				byPlatform[t.Platform] = append(byPlatform[t.Platform], t.Token)
 			}
-			if err := n.sender.Send(ctx, addrs, title, body, map[string]string{"code": code}); err != nil {
-				n.log.Warn("push send failed", zap.Error(err))
+			for platform, addrs := range byPlatform {
+				sender, ok := n.senders[platform]
+				if !ok || len(addrs) == 0 {
+					continue
+				}
+				if err := sender.Send(ctx, addrs, title, body, map[string]string{"code": code}); err != nil {
+					n.log.Warn("push send failed", zap.String("platform", platform), zap.Error(err))
+				}
 			}
 		}
 	}

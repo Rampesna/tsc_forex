@@ -84,6 +84,40 @@ struct LoginView: View {
                 .disabled(auth.isBusy)
 
                 Button {
+                    Task { await auth.loginWithApple() }
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "apple.logo")
+                            .font(.system(size: 17, weight: .semibold))
+                        Text("Apple ile devam et")
+                            .font(.system(size: 15, weight: .semibold))
+                    }
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(Color.black, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Color.white.opacity(0.18), lineWidth: 1))
+                }
+                .disabled(auth.isBusy)
+
+                Button {
+                    Task { await auth.loginWithPasskey() }
+                } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: "person.badge.key.fill")
+                            .font(.system(size: 15, weight: .semibold))
+                        Text("Geçiş anahtarı ile giriş")
+                            .font(.system(size: 15, weight: .semibold))
+                    }
+                    .foregroundStyle(Theme.text)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(Theme.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.stroke, lineWidth: 1))
+                }
+                .disabled(auth.isBusy)
+
+                Button {
                     isRegister.toggle(); auth.errorMessage = nil
                 } label: {
                     Text(isRegister ? "Zaten hesabım var • Giriş yap" : "Hesabın yok mu? • Kayıt ol")

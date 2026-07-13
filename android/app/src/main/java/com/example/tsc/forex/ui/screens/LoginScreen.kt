@@ -26,6 +26,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
@@ -39,6 +41,7 @@ fun LoginScreen(auth: AuthStore, onLoggedIn: () -> Unit) {
     var isRegister by remember { mutableStateOf(false) }
     var email by remember { mutableStateOf(auth.email) }
     var password by remember { mutableStateOf("") }
+    val context = LocalContext.current
 
     Box(
         Modifier
@@ -109,6 +112,17 @@ fun LoginScreen(auth: AuthStore, onLoggedIn: () -> Unit) {
                 } else {
                     Text(if (isRegister) "Kayıt ol" else "Giriş yap", fontWeight = FontWeight.Bold)
                 }
+            }
+
+            Button(
+                onClick = { auth.loginWithGoogle(context, onLoggedIn) },
+                enabled = !auth.isBusy,
+                colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color.Black),
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("G", color = Color(0xFF4285F4), fontWeight = FontWeight.Black, fontSize = 17.sp)
+                Text("  Google ile devam et", fontWeight = FontWeight.SemiBold)
             }
 
             TextButton(onClick = { isRegister = !isRegister; auth.errorMessage = null }) {

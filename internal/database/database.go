@@ -60,6 +60,7 @@ func Migrate(db *gorm.DB) error {
 		&models.Notification{},
 		&models.RefreshToken{},
 		&models.DeviceToken{},
+		&models.WebAuthnCredential{},
 	); err != nil {
 		return err
 	}

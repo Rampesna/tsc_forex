@@ -119,6 +119,67 @@ struct APIClient {
         return tok
     }
 
+    /// Exchanges an Apple identity token (Sign in with Apple) for our session.
+    func appleLogin(idToken: String, fullName: String) async throws -> TokenResponse {
+        let data = try await request("auth/apple", method: "POST",
+                                     body: ["id_token": idToken, "full_name": fullName])
+        guard let tok = try? makeDecoder().decode(TokenResponse.self, from: data) else {
+            throw APIError.decoding
+        }
+        return tok
+    }
+
+    // MARK: Profile
+
+    func profile() async throws -> ProfileResponse {
+        let data = try await request("me/profile", authed: true)
+        return try makeDecoder().decode(ProfileResponse.self, from: data)
+    }
+
+    func updateProfile(displayName: String) async throws -> ProfileResponse {
+        let data = try await request("me/profile", method: "PATCH",
+                                     body: ["display_name": displayName], authed: true)
+        return try makeDecoder().decode(ProfileResponse.self, from: data)
+    }
+
+    /// Uploads avatar image bytes as multipart/form-data; returns the public URL.
+    func uploadAvatar(imageData: Data, filename: String, contentType: String) async throws -> String {
+        let full = AppConfig.apiBaseURL.absoluteString + "/me/avatar"
+        guard let url = URL(string: full) else { throw APIError.invalidResponse }
+        let boundary = "Boundary-\(UUID().uuidString)"
+        var req = URLRequest(url: url, timeoutInterval: 30)
+        req.httpMethod = "POST"
+        req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        if let token { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+
+        var body = Data()
+        body.append("--\(boundary)\r\n".data(using: .utf8)!)
+        body.append("Content-Disposition: form-data; name=\"avatar\"; filename=\"\(filename)\"\r\n".data(using: .utf8)!)
+        body.append("Content-Type: \(contentType)\r\n\r\n".data(using: .utf8)!)
+        body.append(imageData)
+        body.append("\r\n--\(boundary)--\r\n".data(using: .utf8)!)
+        req.httpBody = body
+
+        do {
+            let (data, resp) = try await Self.session.data(for: req)
+            guard let http = resp as? HTTPURLResponse else { throw APIError.invalidResponse }
+            // On expiry, refresh once and retry.
+            if http.statusCode == 401, let refresher = Self.refresher, let newToken = await refresher() {
+                return try await APIClient(token: newToken).uploadAvatar(imageData: imageData, filename: filename, contentType: contentType)
+            }
+            guard (200..<300).contains(http.statusCode) else {
+                throw APIError.http(http.statusCode, String(data: data, encoding: .utf8) ?? "")
+            }
+            struct Resp: Decodable { let avatar_url: String }
+            guard let url = try? JSONDecoder().decode(Resp.self, from: data).avatar_url else {
+                throw APIError.decoding
+            }
+            return url
+        } catch let err as URLError {
+            throw APIError.network(err.code, AppConfig.host)
+        }
+    }
+
     // MARK: Instruments
 
     func catalog() async throws -> [CatalogItem] {

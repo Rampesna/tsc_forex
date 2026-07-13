@@ -103,6 +103,34 @@ func (h *AuthHandler) Google(c *gin.Context) {
 	c.JSON(http.StatusOK, TokenResponse{AccessToken: access, RefreshToken: refresh, TokenType: "Bearer"})
 }
 
+// Apple logs in (or signs up) a user with a verified Apple identity token.
+// @Summary  Sign in with Apple
+// @Tags     auth
+// @Accept   json
+// @Produce  json
+// @Param    body body AppleAuthRequest true "Apple identity token"
+// @Success  200 {object} TokenResponse
+// @Failure  400 {object} ErrorResponse
+// @Failure  401 {object} ErrorResponse
+// @Router   /auth/apple [post]
+func (h *AuthHandler) Apple(c *gin.Context) {
+	var req AppleAuthRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		return
+	}
+	access, refresh, err := h.auth.LoginWithApple(c.Request.Context(), req.IDToken, req.FullName)
+	if err != nil {
+		if errors.Is(err, service.ErrOAuthNotConfigured) {
+			c.JSON(http.StatusServiceUnavailable, ErrorResponse{Error: "apple login not configured"})
+			return
+		}
+		c.JSON(http.StatusUnauthorized, ErrorResponse{Error: "apple authentication failed"})
+		return
+	}
+	c.JSON(http.StatusOK, TokenResponse{AccessToken: access, RefreshToken: refresh, TokenType: "Bearer"})
+}
+
 // Refresh rotates a refresh token, returning a new access + refresh pair.
 // @Summary  Rotate refresh token
 // @Tags     auth

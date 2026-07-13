@@ -23,13 +23,23 @@ data:
   APP_PROVIDER_REST_GOLD_URL: "https://api.gold-api.com/price/XAU"
   APP_PROVIDER_SYNTHETIC_TICK_INTERVAL: "5s"
   # Object storage (MinIO) for profile pictures — shared across all pods.
+  APP_STORAGE_ENABLED: "true"
   APP_STORAGE_ENDPOINT: "minio:9000"
   APP_STORAGE_BUCKET: "avatars"
   APP_STORAGE_USE_SSL: "false"
   APP_STORAGE_PUBLIC_BASE_URL: "https://tsc-cdn.talhacan.com"
   # Social login: accepted Google ID-token audiences (public client IDs).
-  APP_OAUTH_GOOGLE_CLIENT_IDS: "83380535128-16nfuuc3p0jok4l4htitlubgpsjah622.apps.googleusercontent.com,83380535128-pr4lcmaerra3sdqf8211t1nc4n4pbksj.apps.googleusercontent.com"
+  APP_OAUTH_GOOGLE_CLIENT_IDS: "83380535128-16nfuuc3p0jok4l4htitlubgpsjah622.apps.googleusercontent.com,83380535128-pr4lcmaerra3sdqf8211t1nc4n4pbksj.apps.googleusercontent.com,83380535128-o4h4v9rc9u1tuis9hggcckqei0idahg3.apps.googleusercontent.com"
   APP_OAUTH_APPLE_BUNDLE_IDS: "talhacan.tscforex"
+  # Apple Team ID for AASA (Sign in with Apple + passkeys). Fill in once known.
+  APP_OAUTH_APPLE_TEAM_ID: ""
+  APP_OAUTH_ANDROID_PACKAGE_NAME: "com.example.tsc.forex"
+  APP_OAUTH_ANDROID_SHA256: "0A:AB:C2:DD:D5:A9:70:55:0A:8C:45:E9:A6:5B:82:29:91:28:0B:04:AD:34:3A:BE:FF:0E:1D:CB:F8:31:62:38"
+  # Passkey (WebAuthn) usernameless login.
+  APP_WEBAUTHN_ENABLED: "true"
+  APP_WEBAUTHN_RP_DISPLAY_NAME: "TSC Forex"
+  APP_WEBAUTHN_RP_ID: "tsc-api.talhacan.com"
+  APP_WEBAUTHN_RP_ORIGINS: "https://tsc-api.talhacan.com"
   APP_LOG_ENCODING: "json"
   APP_LOG_LEVEL: "info"
   APP_METRICS_ENABLED: "true"

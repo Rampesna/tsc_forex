@@ -59,6 +59,62 @@ func TestLoginWithGoogle_NotConfigured(t *testing.T) {
 	}
 }
 
+func TestLoginWithApple_NotConfigured(t *testing.T) {
+	repo := &tinyUserRepo{m: map[string]models.User{}}
+	svc := NewAuthService(repo, oauthTestCfg())
+	if _, _, err := svc.LoginWithApple(context.Background(), "tok", ""); err != ErrOAuthNotConfigured {
+		t.Fatalf("want ErrOAuthNotConfigured, got %v", err)
+	}
+}
+
+func TestLoginWithApple_CreatesAndReuses(t *testing.T) {
+	repo := &tinyUserRepo{m: map[string]models.User{}}
+	svc := NewAuthService(repo, oauthTestCfg()).
+		WithOAuth(config.OAuthConfig{AppleBundleIDs: []string{"talhacan.tscforex"}})
+	svc.appleVerify = func(_ context.Context, _ string, auds []string) (*AppleIdentity, error) {
+		if !containsFold(auds, "talhacan.tscforex") {
+			t.Fatalf("allowed auds not propagated: %v", auds)
+		}
+		return &AppleIdentity{Sub: "a1", Email: "Apple@Example.com", Aud: "talhacan.tscforex"}, nil
+	}
+
+	access, refresh, err := svc.LoginWithApple(context.Background(), "tok", "Ada Lovelace")
+	if err != nil {
+		t.Fatalf("apple login: %v", err)
+	}
+	if access == "" || refresh == "" {
+		t.Fatal("expected tokens")
+	}
+	u, err := repo.ByEmail(context.Background(), "apple@example.com")
+	if err != nil {
+		t.Fatalf("user not created: %v", err)
+	}
+	if u.Provider != "apple" || u.DisplayName != "Ada Lovelace" {
+		t.Fatalf("profile not populated: %+v", u)
+	}
+	if _, _, err := svc.LoginWithApple(context.Background(), "tok2", ""); err != nil {
+		t.Fatalf("second apple login: %v", err)
+	}
+	if len(repo.m) != 1 {
+		t.Fatalf("expected 1 user, got %d", len(repo.m))
+	}
+}
+
+func TestLoginWithApple_SyntheticEmailWhenHidden(t *testing.T) {
+	repo := &tinyUserRepo{m: map[string]models.User{}}
+	svc := NewAuthService(repo, oauthTestCfg()).
+		WithOAuth(config.OAuthConfig{AppleBundleIDs: []string{"talhacan.tscforex"}})
+	svc.appleVerify = func(_ context.Context, _ string, _ []string) (*AppleIdentity, error) {
+		return &AppleIdentity{Sub: "sub-xyz", Email: "", Aud: "talhacan.tscforex"}, nil
+	}
+	if _, _, err := svc.LoginWithApple(context.Background(), "tok", ""); err != nil {
+		t.Fatalf("apple login: %v", err)
+	}
+	if _, err := repo.ByEmail(context.Background(), "apple_sub-xyz@users.tscforex"); err != nil {
+		t.Fatalf("synthetic email account not created: %v", err)
+	}
+}
+
 func TestLoginWithGoogle_CreatesAndReuses(t *testing.T) {
 	repo := &tinyUserRepo{m: map[string]models.User{}}
 	svc := NewAuthService(repo, oauthTestCfg()).

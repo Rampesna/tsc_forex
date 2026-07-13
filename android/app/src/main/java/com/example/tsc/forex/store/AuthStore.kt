@@ -1,8 +1,11 @@
 package com.example.tsc.forex.store
 
+import android.content.Context
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.example.tsc.forex.auth.GoogleSignIn
+import com.example.tsc.forex.auth.GoogleSignInCancelled
 import com.example.tsc.forex.data.ApiClient
 import com.example.tsc.forex.data.ApiException
 import com.example.tsc.forex.data.Prefs
@@ -22,6 +25,10 @@ class AuthStore(private val prefs: Prefs) {
     var accessToken by mutableStateOf(prefs.accessToken)
         private set
     var email by mutableStateOf(prefs.email ?: "")
+    var displayName by mutableStateOf(prefs.displayName ?: "")
+        private set
+    var avatarUrl by mutableStateOf(prefs.avatarUrl ?: "")
+        private set
     var isBusy by mutableStateOf(false)
         private set
     var errorMessage by mutableStateOf<String?>(null)
@@ -43,12 +50,68 @@ class AuthStore(private val prefs: Prefs) {
     fun register(email: String, password: String, onSuccess: () -> Unit) =
         run(onSuccess) { newApiClient().register(email.trim(), password) }
 
+    /** Credential Manager Google sign-in → backend session. */
+    fun loginWithGoogle(context: Context, onSuccess: () -> Unit) {
+        isBusy = true; errorMessage = null
+        scope.launch {
+            try {
+                val idToken = GoogleSignIn.idToken(context)
+                val tok = ApiClient().googleLogin(idToken)
+                persist(tok)
+                loadProfile()
+                onSuccess()
+            } catch (e: GoogleSignInCancelled) {
+                // Silent.
+            } catch (e: ApiException) {
+                errorMessage = "Google girişi başarısız (${e.code})."
+            } catch (e: Exception) {
+                errorMessage = "Google girişi tamamlanamadı."
+            } finally {
+                isBusy = false
+            }
+        }
+    }
+
+    /** Fetches profile (name, avatar) and caches it. */
+    suspend fun loadProfile() {
+        try {
+            val p = newApiClient().profile()
+            if (p.email.isNotEmpty()) { email = p.email; prefs.email = p.email }
+            displayName = p.displayName; prefs.displayName = p.displayName
+            avatarUrl = p.avatarUrl; prefs.avatarUrl = p.avatarUrl
+        } catch (_: Exception) { /* keep cached */ }
+    }
+
+    fun updateDisplayName(name: String) {
+        scope.launch {
+            try {
+                val p = newApiClient().updateProfile(name)
+                displayName = p.displayName; prefs.displayName = p.displayName
+            } catch (e: Exception) {
+                errorMessage = "Profil güncellenemedi."
+            }
+        }
+    }
+
+    fun uploadAvatar(bytes: ByteArray, onDone: () -> Unit = {}) {
+        scope.launch {
+            try {
+                val url = newApiClient().uploadAvatar(bytes)
+                avatarUrl = url; prefs.avatarUrl = url
+                onDone()
+            } catch (e: Exception) {
+                errorMessage = "Fotoğraf yüklenemedi."
+            }
+        }
+    }
+
     private fun run(onSuccess: () -> Unit, block: suspend () -> TokenResponse) {
         isBusy = true; errorMessage = null
         scope.launch {
             try {
                 val tok = block()
                 persist(tok)
+                loadProfile()
                 onSuccess()
             } catch (e: ApiException) {
                 errorMessage = when (e.code) {
@@ -80,6 +143,8 @@ class AuthStore(private val prefs: Prefs) {
     fun logout() {
         prefs.clearSession()
         accessToken = null
+        displayName = ""
+        avatarUrl = ""
         onAccessTokenChanged?.invoke(null)
     }
 

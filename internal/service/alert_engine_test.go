@@ -74,7 +74,7 @@ func TestAlertEngineFiresOnCross(t *testing.T) {
 		}},
 	}
 	hub := &alertFakeHub{direct: make(chan string, 1)}
-	notifier := service.NewNotifier(nil, nil, hub, service.NopSender{}, nil)
+	notifier := service.NewNotifier(nil, nil, hub, nil, nil)
 	engine := service.NewAlertEngine(bus, repo, notifier, time.Minute, nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -113,7 +113,7 @@ func TestAlertEngineNoFireBelowThreshold(t *testing.T) {
 		}},
 	}
 	hub := &alertFakeHub{direct: make(chan string, 1)}
-	notifier := service.NewNotifier(nil, nil, hub, service.NopSender{}, nil)
+	notifier := service.NewNotifier(nil, nil, hub, nil, nil)
 	engine := service.NewAlertEngine(bus, repo, notifier, time.Minute, nil)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

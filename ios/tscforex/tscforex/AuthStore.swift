@@ -13,6 +13,8 @@ final class AuthStore: ObservableObject {
     @Published var accessToken: String?
     @Published var refreshToken: String?
     @Published var email: String?
+    @Published var displayName: String = ""
+    @Published var avatarURL: String = ""
     @Published var errorMessage: String?
     @Published var isBusy = false
 
@@ -21,11 +23,15 @@ final class AuthStore: ObservableObject {
     private let accessKey = "access_token"
     private let refreshKey = "refresh_token"
     private let emailKey = "user_email"
+    private let nameKey = "user_display_name"
+    private let avatarKey = "user_avatar_url"
 
     init() {
         accessToken = UserDefaults.standard.string(forKey: accessKey)
         refreshToken = UserDefaults.standard.string(forKey: refreshKey)
         email = UserDefaults.standard.string(forKey: emailKey)
+        displayName = UserDefaults.standard.string(forKey: nameKey) ?? ""
+        avatarURL = UserDefaults.standard.string(forKey: avatarKey) ?? ""
     }
 
     private var client: APIClient { APIClient(token: accessToken) }
@@ -68,6 +74,7 @@ final class AuthStore: ObservableObject {
         do {
             let tok = try await client.login(email: email, password: password)
             persist(tok, email: email)
+            await loadProfile()
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -79,9 +86,8 @@ final class AuthStore: ObservableObject {
         do {
             let idToken = try await GoogleAuth.signIn()
             let tok = try await APIClient().googleLogin(idToken: idToken)
-            // We don't know the email locally; backend owns it. Persist tokens and
-            // let the app read profile from the session as features land.
             persist(tok, email: email ?? "")
+            await loadProfile()
         } catch GoogleAuthError.cancelled {
             // Silent: the user chose to cancel.
         } catch {
@@ -89,11 +95,103 @@ final class AuthStore: ObservableObject {
         }
     }
 
+    func loginWithApple() async {
+        isBusy = true; errorMessage = nil
+        defer { isBusy = false }
+        do {
+            let cred = try await AppleAuth.shared.signIn()
+            let tok = try await APIClient().appleLogin(idToken: cred.idToken, fullName: cred.fullName)
+            persist(tok, email: email ?? "")
+            await loadProfile()
+        } catch AppleAuthError.cancelled {
+            // Silent: user chose to cancel.
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func loginWithPasskey() async {
+        guard #available(iOS 16.0, *) else {
+            errorMessage = "Geçiş anahtarı için iOS 16+ gerekli"; return
+        }
+        isBusy = true; errorMessage = nil
+        defer { isBusy = false }
+        do {
+            let tok = try await PasskeyAuth.shared.login()
+            persist(tok, email: email ?? "")
+            await loadProfile()
+        } catch PasskeyError.cancelled {
+            // Silent.
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    /// Registers a new passkey for the signed-in user. Returns true on success.
+    func registerPasskey() async -> Bool {
+        guard #available(iOS 16.0, *) else {
+            errorMessage = "Geçiş anahtarı için iOS 16+ gerekli"; return false
+        }
+        guard let token = accessToken else { return false }
+        do {
+            try await PasskeyAuth.shared.register(accessToken: token)
+            return true
+        } catch PasskeyError.cancelled {
+            return false
+        } catch {
+            errorMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    /// Fetches the server-side profile (email, name, avatar) and caches it.
+    func loadProfile() async {
+        guard accessToken != nil else { return }
+        do {
+            let p = try await APIClient(token: accessToken).profile()
+            applyProfile(email: p.email, name: p.displayName, avatar: p.avatarURL)
+        } catch {
+            // Non-fatal: keep cached values.
+        }
+    }
+
+    func updateDisplayName(_ name: String) async {
+        do {
+            let p = try await APIClient(token: accessToken).updateProfile(displayName: name)
+            applyProfile(email: p.email, name: p.displayName, avatar: p.avatarURL)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    func uploadAvatar(_ data: Data) async {
+        do {
+            let url = try await APIClient(token: accessToken)
+                .uploadAvatar(imageData: data, filename: "avatar.jpg", contentType: "image/jpeg")
+            avatarURL = url
+            UserDefaults.standard.set(url, forKey: avatarKey)
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
     func logout() {
         accessToken = nil; refreshToken = nil; email = nil
-        UserDefaults.standard.removeObject(forKey: accessKey)
-        UserDefaults.standard.removeObject(forKey: refreshKey)
-        UserDefaults.standard.removeObject(forKey: emailKey)
+        displayName = ""; avatarURL = ""
+        [accessKey, refreshKey, emailKey, nameKey, avatarKey].forEach {
+            UserDefaults.standard.removeObject(forKey: $0)
+        }
+    }
+
+    private func applyProfile(email: String, name: String, avatar: String) {
+        if !email.isEmpty {
+            self.email = email
+            UserDefaults.standard.set(email, forKey: emailKey)
+        }
+        displayName = name
+        avatarURL = avatar
+        UserDefaults.standard.set(name, forKey: nameKey)
+        UserDefaults.standard.set(avatar, forKey: avatarKey)
     }
 
     private func persist(_ tok: TokenResponse, email: String) {

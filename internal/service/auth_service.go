@@ -40,8 +40,9 @@ type AuthService struct {
 	tokens repository.RefreshTokenRepository // optional
 	cfg    config.JWTConfig
 	oauth  config.OAuthConfig
-	// googleVerify is swappable in tests; nil uses the real Google verifier.
+	// googleVerify/appleVerify are swappable in tests; nil uses the real verifier.
 	googleVerify func(ctx context.Context, idToken string, allowedAuds []string) (*GoogleIdentity, error)
+	appleVerify  func(ctx context.Context, idToken string, allowedAuds []string) (*AppleIdentity, error)
 }
 
 // NewAuthService builds the auth service.
@@ -60,6 +61,16 @@ func (s *AuthService) WithOAuth(cfg config.OAuthConfig) *AuthService {
 	s.oauth = cfg
 	return s
 }
+
+// IssueSession mints a fresh access+refresh pair for a known user. Used by
+// passwordless flows (passkey) after the user has been authenticated elsewhere.
+func (s *AuthService) IssueSession(ctx context.Context, u models.User) (access, refresh string, err error) {
+	return s.issueSession(ctx, u)
+}
+
+// Users exposes the user repository for passwordless flows that must upsert or
+// look up accounts (e.g. passkey registration/login).
+func (s *AuthService) Users() repository.UserRepository { return s.users }
 
 // Register creates a new user with an argon2id-hashed password.
 func (s *AuthService) Register(ctx context.Context, email, password, role string) (models.User, error) {
