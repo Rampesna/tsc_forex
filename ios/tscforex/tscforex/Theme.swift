@@ -22,8 +22,12 @@ enum Theme {
 
     static let up           = Color(hex: 0x0ECB81) // gain green
     static let down         = Color(hex: 0xF6465D) // loss red
-    static let accent       = Color(hex: 0xF0B90B) // Binance gold/yellow
-    static let accentSoft   = Color(hex: 0xF0B90B).opacity(0.14)
+    // Brand palette derived from the logo (deep teal #003D4D). The deep tone is
+    // illegible on the near-black background, so interactive elements use a
+    // brighter, readable teal while `brandDeep` is reserved for tiles/gradients.
+    static let brandDeep    = Color(hex: 0x003D4D) // logo teal (backgrounds/tiles)
+    static let accent       = Color(hex: 0x17A2B8) // readable brand teal
+    static let accentSoft   = Color(hex: 0x17A2B8).opacity(0.16)
 
     static func trend(_ v: Double) -> Color { v >= 0 ? up : down }
 

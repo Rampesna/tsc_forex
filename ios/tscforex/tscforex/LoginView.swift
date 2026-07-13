@@ -15,19 +15,23 @@ struct LoginView: View {
     var body: some View {
         ZStack {
             Theme.bg.ignoresSafeArea()
-            LinearGradient(colors: [Theme.accent.opacity(0.12), .clear],
+            LinearGradient(colors: [Theme.brandDeep.opacity(0.55), Theme.accent.opacity(0.10), .clear],
                            startPoint: .top, endPoint: .center)
                 .ignoresSafeArea()
 
             VStack(spacing: 22) {
                 Spacer()
                 VStack(spacing: 12) {
-                    ZStack {
-                        Circle().fill(Theme.accentSoft).frame(width: 84, height: 84)
-                        Image(systemName: "chart.line.uptrend.xyaxis")
-                            .font(.system(size: 36, weight: .bold))
-                            .foregroundStyle(Theme.accent)
-                    }
+                    Image("BrandLogo")
+                        .resizable()
+                        .aspectRatio(contentMode: .fit)
+                        .frame(width: 92, height: 92)
+                        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                                .stroke(Color.white.opacity(0.08), lineWidth: 1)
+                        )
+                        .shadow(color: Theme.brandDeep.opacity(0.6), radius: 18, y: 8)
                     Text("TSC Forex").font(.system(size: 30, weight: .bold)).foregroundStyle(Theme.text)
                     Text("Canlı Altın & Döviz Piyasası")
                         .font(.system(size: 14)).foregroundStyle(Theme.textDim)
