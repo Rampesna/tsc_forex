@@ -1,0 +1,67 @@
+/* TSC Forex — dark, Binance/Stripe-grade design system.
+   Brand palette derived from the logo (deep teal #003D4D). The deep tone is
+   illegible on near-black, so interactive elements use a readable brand teal. */
+:root {
+  --bg: #0b0e11;
+  --bg-elev: #12161c;
+  --surface: #181c22;
+  --surface-hi: #21262e;
+  --stroke: rgba(255, 255, 255, 0.06);
+  --stroke-strong: rgba(255, 255, 255, 0.12);
+
+  --text: #eaecef;
+  --text-dim: #8a94a6;
+  --text-faint: #5e6673;
+
+  --up: #0ecb81;
+  --down: #f6465d;
+  --brand-deep: #003d4d;
+  --accent: #17a2b8;
+  --accent-hi: #1fb6ce;
+  --accent-soft: rgba(23, 162, 184, 0.16);
+
+  --radius: 16px;
+  --radius-sm: 10px;
+  --shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+
+  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
+    "Inter", sans-serif;
+  --mono: "SF Mono", ui-monospace, "JetBrains Mono", Menlo, monospace;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+html, body, #root { height: 100%; }
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: var(--font);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+a { color: inherit; text-decoration: none; }
+button { font-family: inherit; }
+::selection { background: var(--accent-soft); }
+
+/* Scrollbars */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: #232a32; border-radius: 8px; }
+::-webkit-scrollbar-track { background: transparent; }
+
+.mono { font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
+.up { color: var(--up); }
+.down { color: var(--down); }
+
+@keyframes flash-up { 0% { background: rgba(14,203,129,0.22);} 100% { background: transparent;} }
+@keyframes flash-down { 0% { background: rgba(246,70,93,0.22);} 100% { background: transparent;} }
+.flash-up { animation: flash-up 0.6s ease-out; }
+.flash-down { animation: flash-down 0.6s ease-out; }
+
+@keyframes spin { to { transform: rotate(360deg); } }
+.spinner {
+  width: 18px; height: 18px; border-radius: 50%;
+  border: 2px solid rgba(0,0,0,0.25); border-top-color: rgba(0,0,0,0.7);
+  animation: spin 0.7s linear infinite;
+}
+.spinner.light { border-color: rgba(255,255,255,0.2); border-top-color: var(--accent); }

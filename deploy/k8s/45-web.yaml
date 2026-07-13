@@ -1,0 +1,80 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tsc-forex-web
+  namespace: tsc-forex
+  labels:
+    app: tsc-forex-web
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: tsc-forex-web
+  template:
+    metadata:
+      labels:
+        app: tsc-forex-web
+    spec:
+      containers:
+        - name: web
+          image: ghcr.io/rampesna/tsc_forex-web:latest   # built & pushed by CI
+          imagePullPolicy: Always
+          ports:
+            - containerPort: 80
+          livenessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 5
+            periodSeconds: 15
+          readinessProbe:
+            httpGet:
+              path: /
+              port: 80
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          resources:
+            requests:
+              cpu: "50m"
+              memory: "48Mi"
+            limits:
+              cpu: "300m"
+              memory: "192Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: tsc-forex-web
+  namespace: tsc-forex
+  annotations:
+    # aaPanel reverse proxy forwards tsc.talhacan.com → http://127.0.0.1:4774.
+    tsc-forex/proxy-target: "127.0.0.1:4774"
+spec:
+  selector:
+    app: tsc-forex-web
+  ports:
+    - name: http
+      port: 80
+      targetPort: 80
+      nodePort: 4774
+  type: NodePort
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: tsc-forex-web
+  namespace: tsc-forex
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: tsc-forex-web
+  minReplicas: 2
+  maxReplicas: 6
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: 75

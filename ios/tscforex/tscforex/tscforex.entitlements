@@ -7,9 +7,13 @@
 	<array>
 		<string>Default</string>
 	</array>
-	<!-- Passkeys (WebAuthn) + credential autofill for the API domain. -->
+	<!-- Passkeys (WebAuthn) + credential autofill. RP ID is the registrable
+	     parent (talhacan.com) so passkeys are shared with the web app; the API
+	     subdomain is kept for AASA compatibility. AASA must be served at
+	     https://talhacan.com/.well-known/apple-app-site-association. -->
 	<key>com.apple.developer.associated-domains</key>
 	<array>
+		<string>webcredentials:talhacan.com</string>
 		<string>webcredentials:tsc-api.talhacan.com</string>
 	</array>
 	<!-- APNs background push. Xcode toggles this to "production" for release. -->

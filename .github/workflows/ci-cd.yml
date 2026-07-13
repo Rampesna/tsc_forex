@@ -9,6 +9,7 @@ on:
 env:
   # GHCR requires a lowercase path; the owner "Rampesna" has an uppercase letter.
   IMAGE: ghcr.io/rampesna/tsc_forex
+  WEB_IMAGE: ghcr.io/rampesna/tsc_forex-web
 
 jobs:
   test:
@@ -56,6 +57,17 @@ jobs:
           # GitHub cache keeps CI fast; ephemeral runners leave nothing behind.
           cache-from: type=gha
           cache-to: type=gha,mode=max
+      - name: Build & push web image (React SPA + nginx)
+        uses: docker/build-push-action@v6
+        with:
+          context: ./web
+          file: web/Dockerfile
+          push: true
+          tags: |
+            ${{ env.WEB_IMAGE }}:latest
+            ${{ env.WEB_IMAGE }}:${{ github.sha }}
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web
 
   deploy:
     name: Deploy to Kubernetes
@@ -74,6 +86,7 @@ jobs:
           SSH_HOST: ${{ secrets.SSH_HOST }}
           SSH_USER: ${{ secrets.SSH_USER }}
           IMAGE_REF: ${{ env.IMAGE }}:${{ github.sha }}
+          WEB_IMAGE_REF: ${{ env.WEB_IMAGE }}:${{ github.sha }}
           DB_PASSWORD: ${{ secrets.APP_DATABASE_PASSWORD }}
           JWT_SECRET: ${{ secrets.APP_JWT_SECRET }}
           REDIS_PASSWORD: ${{ secrets.APP_REDIS_PASSWORD }}
@@ -113,10 +126,12 @@ jobs:
           # Apply manifests (ConfigMap, Postgres, MinIO, Redis, app, HPA).
           kubectl apply -k deploy/k8s
 
-          # Roll out the freshly built image.
+          # Roll out the freshly built images (API + web).
           kubectl -n \$NS set image deployment/tsc-forex-app app="$IMAGE_REF"
+          kubectl -n \$NS set image deployment/tsc-forex-web web="$WEB_IMAGE_REF"
           kubectl -n \$NS patch serviceaccount default -p '{"imagePullSecrets":[{"name":"ghcr-pull"}]}' || true
           kubectl -n \$NS rollout status deployment/tsc-forex-app --timeout=180s
+          kubectl -n \$NS rollout status deployment/tsc-forex-web --timeout=180s
 
           # Prune leftover images/build cache so nothing accumulates on the host.
           docker image prune -af >/dev/null 2>&1 || true

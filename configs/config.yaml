@@ -134,7 +134,7 @@ tracing:
 
 cors:
   allowed_origins: ["*"]
-  allowed_methods: ["GET", "POST", "DELETE", "OPTIONS"]
+  allowed_methods: ["GET", "POST", "PATCH", "PUT", "DELETE", "OPTIONS"]
   allowed_headers: ["Authorization", "Content-Type", "X-Request-ID"]
   allow_credentials: false
   max_age: 86400
@@ -161,20 +161,24 @@ oauth:
     - 83380535128-pr4lcmaerra3sdqf8211t1nc4n4pbksj.apps.googleusercontent.com   # Android (installed)
     - 83380535128-o4h4v9rc9u1tuis9hggcckqei0idahg3.apps.googleusercontent.com   # Web (Android Credential Manager serverClientId)
   apple_bundle_ids:
-    - talhacan.tscforex
+    - talhacan.tscforex            # iOS app bundle id (native Sign in with Apple)
+    - talhacan.tscforex.web        # Apple Services ID (web Sign in with Apple)
   # Apple Developer Team ID — used to build the AASA webcredentials for passkeys
   # + Sign in with Apple. Overridable via APP_OAUTH_APPLE_TEAM_ID.
   apple_team_id: SGQ86WW4J3
   android_package_name: com.example.tsc.forex
   android_sha256: []
 
-# Passkey (WebAuthn) — usernameless login. RP ID must match the API domain the
-# apps are associated with (AASA / assetlinks).
+# Passkey (WebAuthn) — usernameless login. RP ID is the registrable parent
+# domain (talhacan.com) so the SAME credentials work across the web app
+# (tsc.talhacan.com) and the native apps (associated with any *.talhacan.com).
+# For iOS/Android, the AASA/assetlinks must be served at https://talhacan.com.
 webauthn:
   enabled: true
   rp_display_name: TSC Forex
-  rp_id: tsc-api.talhacan.com
+  rp_id: talhacan.com
   rp_origins:
+    - https://tsc.talhacan.com
     - https://tsc-api.talhacan.com
 
 rate_limit:

@@ -8,4 +8,5 @@ resources:
   - 25-minio.yaml
   - 30-redis.yaml
   - 40-app.yaml
+  - 45-web.yaml
   - 50-ingress.yaml
