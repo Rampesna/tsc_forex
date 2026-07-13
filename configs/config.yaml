@@ -147,6 +147,11 @@ notify:
   apns_team_id: ""
   apns_key_path: ""
   apns_sandbox: true
+  # Android push via Firebase Cloud Messaging (HTTP v1). Set via
+  # APP_NOTIFY_FCM_* env; credential file mounted at /etc/push/fcm.json in k8s.
+  fcm_enabled: false
+  fcm_project_id: ""
+  fcm_credential_path: ""
 
 # Social login. These are public OAuth client IDs (not secrets); they are the
 # accepted "aud" values when verifying Google ID tokens from the mobile apps.

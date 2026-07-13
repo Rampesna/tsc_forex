@@ -179,10 +179,14 @@ func run() error {
 		if s, err := service.NewAPNsSender(cfg.Notify, log); err == nil {
 			senders["ios"] = s
 			log.Info("apns push enabled", zap.String("topic", cfg.Notify.APNsTopic))
+		} else if cfg.Notify.APNsEnabled {
+			log.Warn("apns push disabled", zap.Error(err))
 		}
 		if s, err := service.NewFCMSender(cfg.Notify, log); err == nil {
 			senders["android"] = s
 			log.Info("fcm push enabled", zap.String("project", cfg.Notify.FCMProjectID))
+		} else if cfg.Notify.FCMEnabled {
+			log.Warn("fcm push disabled", zap.Error(err))
 		}
 		notifier := service.NewNotifier(notifRepo, deviceRepo, hub, senders, log)
 		alertEngine = service.NewAlertEngine(bus, alertRepo, notifier, cfg.Notify.AlertCooldown, log)

@@ -258,8 +258,15 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("notify.alert_cooldown", "60s")
 	v.SetDefault("notify.apns_enabled", false)
 	v.SetDefault("notify.apns_topic", "talhacan.tscforex")
+	v.SetDefault("notify.apns_key_id", "")
+	v.SetDefault("notify.apns_team_id", "")
+	v.SetDefault("notify.apns_key_path", "")
 	v.SetDefault("notify.apns_sandbox", true)
 	v.SetDefault("notify.fcm_enabled", false)
+	// These must be registered so AutomaticEnv binds APP_NOTIFY_FCM_* even when
+	// they are absent from config.yaml (e.g. in the container image).
+	v.SetDefault("notify.fcm_project_id", "")
+	v.SetDefault("notify.fcm_credential_path", "")
 
 	v.SetDefault("storage.enabled", false)
 	v.SetDefault("storage.endpoint", "minio:9000")
