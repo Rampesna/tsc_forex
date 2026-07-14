@@ -116,8 +116,6 @@ struct MarketsView: View {
                     Text(editMode == .active ? "Bitti" : "Düzenle")
                         .font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.accent)
                 }
-            } else {
-                ConnectionDot(connected: prices.connected)
             }
         }
         .padding(.horizontal, 16).padding(.top, 6).padding(.bottom, 10)

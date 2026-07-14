@@ -143,9 +143,16 @@ final class PriceStore: ObservableObject {
         shouldRun = true
         reconnectAttempts = 0
         startNetMonitor()
-        Task { await bootstrapREST() }
-        Task { await syncFavorites() }
-        openSocket()
+        // Load the full snapshot over REST FIRST, then open the socket. This
+        // avoids the cold-start flicker where the list would otherwise render
+        // one instrument at a time as sparse WS updates arrive before the
+        // snapshot populated the full list.
+        Task {
+            await bootstrapREST()
+            await syncFavorites()
+            guard shouldRun else { return }
+            openSocket()
+        }
     }
 
     private func startNetMonitor() {
