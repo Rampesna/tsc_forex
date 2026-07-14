@@ -250,3 +250,58 @@ func (w *WebAuthnCredential) BeforeCreate(_ *gorm.DB) error {
 	}
 	return nil
 }
+
+// UserGamification is the per-user engagement state that powers streaks, XP and
+// levels. One row per user (UserID is the primary key). LastCheckInDay is the
+// Istanbul calendar day ("2006-01-02") of the last daily check-in, so streaks
+// use a stable local-midnight boundary.
+type UserGamification struct {
+	UserID         uuid.UUID `gorm:"type:uuid;primaryKey" json:"user_id"`
+	XP             int64     `gorm:"not null;default:0" json:"xp"`
+	Level          int       `gorm:"not null;default:1" json:"level"`
+	CurrentStreak  int       `gorm:"not null;default:0" json:"current_streak"`
+	LongestStreak  int       `gorm:"not null;default:0" json:"longest_streak"`
+	LastCheckInDay string    `gorm:"type:varchar(10)" json:"last_check_in_day"`
+	TotalCheckIns  int       `gorm:"not null;default:0" json:"total_check_ins"`
+	CreatedAt      time.Time `json:"created_at"`
+	UpdatedAt      time.Time `json:"updated_at"`
+}
+
+func (UserGamification) TableName() string { return "user_gamification" }
+
+// UserBadge is an earned achievement (one row per user+badge code).
+type UserBadge struct {
+	ID       uuid.UUID `gorm:"type:uuid;primaryKey" json:"id"`
+	UserID   uuid.UUID `gorm:"type:uuid;not null;uniqueIndex:uq_user_badge" json:"user_id"`
+	Code     string    `gorm:"type:varchar(48);not null;uniqueIndex:uq_user_badge" json:"code"`
+	EarnedAt time.Time `json:"earned_at"`
+}
+
+func (UserBadge) TableName() string { return "user_badges" }
+
+func (b *UserBadge) BeforeCreate(_ *gorm.DB) error {
+	if b.ID == uuid.Nil {
+		b.ID = uuid.New()
+	}
+	return nil
+}
+
+// GamificationEvent is an XP ledger entry. It drives daily quests (today's
+// events) and the weekly leaderboard (sum of XP since the ISO week start).
+type GamificationEvent struct {
+	ID        uuid.UUID `gorm:"type:uuid;primaryKey" json:"id"`
+	UserID    uuid.UUID `gorm:"type:uuid;index:idx_gam_user_created,priority:1;not null" json:"user_id"`
+	Type      string    `gorm:"type:varchar(48);not null" json:"type"`
+	XP        int       `gorm:"not null;default:0" json:"xp"`
+	DayKey    string    `gorm:"type:varchar(10);index" json:"day_key"`
+	CreatedAt time.Time `gorm:"index:idx_gam_user_created,priority:2;not null" json:"created_at"`
+}
+
+func (GamificationEvent) TableName() string { return "gamification_events" }
+
+func (e *GamificationEvent) BeforeCreate(_ *gorm.DB) error {
+	if e.ID == uuid.Nil {
+		e.ID = uuid.New()
+	}
+	return nil
+}

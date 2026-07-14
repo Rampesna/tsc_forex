@@ -62,6 +62,9 @@ func Migrate(db *gorm.DB) error {
 		&models.DeviceToken{},
 		&models.WebAuthnCredential{},
 		&models.AuthIdentity{},
+		&models.UserGamification{},
+		&models.UserBadge{},
+		&models.GamificationEvent{},
 	); err != nil {
 		return err
 	}
@@ -109,6 +112,12 @@ func addProductionIndexes(db *gorm.DB) error {
 
 		// Device fan-out for push: list a user's devices quickly.
 		`CREATE INDEX IF NOT EXISTS idx_device_tokens_user ON device_tokens (user_id)`,
+
+		// Gamification: daily quests read today's events; the weekly leaderboard
+		// sums XP since the week start. Composite (user, created_at) + a
+		// (day_key) index keep both cheap.
+		`CREATE INDEX IF NOT EXISTS idx_gam_events_user_created ON gamification_events (user_id, created_at DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_gam_events_created ON gamification_events (created_at)`,
 	}
 	for _, s := range stmts {
 		if err := db.Exec(s).Error; err != nil {

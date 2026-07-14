@@ -22,12 +22,13 @@ type Deps struct {
 	WS      *ws.Handler
 	Metrics *metrics.Metrics
 
-	Gold       *api.GoldHandler
-	Instrument *api.InstrumentHandler
-	System     *api.SystemHandler
-	Auth       *api.AuthHandler
-	User       *api.UserHandler    // protected per-user features; may be nil
-	Passkey    *api.PasskeyHandler // WebAuthn; may be nil
+	Gold          *api.GoldHandler
+	Instrument    *api.InstrumentHandler
+	System        *api.SystemHandler
+	Auth          *api.AuthHandler
+	User          *api.UserHandler          // protected per-user features; may be nil
+	Passkey       *api.PasskeyHandler       // WebAuthn; may be nil
+	Gamification  *api.GamificationHandler // streak/XP/badges/leaderboard; may be nil
 
 	AuthService *service.AuthService // for protected-route middleware; may be nil
 }
@@ -137,6 +138,13 @@ func NewEngine(d Deps) *gin.Engine {
 				authed.DELETE("/me/notifications", d.User.ClearNotifications)
 
 				authed.POST("/me/devices", d.User.RegisterDevice)
+
+				// Gamification: daily streak, XP/levels, badges, leaderboard.
+				if d.Gamification != nil {
+					authed.GET("/me/gamification", d.Gamification.Get)
+					authed.POST("/me/gamification/checkin", d.Gamification.CheckIn)
+					authed.GET("/me/gamification/leaderboard", d.Gamification.Leaderboard)
+				}
 
 				// Passkey registration for the signed-in user.
 				if d.Passkey != nil {

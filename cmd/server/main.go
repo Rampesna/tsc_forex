@@ -136,6 +136,7 @@ func run() error {
 		authH       *api.AuthHandler
 		userH       *api.UserHandler
 		passkeyH    *api.PasskeyHandler
+		gamH        *api.GamificationHandler
 		instrRepo   repository.PriceRepository
 		histWriter  *service.HistoryWriter
 		instrWriter *service.InstrumentWriter
@@ -200,6 +201,14 @@ func run() error {
 		notifier := service.NewNotifier(notifRepo, deviceRepo, hub, senders, log)
 		alertEngine = service.NewAlertEngine(bus, alertRepo, notifier, cfg.Notify.AlertCooldown, log)
 		alertEngine.Start(ctx)
+
+		// Gamification: streaks, XP/levels, badges, weekly leaderboard. Reuses
+		// the notifier so badge/quest wins arrive as WS + push notifications,
+		// and awards XP when the user adds favorites / creates alerts.
+		gamRepo := repository.NewGamificationRepository(db, m)
+		gamSvc := service.NewGamificationService(gamRepo, notifier, log)
+		gamH = api.NewGamificationHandler(gamSvc)
+		userH.WithGamification(gamSvc)
 
 		// Passkey (WebAuthn) — optional; enabled when configured.
 		credRepo := repository.NewWebAuthnCredentialRepository(db, m)
@@ -266,10 +275,11 @@ func run() error {
 			DBPing:    dbPingOrNil(db, dbPing),
 			ClientsFn: hub.ClientCount,
 		}),
-		Auth:        authH,
-		User:        userH,
-		Passkey:     passkeyH,
-		AuthService: authSvc,
+		Auth:         authH,
+		User:         userH,
+		Passkey:      passkeyH,
+		Gamification: gamH,
+		AuthService:  authSvc,
 	})
 
 	srv := &http.Server{

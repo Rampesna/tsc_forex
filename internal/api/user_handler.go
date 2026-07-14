@@ -1,6 +1,7 @@
 package api
 
 import (
+	"context"
 	"fmt"
 	"io"
 	"net/http"
@@ -28,8 +29,25 @@ type UserHandler struct {
 	notifs  repository.NotificationRepository
 	devices repository.DeviceTokenRepository
 	users   repository.UserRepository
-	store   storage.Store // may be nil when object storage is disabled
+	store   storage.Store       // may be nil when object storage is disabled
+	gam     GamificationAwarder // may be nil when gamification is disabled
 	log     *zap.Logger
+}
+
+// WithGamification wires the XP awarder so favorites/alerts grant engagement
+// XP. Returns the handler for chaining. Safe to skip (nil-guarded at call site).
+func (h *UserHandler) WithGamification(g GamificationAwarder) *UserHandler {
+	h.gam = g
+	return h
+}
+
+// award grants XP asynchronously (fire-and-forget) so it never delays the API
+// response or gets cancelled with the request context.
+func (h *UserHandler) award(userID uuid.UUID, action string) {
+	if h.gam == nil {
+		return
+	}
+	go h.gam.Award(context.Background(), userID, action)
 }
 
 // NewUserHandler builds the user handler.
@@ -257,6 +275,7 @@ func (h *UserHandler) AddWatchlist(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "add failed"})
 		return
 	}
+	h.award(uid, service.EventFavorite)
 	c.JSON(http.StatusCreated, gin.H{"code": req.Code})
 }
 
@@ -332,6 +351,7 @@ func (h *UserHandler) CreateAlert(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "create failed"})
 		return
 	}
+	h.award(uid, service.EventAlert)
 	c.JSON(http.StatusCreated, AlertResponse{
 		ID:        alert.ID.String(),
 		Code:      alert.Code,
