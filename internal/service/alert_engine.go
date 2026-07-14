@@ -3,6 +3,8 @@ package service
 import (
 	"context"
 	"fmt"
+	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -119,11 +121,42 @@ func crossed(a models.PriceAlert, price float64) bool {
 }
 
 func alertMessage(a models.PriceAlert, ip domain.InstrumentPrice) (title, body string) {
-	dir := "üstüne çıktı"
+	price := formatTRY(ip.Price)
+	threshold := formatTRY(a.Threshold)
 	if a.Direction == models.AlertBelow {
-		dir = "altına indi"
+		title = fmt.Sprintf("%s geriledi", ip.DisplayName)
+		body = fmt.Sprintf("%s, ₺%s eşiğinin altına indi. Güncel fiyat ₺%s.", ip.DisplayName, threshold, price)
+	} else {
+		title = fmt.Sprintf("%s yükseldi", ip.DisplayName)
+		body = fmt.Sprintf("%s, ₺%s eşiğini yukarı geçti. Güncel fiyat ₺%s.", ip.DisplayName, threshold, price)
 	}
-	title = fmt.Sprintf("%s fiyat alarmı", ip.DisplayName)
-	body = fmt.Sprintf("%s, %.2f eşiğinin %s. Güncel fiyat: %.2f ₺", ip.DisplayName, a.Threshold, dir, ip.Price)
 	return title, body
+}
+
+// formatTRY renders a value with Turkish grouping (1.234,56). Sub-1 values keep
+// 4 decimals so low-priced instruments (JPY, SHIB) don't collapse to 0,00.
+func formatTRY(v float64) string {
+	neg := v < 0
+	if neg {
+		v = -v
+	}
+	decimals := 2
+	if v > 0 && v < 1 {
+		decimals = 4
+	}
+	s := strconv.FormatFloat(v, 'f', decimals, 64)
+	intPart, frac, _ := strings.Cut(s, ".")
+	var b strings.Builder
+	n := len(intPart)
+	for i := 0; i < n; i++ {
+		if i > 0 && (n-i)%3 == 0 {
+			b.WriteByte('.')
+		}
+		b.WriteByte(intPart[i])
+	}
+	out := b.String() + "," + frac
+	if neg {
+		out = "-" + out
+	}
+	return out
 }

@@ -41,14 +41,36 @@ final class PushManager: NSObject, ObservableObject, UNUserNotificationCenterDel
         }
     }
 
-    /// Surface a notification banner while the app is running.
+    /// Surface a notification banner while the app is running. Attaches the TSC
+    /// logo so the banner is clearly branded (the app icon already shows on the
+    /// left; this adds the logo thumbnail on the trailing edge).
     func showLocal(title: String, body: String) {
         let content = UNMutableNotificationContent()
         content.title = title
         content.body = body
         content.sound = .default
+        if let attachment = Self.logoAttachment() {
+            content.attachments = [attachment]
+        }
         let req = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
         UNUserNotificationCenter.current().add(req)
+    }
+
+    /// Writes the bundled logo to a temp file once and wraps it as a reusable
+    /// notification attachment. Returns nil if the image can't be materialised.
+    private static var cachedLogoURL: URL?
+    private static func logoAttachment() -> UNNotificationAttachment? {
+        let url: URL
+        if let cached = cachedLogoURL, FileManager.default.fileExists(atPath: cached.path) {
+            url = cached
+        } else {
+            guard let img = UIImage(named: "Logo"), let data = img.pngData() else { return nil }
+            let tmp = FileManager.default.temporaryDirectory.appendingPathComponent("tsc-notif-logo.png")
+            do { try data.write(to: tmp) } catch { return nil }
+            cachedLogoURL = tmp
+            url = tmp
+        }
+        return try? UNNotificationAttachment(identifier: "logo", url: url, options: nil)
     }
 
     // Show banners even when the app is in the foreground.

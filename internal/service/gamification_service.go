@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"fmt"
 	"math"
 	"time"
 
@@ -329,7 +330,11 @@ func (g *GamificationService) evaluate(ctx context.Context, uid uuid.UUID, st *m
 		now := time.Now().UTC()
 		newly = append(newly, BadgeStatus{def.Code, def.Name, def.Description, def.Icon, true, &now})
 		if g.notifier != nil {
-			g.notifier.Notify(ctx, uid, nil, "", "🏅 Yeni Rozet: "+def.Name, def.Description, 0)
+			body := def.Description
+			if def.XP > 0 {
+				body = fmt.Sprintf("%s · +%d XP kazandın.", def.Description, def.XP)
+			}
+			g.notifier.Notify(ctx, uid, nil, "", "Yeni rozet: "+def.Name, body, 0)
 		}
 	}
 
@@ -339,7 +344,9 @@ func (g *GamificationService) evaluate(ctx context.Context, uid uuid.UUID, st *m
 		st.XP += int64(dailyBonusXP)
 		_ = g.repo.AddEvent(ctx, &models.GamificationEvent{UserID: uid, Type: EventDailyComplete, XP: dailyBonusXP, DayKey: today})
 		if g.notifier != nil {
-			g.notifier.Notify(ctx, uid, nil, "", "✅ Günlük Görevler Tamamlandı", "Bugünkü tüm görevleri bitirdin, bonus XP kazandın!", 0)
+			g.notifier.Notify(ctx, uid, nil, "",
+				"Günlük görevler tamam",
+				fmt.Sprintf("Bugünkü tüm görevleri tamamladın ve +%d bonus XP kazandın. Yarın görüşürüz!", dailyBonusXP), 0)
 		}
 	}
 

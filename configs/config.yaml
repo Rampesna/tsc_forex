@@ -165,6 +165,7 @@ oauth:
     - 83380535128-16nfuuc3p0jok4l4htitlubgpsjah622.apps.googleusercontent.com   # iOS
     - 83380535128-pr4lcmaerra3sdqf8211t1nc4n4pbksj.apps.googleusercontent.com   # Android (installed)
     - 83380535128-o4h4v9rc9u1tuis9hggcckqei0idahg3.apps.googleusercontent.com   # Web (Android Credential Manager serverClientId)
+    - 986533998041-ln1jog6861sleiii0ajcsq4bt48ruin1.apps.googleusercontent.com  # Web (tscforex-16f7e, JS origin tsc.talhacan.com)
   apple_bundle_ids:
     - talhacan.tscforex            # iOS app bundle id (native Sign in with Apple)
     - talhacan.tscforex.web        # Apple Services ID (web Sign in with Apple)
