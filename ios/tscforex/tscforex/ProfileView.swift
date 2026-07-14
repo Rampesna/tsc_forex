@@ -13,7 +13,6 @@ struct ProfileView: View {
     @State private var pickerItem: PhotosPickerItem?
     @State private var uploading = false
     @State private var savedName = false
-    @State private var passkeyDone = false
 
     var body: some View {
         ZStack {
@@ -133,23 +132,33 @@ struct ProfileView: View {
         .onChange(of: name) { _, _ in savedName = false }
     }
 
+    @State private var showPasskeys = false
+
     private var passkeyCard: some View {
         Card {
             VStack(alignment: .leading, spacing: 10) {
                 sectionLabel("GÜVENLİK")
-                Text("Bu cihazda parolasız, hızlı ve güvenli giriş için bir geçiş anahtarı (passkey) oluştur.")
+                Text("Parolasız, hızlı ve güvenli giriş için geçiş anahtarlarını (passkey) yönetin; ekleyin, yeniden adlandırın veya silin.")
                     .font(.system(size: 12)).foregroundStyle(Theme.textDim)
+                if let msg = auth.errorMessage, !msg.isEmpty {
+                    Text(msg)
+                        .font(.system(size: 12))
+                        .foregroundStyle(Theme.down)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(10)
+                        .background(Theme.down.opacity(0.12), in: RoundedRectangle(cornerRadius: 10))
+                }
                 Button {
-                    Task {
-                        let ok = await auth.registerPasskey()
-                        if ok { passkeyDone = true; Haptics.success() }
-                    }
+                    auth.errorMessage = nil
+                    showPasskeys = true
                 } label: {
-                    Label(passkeyDone ? "Geçiş anahtarı eklendi ✓" : "Geçiş anahtarı oluştur",
-                          systemImage: "person.badge.key")
+                    Label("Geçiş anahtarlarını yönet", systemImage: "person.badge.key")
                 }
                 .buttonStyle(FilledButtonStyle(color: Theme.accentSoft, textColor: Theme.accent))
             }
+        }
+        .sheet(isPresented: $showPasskeys) {
+            PasskeyManagerView().environmentObject(auth)
         }
     }
 

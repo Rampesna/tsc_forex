@@ -60,6 +60,23 @@ struct PricesResponse: Codable {
     let prices: [InstrumentPrice]
 }
 
+// A registered passkey (WebAuthn credential) for the signed-in user.
+struct Passkey: Codable, Identifiable {
+    let id: String
+    let name: String
+    let synced: Bool
+    let createdAt: Date?
+
+    enum CodingKeys: String, CodingKey {
+        case id, name, synced
+        case createdAt = "created_at"
+    }
+}
+
+struct PasskeyListResponse: Codable {
+    let passkeys: [Passkey]
+}
+
 // OHLC candle for charts.
 struct Candle: Codable, Identifiable {
     var id: Date { bucket }

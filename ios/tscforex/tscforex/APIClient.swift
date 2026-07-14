@@ -150,6 +150,22 @@ struct APIClient {
         return (try? makeDecoder().decode(ProvidersResp.self, from: data).providers) ?? []
     }
 
+    // MARK: Passkeys (management)
+
+    func listPasskeys() async throws -> [Passkey] {
+        let data = try await request("me/passkeys", authed: true)
+        return (try? makeDecoder().decode(PasskeyListResponse.self, from: data).passkeys) ?? []
+    }
+
+    func deletePasskey(id: String) async throws {
+        _ = try await request("me/passkeys/\(id)", method: "DELETE", authed: true)
+    }
+
+    func renamePasskey(id: String, name: String) async throws {
+        _ = try await request("me/passkeys/\(id)", method: "PATCH",
+                              body: ["name": name], authed: true)
+    }
+
     // MARK: Profile
 
     func profile() async throws -> ProfileResponse {
