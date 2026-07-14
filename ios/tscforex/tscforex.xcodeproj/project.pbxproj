@@ -6,11 +6,48 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXBuildFile section */
+		7A000000000000000000010B /* TSCWidgetExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 7A0000000000000000000102 /* TSCWidgetExtension.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+/* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		7A000000000000000000010C /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 8186EE4C3002484200F9276D /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 7A0000000000000000000101;
+			remoteInfo = TSCWidgetExtension;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		7A000000000000000000010A /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				7A000000000000000000010B /* TSCWidgetExtension.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
+		7A0000000000000000000102 /* TSCWidgetExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = TSCWidgetExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		8186EE543002484200F9276D /* tscforex.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = tscforex.app; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
+		7A0000000000000000000103 /* TSCWidget */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				7A0000000000000000000110 /* Exceptions for "TSCWidget" folder in "TSCWidgetExtension" target */,
+			);
+			path = TSCWidget;
+			sourceTree = "<group>";
+		};
 		8186EE563002484200F9276D /* tscforex */ = {
 			isa = PBXFileSystemSynchronizedRootGroup;
 			path = tscforex;
@@ -18,7 +55,25 @@
 		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		7A0000000000000000000110 /* Exceptions for "TSCWidget" folder in "TSCWidgetExtension" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				Info.plist,
+				TSCWidget.entitlements,
+			);
+			target = 7A0000000000000000000101 /* TSCWidgetExtension */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
 /* Begin PBXFrameworksBuildPhase section */
+		7A0000000000000000000105 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		8186EE513002484200F9276D /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
@@ -33,6 +88,7 @@
 			isa = PBXGroup;
 			children = (
 				8186EE563002484200F9276D /* tscforex */,
+				7A0000000000000000000103 /* TSCWidget */,
 				8186EE553002484200F9276D /* Products */,
 			);
 			sourceTree = "<group>";
@@ -41,6 +97,7 @@
 			isa = PBXGroup;
 			children = (
 				8186EE543002484200F9276D /* tscforex.app */,
+				7A0000000000000000000102 /* TSCWidgetExtension.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -48,6 +105,28 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		7A0000000000000000000101 /* TSCWidgetExtension */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 7A0000000000000000000107 /* Build configuration list for PBXNativeTarget "TSCWidgetExtension" */;
+			buildPhases = (
+				7A0000000000000000000104 /* Sources */,
+				7A0000000000000000000105 /* Frameworks */,
+				7A0000000000000000000106 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				7A0000000000000000000103 /* TSCWidget */,
+			);
+			name = TSCWidgetExtension;
+			packageProductDependencies = (
+			);
+			productName = TSCWidgetExtension;
+			productReference = 7A0000000000000000000102 /* TSCWidgetExtension.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		8186EE533002484200F9276D /* tscforex */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = 8186EE5F3002484300F9276D /* Build configuration list for PBXNativeTarget "tscforex" */;
@@ -55,10 +134,12 @@
 				8186EE503002484200F9276D /* Sources */,
 				8186EE513002484200F9276D /* Frameworks */,
 				8186EE523002484200F9276D /* Resources */,
+				7A000000000000000000010A /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				7A000000000000000000010D /* PBXTargetDependency */,
 			);
 			fileSystemSynchronizedGroups = (
 				8186EE563002484200F9276D /* tscforex */,
@@ -80,6 +161,9 @@
 				LastSwiftUpdateCheck = 2620;
 				LastUpgradeCheck = 2620;
 				TargetAttributes = {
+					7A0000000000000000000101 = {
+						CreatedOnToolsVersion = 26.2;
+					};
 					8186EE533002484200F9276D = {
 						CreatedOnToolsVersion = 26.2;
 					};
@@ -100,11 +184,19 @@
 			projectRoot = "";
 			targets = (
 				8186EE533002484200F9276D /* tscforex */,
+				7A0000000000000000000101 /* TSCWidgetExtension */,
 			);
 		};
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
+		7A0000000000000000000106 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		8186EE523002484200F9276D /* Resources */ = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -115,6 +207,13 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		7A0000000000000000000104 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		8186EE503002484200F9276D /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -124,7 +223,71 @@
 		};
 /* End PBXSourcesBuildPhase section */
 
+/* Begin PBXTargetDependency section */
+		7A000000000000000000010D /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 7A0000000000000000000101 /* TSCWidgetExtension */;
+			targetProxy = 7A000000000000000000010C /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
 /* Begin XCBuildConfiguration section */
+		7A0000000000000000000108 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = TSCWidget/TSCWidget.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = SGQ86WW4J3;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = TSCWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "TSC Forex";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = talhacan.tscforex.TSCWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		7A0000000000000000000109 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = TSCWidget/TSCWidget.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = SGQ86WW4J3;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = TSCWidget/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "TSC Forex";
+				INFOPLIST_KEY_NSHumanReadableCopyright = "";
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = talhacan.tscforex.TSCWidget;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 		8186EE5D3002484300F9276D /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -317,6 +480,15 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		7A0000000000000000000107 /* Build configuration list for PBXNativeTarget "TSCWidgetExtension" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				7A0000000000000000000108 /* Debug */,
+				7A0000000000000000000109 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
 		8186EE4F3002484200F9276D /* Build configuration list for PBXProject "tscforex" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (

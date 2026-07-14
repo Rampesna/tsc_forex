@@ -117,6 +117,23 @@ final class PriceStore: ObservableObject {
     private func persistFavorites() {
         UserDefaults.standard.set(Array(favorites), forKey: favKey)
         UserDefaults.standard.set(favoriteOrder, forKey: favOrderKey)
+        syncWidget(force: true)
+    }
+
+    // MARK: Widget hand-off
+
+    private var lastWidgetSync = Date.distantPast
+
+    /// Pushes the top-4 favorites (in the user's order) to the shared App Group
+    /// so the home-screen widget can render them. Throttled to avoid churning
+    /// WidgetKit on every tick; `force` bypasses the throttle (e.g. on reorder).
+    func syncWidget(force: Bool = false) {
+        if !force && Date().timeIntervalSince(lastWidgetSync) < 20 { return }
+        lastWidgetSync = Date()
+        let items = orderedFavorites().prefix(4).map {
+            WidgetBridge.Item(code: $0.code, name: $0.displayName, price: $0.price, changePct: $0.changePct)
+        }
+        WidgetBridge.write(Array(items))
     }
 
     // MARK: Lifecycle
@@ -176,6 +193,7 @@ final class PriceStore: ObservableObject {
         if let snapshot = try? await client.prices() {
             for p in snapshot { ingest(p) }
         }
+        syncWidget(force: true)
     }
 
     // Manual refresh (pull-to-refresh): re-pull snapshot + reseed sparklines.
@@ -249,6 +267,7 @@ final class PriceStore: ObservableObject {
         buf.append(p.price)
         if buf.count > sparkCap { buf.removeFirst(buf.count - sparkCap) }
         spark[p.code] = buf
+        if favorites.contains(p.code) { syncWidget() }
     }
 
     private func scheduleReconnect() {

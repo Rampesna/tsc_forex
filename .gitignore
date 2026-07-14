@@ -38,3 +38,6 @@ secrets.local.*
 
 # iOS local build output
 build_ios/
+
+# iOS local build artifacts
+ios/tscforex/build_dd/
