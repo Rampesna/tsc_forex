@@ -88,6 +88,10 @@ func (u webUser) WebAuthnCredentials() []webauthn.Credential {
 			ID:        c.CredentialID,
 			PublicKey: c.PublicKey,
 			Transport: transports,
+			Flags: webauthn.CredentialFlags{
+				BackupEligible: c.BackupEligible,
+				BackupState:    c.BackupState,
+			},
 			Authenticator: webauthn.Authenticator{
 				AAGUID:    c.AAGUID,
 				SignCount: c.SignCount,
@@ -184,12 +188,14 @@ func (s *PasskeyService) FinishRegistration(ctx context.Context, userID uuid.UUI
 		return err
 	}
 	rec := &models.WebAuthnCredential{
-		UserID:       userID,
-		CredentialID: cred.ID,
-		PublicKey:    cred.PublicKey,
-		AAGUID:       cred.Authenticator.AAGUID,
-		SignCount:    cred.Authenticator.SignCount,
-		Transports:   joinTransports(cred.Transport),
+		UserID:         userID,
+		CredentialID:   cred.ID,
+		PublicKey:      cred.PublicKey,
+		AAGUID:         cred.Authenticator.AAGUID,
+		SignCount:      cred.Authenticator.SignCount,
+		Transports:     joinTransports(cred.Transport),
+		BackupEligible: cred.Flags.BackupEligible,
+		BackupState:    cred.Flags.BackupState,
 	}
 	return s.creds.Create(ctx, rec)
 }

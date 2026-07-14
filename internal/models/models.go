@@ -233,7 +233,13 @@ type WebAuthnCredential struct {
 	AAGUID       []byte    `gorm:"type:bytea" json:"-"`
 	SignCount    uint32    `gorm:"not null;default:0" json:"-"`
 	Transports   string    `gorm:"type:varchar(128)" json:"-"` // comma-separated
-	CreatedAt    time.Time `json:"created_at"`
+	// WebAuthn credential flags. BackupEligible/BackupState MUST be persisted and
+	// replayed at login: synced (iCloud/Google) passkeys set BE=1, and go-webauthn
+	// rejects the assertion if the stored BE differs from the response ("Backup
+	// Eligible flag inconsistency").
+	BackupEligible bool      `gorm:"not null;default:false" json:"-"`
+	BackupState    bool      `gorm:"not null;default:false" json:"-"`
+	CreatedAt      time.Time `json:"created_at"`
 }
 
 func (WebAuthnCredential) TableName() string { return "webauthn_credentials" }
