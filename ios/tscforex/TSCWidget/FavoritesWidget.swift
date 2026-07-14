@@ -157,30 +157,58 @@ struct FavoritesWidgetView: View {
         Group {
             if entry.items.isEmpty {
                 emptyState
+            } else if family == .systemSmall {
+                smallBody
             } else {
-                VStack(spacing: 10) {
-                    ForEach(Array(entry.items.prefix(2)), id: \.code) { item in
-                        card(item)
-                    }
-                }
+                mediumBody
             }
         }
-        .overlay(alignment: .topTrailing) { updatedBadge }
         .containerBackground(for: .widget) {
             LinearGradient(colors: [WTheme.bgTop, WTheme.bgBottom],
                            startPoint: .top, endPoint: .bottom)
         }
     }
 
-    // Small, unobtrusive "last updated" pill in the corner (no title clutter).
-    private var updatedBadge: some View {
-        HStack(spacing: 3) {
-            Circle().fill(WTheme.up).frame(width: 5, height: 5)
-            Text(hhmm(entry.date))
-                .font(.system(size: 9.5, weight: .semibold, design: .rounded))
-                .foregroundStyle(WTheme.faint)
+    private var items2: [Shared.Item] { Array(entry.items.prefix(2)) }
+
+    // MARK: Small (square) — 2 favorites, stacked, readable
+
+    private var smallBody: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(Array(items2.enumerated()), id: \.element.code) { idx, item in
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(item.name)
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(WTheme.text)
+                        .lineLimit(1).minimumScaleFactor(0.7)
+                    Text(fmtTRY(item.price))
+                        .font(.system(size: 18, weight: .bold, design: .rounded))
+                        .foregroundStyle(WTheme.text)
+                        .lineLimit(1).minimumScaleFactor(0.6)
+                    changeChip(item.changePct)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+                if idx < items2.count - 1 {
+                    Rectangle().fill(WTheme.hair).frame(height: 1)
+                }
+            }
         }
-        .padding(.top, 1)
+    }
+
+    // MARK: Medium (wide) — 2 spacious cards
+
+    private var mediumBody: some View {
+        VStack(spacing: 10) {
+            ForEach(items2, id: \.code) { item in card(item) }
+        }
+        .overlay(alignment: .topTrailing) {
+            HStack(spacing: 3) {
+                Circle().fill(WTheme.up).frame(width: 5, height: 5)
+                Text(hhmm(entry.date))
+                    .font(.system(size: 9.5, weight: .semibold, design: .rounded))
+                    .foregroundStyle(WTheme.faint)
+            }
+        }
     }
 
     private func card(_ item: Shared.Item) -> some View {
