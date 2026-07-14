@@ -1,44 +1,69 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
+  AreaSeries,
   CandlestickSeries,
+  LineSeries,
   createChart,
   type IChartApi,
+  type ISeriesApi,
   type UTCTimestamp,
 } from "lightweight-charts";
 import type { Candle } from "../lib/types";
 
-export function PriceChart({ candles, height = 320 }: { candles: Candle[]; height?: number }) {
+export type ChartType = "candles" | "line" | "area";
+
+const UP = "#4ec99a";
+const DOWN = "#f16b7d";
+const ACCENT = "#45c0d6";
+
+function fmt(v: number): string {
+  return new Intl.NumberFormat("tr-TR", {
+    minimumFractionDigits: v >= 1 ? 2 : 4,
+    maximumFractionDigits: v >= 1 ? 2 : 4,
+  }).format(v);
+}
+
+// Interactive price chart (pan / zoom / crosshair) with a live OHLC legend that
+// tracks the crosshair — the same behaviour as the native apps.
+export function PriceChart({
+  candles,
+  type = "candles",
+  height = 340,
+}: {
+  candles: Candle[];
+  type?: ChartType;
+  height?: number;
+}) {
   const ref = useRef<HTMLDivElement>(null);
-  const chartRef = useRef<IChartApi | null>(null);
+  const [legend, setLegend] = useState<{ o: number; h: number; l: number; c: number; up: boolean } | null>(null);
 
   useEffect(() => {
     if (!ref.current) return;
-    const chart = createChart(ref.current, {
+    const chart: IChartApi = createChart(ref.current, {
       height,
       layout: {
         background: { color: "transparent" },
-        textColor: "#8a94a6",
+        textColor: "#9ca3af",
         fontFamily: "inherit",
+        fontSize: 11,
       },
       grid: {
-        vertLines: { color: "rgba(255,255,255,0.04)" },
-        horzLines: { color: "rgba(255,255,255,0.04)" },
+        vertLines: { color: "rgba(255,255,255,0.035)" },
+        horzLines: { color: "rgba(255,255,255,0.035)" },
       },
       rightPriceScale: { borderColor: "rgba(255,255,255,0.06)" },
       timeScale: { borderColor: "rgba(255,255,255,0.06)", timeVisible: true, secondsVisible: false },
-      crosshair: { mode: 0 },
+      crosshair: {
+        mode: 1,
+        vertLine: { color: "rgba(255,255,255,0.2)", width: 1, style: 2, labelBackgroundColor: "#1a1b1e" },
+        horzLine: { color: "rgba(255,255,255,0.2)", width: 1, style: 2, labelBackgroundColor: "#1a1b1e" },
+      },
       autoSize: true,
     });
-    const series = chart.addSeries(CandlestickSeries, {
-      upColor: "#0ecb81",
-      downColor: "#f6465d",
-      borderVisible: false,
-      wickUpColor: "#0ecb81",
-      wickDownColor: "#f6465d",
-    });
+
     // De-dupe + sort by time (lightweight-charts requires strictly ascending).
     const seen = new Set<number>();
-    const data = candles
+    const rows = candles
       .map((c) => ({
         time: Math.floor(new Date(c.bucket).getTime() / 1000) as UTCTimestamp,
         open: c.open,
@@ -49,14 +74,89 @@ export function PriceChart({ candles, height = 320 }: { candles: Candle[]; heigh
       .filter((c) => Number.isFinite(c.time))
       .sort((a, b) => a.time - b.time)
       .filter((c) => (seen.has(c.time) ? false : (seen.add(c.time), true)));
-    series.setData(data);
-    chart.timeScale().fitContent();
-    chartRef.current = chart;
-    return () => {
-      chart.remove();
-      chartRef.current = null;
-    };
-  }, [candles, height]);
 
-  return <div ref={ref} style={{ width: "100%", height }} />;
+    let series: ISeriesApi<"Candlestick" | "Line" | "Area">;
+    if (type === "candles") {
+      const s = chart.addSeries(CandlestickSeries, {
+        upColor: UP,
+        downColor: DOWN,
+        borderVisible: false,
+        wickUpColor: UP,
+        wickDownColor: DOWN,
+      });
+      s.setData(rows);
+      series = s;
+    } else if (type === "line") {
+      const s = chart.addSeries(LineSeries, { color: ACCENT, lineWidth: 2 });
+      s.setData(rows.map((r) => ({ time: r.time, value: r.close })));
+      series = s;
+    } else {
+      const s = chart.addSeries(AreaSeries, {
+        lineColor: ACCENT,
+        topColor: "rgba(69,192,214,0.28)",
+        bottomColor: "rgba(69,192,214,0.02)",
+        lineWidth: 2,
+      });
+      s.setData(rows.map((r) => ({ time: r.time, value: r.close })));
+      series = s;
+    }
+
+    // Seed the legend with the last candle.
+    const last = rows[rows.length - 1];
+    if (last) setLegend({ o: last.open, h: last.high, l: last.low, c: last.close, up: last.close >= last.open });
+
+    chart.subscribeCrosshairMove((param) => {
+      const d = param.seriesData.get(series) as
+        | { open?: number; high?: number; low?: number; close?: number; value?: number }
+        | undefined;
+      if (!d) {
+        if (last) setLegend({ o: last.open, h: last.high, l: last.low, c: last.close, up: last.close >= last.open });
+        return;
+      }
+      const o = d.open ?? d.value ?? 0;
+      const c = d.close ?? d.value ?? 0;
+      setLegend({ o, h: d.high ?? c, l: d.low ?? c, c, up: c >= o });
+    });
+
+    chart.timeScale().fitContent();
+    return () => chart.remove();
+  }, [candles, type, height]);
+
+  return (
+    <div style={{ position: "relative" }}>
+      {legend && (
+        <div
+          style={{
+            position: "absolute",
+            top: 8,
+            left: 8,
+            zIndex: 3,
+            display: "flex",
+            gap: 12,
+            fontSize: 11.5,
+            fontFamily: "var(--mono)",
+            background: "rgba(18,19,21,0.7)",
+            border: "1px solid var(--stroke)",
+            borderRadius: 8,
+            padding: "5px 10px",
+            pointerEvents: "none",
+          }}
+        >
+          <LegItem k="A" v={legend.o} />
+          <LegItem k="Y" v={legend.h} />
+          <LegItem k="D" v={legend.l} />
+          <LegItem k="K" v={legend.c} color={legend.up ? UP : DOWN} />
+        </div>
+      )}
+      <div ref={ref} style={{ width: "100%", height }} />
+    </div>
+  );
+}
+
+function LegItem({ k, v, color }: { k: string; v: number; color?: string }) {
+  return (
+    <span style={{ color: "var(--text-faint)" }}>
+      {k} <span style={{ color: color ?? "var(--text)" }}>{fmt(v)}</span>
+    </span>
+  );
 }

@@ -1,19 +1,25 @@
 import { useEffect, useState } from "react";
-import { NavLink, Outlet, useNavigate } from "react-router-dom";
+import { Link, NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { useMarkets } from "../store/markets";
 import type { NotificationPayload } from "../lib/types";
 import { ConnectionDot } from "./common";
 import { Icon, type IconName } from "./Icon";
 
-const NAV: { to: string; label: string; icon: IconName; end?: boolean }[] = [
+const NAV: { to: string; label: string; icon: IconName; end?: boolean; auth?: boolean }[] = [
   { to: "/", label: "Piyasalar", icon: "markets", end: true },
-  { to: "/favorites", label: "Favoriler", icon: "star" },
-  { to: "/rewards", label: "Ödüller", icon: "trophy" },
-  { to: "/alerts", label: "Alarmlar", icon: "bell" },
-  { to: "/portfolio", label: "Portföy", icon: "portfolio" },
-  { to: "/notifications", label: "Bildirimler", icon: "inbox" },
+  { to: "/favorites", label: "Favoriler", icon: "star", auth: true },
+  { to: "/rewards", label: "Ödüller", icon: "trophy", auth: true },
+  { to: "/alerts", label: "Alarmlar", icon: "bell", auth: true },
+  { to: "/portfolio", label: "Portföy", icon: "portfolio", auth: true },
+  { to: "/notifications", label: "Bildirimler", icon: "inbox", auth: true },
   { to: "/settings", label: "Ayarlar", icon: "settings" },
+];
+
+const LEGAL = [
+  { to: "/privacy", label: "Gizlilik" },
+  { to: "/terms", label: "Kullanım Şartları" },
+  { to: "/support", label: "Destek" },
 ];
 
 interface Toast extends NotificationPayload {
@@ -58,7 +64,7 @@ export function Layout() {
           <div style={{ fontWeight: 650, fontSize: 15, letterSpacing: "-0.02em" }}>TSC Forex</div>
         </div>
 
-        {NAV.map((n) => (
+        {NAV.filter((n) => !n.auth || authed).map((n) => (
           <NavLink
             key={n.to}
             to={n.to}
@@ -202,6 +208,29 @@ export function Layout() {
         <div style={{ flex: 1, padding: 24, maxWidth: 1100, width: "100%", margin: "0 auto" }}>
           <Outlet />
         </div>
+        <footer
+          style={{
+            borderTop: "1px solid var(--stroke)",
+            padding: "18px 24px",
+            display: "flex",
+            flexWrap: "wrap",
+            alignItems: "center",
+            gap: 16,
+            fontSize: 12.5,
+            color: "var(--text-faint)",
+          }}
+        >
+          <span>© {new Date().getFullYear()} TSC Forex</span>
+          <span style={{ color: "var(--stroke-strong)" }}>·</span>
+          {LEGAL.map((l) => (
+            <Link key={l.to} to={l.to} style={{ color: "var(--text-dim)" }}>
+              {l.label}
+            </Link>
+          ))}
+          <span style={{ marginLeft: "auto", color: "var(--text-faint)" }}>
+            Fiyatlar bilgilendirme amaçlıdır, yatırım tavsiyesi değildir.
+          </span>
+        </footer>
       </main>
 
       {/* Toasts */}

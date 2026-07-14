@@ -30,6 +30,27 @@ export function compact(v: number): string {
   return new Intl.NumberFormat("tr-TR", { notation: "compact", maximumFractionDigits: 1 }).format(v);
 }
 
+// Compact USD (e.g. $1,2 Mr). Used for crypto market cap / volume.
+export function usdCompact(v: number): string {
+  return (
+    "$" + new Intl.NumberFormat("tr-TR", { notation: "compact", maximumFractionDigits: 2 }).format(v)
+  );
+}
+
+export function usd(v: number): string {
+  if (!isFinite(v)) return "—";
+  const f = new Intl.NumberFormat("en-US", {
+    minimumFractionDigits: v >= 1 ? 2 : 4,
+    maximumFractionDigits: v >= 1 ? 2 : 4,
+  });
+  return "$" + f.format(v);
+}
+
+// Trims an ISO date to yyyy-mm-dd for compact display.
+export function dateShort(iso: string): string {
+  return iso ? iso.slice(0, 10) : "—";
+}
+
 export function timeAgo(iso: string): string {
   const d = new Date(iso).getTime();
   const s = Math.max(0, (Date.now() - d) / 1000);

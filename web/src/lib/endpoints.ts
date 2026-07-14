@@ -5,6 +5,7 @@ import type {
   CatalogItem,
   GamCheckInResult,
   GamProfile,
+  InstrumentDetail,
   InstrumentPrice,
   Leaderboard,
   Notification,
@@ -40,6 +41,7 @@ export const api = {
     request<{ code: string; interval: string; candles: Candle[] }>(
       `/instruments/${code}/history?interval=${interval}`,
     ),
+  detail: (code: string) => request<InstrumentDetail>(`/instruments/${code}/detail`),
 
   // --- profile ---
   profile: () => request<Profile>("/me/profile", { auth: true }),

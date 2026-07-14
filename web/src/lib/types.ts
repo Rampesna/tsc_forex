@@ -37,6 +37,61 @@ export interface Candle {
   close: number;
 }
 
+// Rich per-kind detail payload from GET /instruments/:code/detail. All fields
+// are optional because they depend on the instrument kind + upstream coverage.
+export interface InstrumentDetail {
+  code: string;
+  kind: string;
+  price_try?: number;
+
+  // crypto
+  price_usd?: number;
+  high24h?: number;
+  low24h?: number;
+  open24h?: number;
+  prev_close?: number;
+  weighted_avg?: number;
+  volume_base?: number;
+  quote_volume_usd?: number;
+  trades?: number;
+  change_pct24h?: number;
+  market_cap_usd?: number;
+  rank?: number;
+  fdv_usd?: number;
+  total_volume_usd?: number;
+  circulating_supply?: number;
+  total_supply?: number;
+  max_supply?: number;
+  ath_usd?: number;
+  atl_usd?: number;
+  ath_date?: string;
+  atl_date?: string;
+  dominance_pct?: number;
+
+  // stock
+  day_high?: number;
+  day_low?: number;
+  week52_high?: number;
+  week52_low?: number;
+  volume?: number;
+  exchange?: string;
+  long_name?: string;
+
+  // gold
+  ons_usd?: number;
+  ons_try?: number;
+  usd_try?: number;
+  gram_has_try?: number;
+  gram_weight?: number;
+  fineness?: number;
+  purity_label?: string;
+
+  // currency
+  inverse?: number;
+  usd_cross?: number;
+  iso?: string;
+}
+
 export interface Profile {
   id: string;
   email: string;

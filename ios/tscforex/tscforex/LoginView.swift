@@ -10,7 +10,6 @@ struct LoginView: View {
     @State private var email = ""
     @State private var password = ""
     @State private var isRegister = false
-    @State private var showSettings = false
 
     var body: some View {
         ZStack {
@@ -129,18 +128,8 @@ struct LoginView: View {
                 }
 
                 Spacer()
-
-                if AppConfig.allowsServerOverride {
-                    Button { showSettings = true } label: {
-                        Label("Sunucu Ayarları", systemImage: "server.rack")
-                            .font(.system(size: 12)).foregroundStyle(Theme.textDim)
-                    }
-                }
             }
             .padding(.horizontal, 28)
-        }
-        .sheet(isPresented: $showSettings) {
-            NavigationStack { SettingsView() }.preferredColorScheme(.dark)
         }
     }
 

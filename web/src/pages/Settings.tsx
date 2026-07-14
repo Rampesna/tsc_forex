@@ -1,15 +1,12 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
-import { useMarkets } from "../store/markets";
 import { Button, Card } from "../components/common";
 import { api } from "../lib/endpoints";
 import { BRAND } from "../lib/config";
 
 export function Settings() {
   const { logout, profile, authed } = useAuth();
-  const connected = useMarkets((s) => s.connected);
-  const count = useMarkets((s) => s.order.length);
   const nav = useNavigate();
   const [deleting, setDeleting] = useState(false);
 
@@ -30,26 +27,21 @@ export function Settings() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18, maxWidth: 520 }}>
-      <h2 style={{ margin: 0, fontSize: 22 }}>Ayarlar</h2>
+      <h2 style={{ margin: 0, fontSize: 20, fontWeight: 600, letterSpacing: "-0.02em" }}>Ayarlar</h2>
+
+      {authed && (
+        <Card style={{ padding: 20 }}>
+          <Row label="Hesap" value={profile?.email ?? "-"} />
+          <Row label="Sürüm" value="1.0.0" />
+        </Card>
+      )}
 
       <Card style={{ padding: 20 }}>
-        <Row label="Takip edilen enstrüman" value={String(count)} />
-        <Row label="Canlı bağlantı" value={connected ? "Aktif" : "Bağlanıyor…"} valueColor={connected ? "var(--up)" : undefined} />
-        {authed && <Row label="Hesap" value={profile?.email ?? "-"} />}
-      </Card>
-
-      <Card style={{ padding: 20 }}>
-        <div style={{ fontWeight: 700, marginBottom: 6 }}>Hakkında</div>
-        <div style={{ fontSize: 13, color: "var(--text-dim)" }}>
+        <div style={{ fontWeight: 600, marginBottom: 6 }}>Hakkında</div>
+        <div style={{ fontSize: 13, color: "var(--text-dim)", lineHeight: 1.5 }}>
           {BRAND.name} — canlı döviz, altın, kripto ve hisse piyasası. Fiyatlar bilgilendirme
           amaçlıdır, yatırım tavsiyesi değildir.
         </div>
-        <div style={{ display: "flex", gap: 16, marginTop: 12, fontSize: 13 }}>
-          <Link to="/privacy" style={{ color: "var(--accent-hi)" }}>Gizlilik</Link>
-          <Link to="/terms" style={{ color: "var(--accent-hi)" }}>Kullanım Şartları</Link>
-          <Link to="/support" style={{ color: "var(--accent-hi)" }}>Destek</Link>
-        </div>
-        <div style={{ fontSize: 12, color: "var(--text-faint)", marginTop: 10 }}>Sürüm 1.0.0</div>
       </Card>
 
       {authed ? (

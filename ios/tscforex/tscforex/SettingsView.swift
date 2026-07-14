@@ -8,8 +8,6 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject var auth: AuthStore
     @EnvironmentObject var prices: PriceStore
-    @State private var host = AppConfig.host
-    @State private var saved = false
     @State private var showProfile = false
     @State private var confirmDelete = false
     @State private var deleting = false
@@ -26,52 +24,6 @@ struct SettingsView: View {
                 ScreenHeader(title: "Ayarlar", subtitle: "Hesap & uygulama")
                 ScrollView {
                     VStack(spacing: 14) {
-                        if AppConfig.allowsServerOverride {
-                            Card {
-                                VStack(alignment: .leading, spacing: 12) {
-                                    sectionLabel("GELİŞTİRİCİ · SUNUCU")
-                                    HStack(spacing: 10) {
-                                        Image(systemName: "network").foregroundStyle(Theme.textDim)
-                                        TextField("", text: $host,
-                                                  prompt: Text("host:port").foregroundColor(Theme.textFaint))
-                                            .textInputAutocapitalization(.never)
-                                            .autocorrectionDisabled()
-                                            .keyboardType(.URL)
-                                            .foregroundStyle(Theme.text)
-                                    }
-                                    .padding(12)
-                                    .background(Theme.bgElevated, in: RoundedRectangle(cornerRadius: 10))
-
-                                    Button {
-                                        AppConfig.host = host
-                                        prices.disconnect()
-                                        prices.connect(token: auth.accessToken)
-                                        saved = true
-                                        Haptics.success()
-                                    } label: {
-                                        Text(saved ? "Kaydedildi ✓" : "Kaydet ve Yeniden Bağlan")
-                                    }
-                                    .buttonStyle(FilledButtonStyle(color: Theme.surfaceHi, textColor: Theme.text))
-
-                                    Button {
-                                        host = AppConfig.defaultHost
-                                        AppConfig.host = host
-                                        prices.disconnect()
-                                        prices.connect(token: auth.accessToken)
-                                        saved = true
-                                        Haptics.tap()
-                                    } label: {
-                                        Label("Otomatik adres (.local)", systemImage: "wand.and.stars")
-                                            .font(.system(size: 13, weight: .semibold))
-                                    }
-                                    .buttonStyle(FilledButtonStyle(color: Theme.accentSoft, textColor: Theme.accent))
-
-                                    Text("Yalnızca geliştirici derlemesinde görünür.")
-                                        .font(.system(size: 11)).foregroundStyle(Theme.textFaint)
-                                }
-                            }
-                        }
-
                         Card {
                             VStack(alignment: .leading, spacing: 12) {
                                 sectionLabel("HESAP")
@@ -150,7 +102,6 @@ struct SettingsView: View {
                 }
             }
         }
-        .onChange(of: host) { _, _ in saved = false }
         .sheet(isPresented: $showProfile) {
             NavigationStack { ProfileView() }.preferredColorScheme(.dark)
         }

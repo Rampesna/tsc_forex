@@ -35,3 +35,6 @@ ios/**/build/
 kubeconfig
 secrets.local.*
 
+
+# iOS local build output
+build_ios/
