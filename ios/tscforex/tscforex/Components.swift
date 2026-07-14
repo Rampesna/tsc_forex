@@ -139,28 +139,116 @@ struct AssetIcon: View {
     var size: CGFloat = 38
 
     var body: some View {
+        switch kind {
+        case "gold":     goldBadge
+        case "crypto":   cryptoBadge
+        case "stock":    stockBadge
+        default:         currencyBadge
+        }
+    }
+
+    private var goldBadge: some View {
         ZStack {
-            if kind == "gold" {
-                Circle().fill(Theme.accent.opacity(0.16))
-                Image(systemName: "circle.hexagongrid.fill")
-                    .font(.system(size: size * 0.44, weight: .semibold))
-                    .foregroundStyle(LinearGradient(colors: [Color(hex: 0xFFD65A), Color(hex: 0xE0A21E)],
-                                                    startPoint: .top, endPoint: .bottom))
-            } else if let flag = Flags.emoji(forCurrencyPair: code) {
+            Circle().fill(Theme.accent.opacity(0.16))
+            Image(systemName: "circle.hexagongrid.fill")
+                .font(.system(size: size * 0.44, weight: .semibold))
+                .foregroundStyle(LinearGradient(colors: [Color(hex: 0xFFD65A), Color(hex: 0xE0A21E)],
+                                                startPoint: .top, endPoint: .bottom))
+        }
+        .frame(width: size, height: size).clipShape(Circle())
+        .overlay(Circle().stroke(Theme.stroke, lineWidth: 1))
+    }
+
+    @ViewBuilder
+    private var currencyBadge: some View {
+        if let flag = Flags.emoji(forCurrencyPair: code) {
+            ZStack {
                 Circle().fill(Theme.surfaceHi)
-                Text(flag)
-                    .font(.system(size: size * 0.58))
-                    .minimumScaleFactor(0.5)
-            } else {
+                Text(flag).font(.system(size: size * 0.58)).minimumScaleFactor(0.5)
+            }
+            .frame(width: size, height: size).clipShape(Circle())
+            .overlay(Circle().stroke(Theme.stroke, lineWidth: 1))
+        } else {
+            ZStack {
                 Circle().fill(Color(hex: 0x4A90E2).opacity(0.16))
                 Image(systemName: "banknote.fill")
                     .font(.system(size: size * 0.42, weight: .semibold))
                     .foregroundStyle(Color(hex: 0x4A90E2))
             }
+            .frame(width: size, height: size).clipShape(Circle())
+            .overlay(Circle().stroke(Theme.stroke, lineWidth: 1))
+        }
+    }
+
+    private var cryptoBadge: some View {
+        let brand = CryptoBrand.style(for: code)
+        return ZStack {
+            Circle().fill(brand.color.gradient)
+            if let glyph = brand.glyph {
+                Text(glyph).font(.system(size: size * 0.5, weight: .bold)).foregroundStyle(.white)
+            } else {
+                Text(code.prefix(3)).font(.system(size: size * 0.3, weight: .heavy))
+                    .foregroundStyle(.white).minimumScaleFactor(0.5)
+            }
+        }
+        .frame(width: size, height: size).clipShape(Circle())
+        .overlay(Circle().stroke(Color.white.opacity(0.12), lineWidth: 1))
+    }
+
+    private var stockBadge: some View {
+        let color = StockColor.color(for: code)
+        return ZStack {
+            RoundedRectangle(cornerRadius: size * 0.28, style: .continuous)
+                .fill(LinearGradient(colors: [color.opacity(0.95), color.opacity(0.6)],
+                                     startPoint: .topLeading, endPoint: .bottomTrailing))
+            Text(code.prefix(2)).font(.system(size: size * 0.34, weight: .heavy))
+                .foregroundStyle(.white)
         }
         .frame(width: size, height: size)
-        .clipShape(Circle())
-        .overlay(Circle().stroke(Theme.stroke, lineWidth: 1))
+        .clipShape(RoundedRectangle(cornerRadius: size * 0.28, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: size * 0.28, style: .continuous)
+            .stroke(Color.white.opacity(0.12), lineWidth: 1))
+    }
+}
+
+// Brand colors + glyphs for major coins (falls back to a hashed hue + ticker).
+enum CryptoBrand {
+    static func style(for symbol: String) -> (color: Color, glyph: String?) {
+        switch symbol.uppercased() {
+        case "BTC":  return (Color(hex: 0xF7931A), "₿")
+        case "ETH":  return (Color(hex: 0x627EEA), "Ξ")
+        case "BNB":  return (Color(hex: 0xF3BA2F), nil)
+        case "SOL":  return (Color(hex: 0x9945FF), nil)
+        case "XRP":  return (Color(hex: 0x23292F), nil)
+        case "ADA":  return (Color(hex: 0x0033AD), nil)
+        case "DOGE": return (Color(hex: 0xC2A633), "Ð")
+        case "TRX":  return (Color(hex: 0xEF0027), nil)
+        case "AVAX": return (Color(hex: 0xE84142), nil)
+        case "DOT":  return (Color(hex: 0xE6007A), nil)
+        case "LINK": return (Color(hex: 0x2A5ADA), nil)
+        case "MATIC": return (Color(hex: 0x8247E5), nil)
+        case "LTC":  return (Color(hex: 0x345D9D), "Ł")
+        case "ATOM": return (Color(hex: 0x2E3148), nil)
+        case "XLM":  return (Color(hex: 0x08B5E5), nil)
+        case "SHIB": return (Color(hex: 0xFFA409), nil)
+        case "BCH":  return (Color(hex: 0x0AC18E), nil)
+        default:     return (hashedColor(symbol), nil)
+        }
+    }
+
+    private static func hashedColor(_ s: String) -> Color {
+        let hue = Double(abs(s.hashValue) % 360) / 360
+        return Color(hue: hue, saturation: 0.62, brightness: 0.78)
+    }
+}
+
+// Deterministic accent colors for BIST equities.
+enum StockColor {
+    private static let palette: [UInt32] = [
+        0x2F6FED, 0x0EA5A5, 0x7C5CFC, 0xE0632A, 0xDB2777, 0x059669, 0x9333EA, 0x0891B2,
+    ]
+    static func color(for symbol: String) -> Color {
+        Color(hex: palette[abs(symbol.hashValue) % palette.count])
     }
 }
 

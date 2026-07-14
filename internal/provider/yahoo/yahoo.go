@@ -58,7 +58,14 @@ type Provider struct {
 	reconnects int64
 	closed     atomic.Bool
 	running    atomic.Bool
+
+	// pollSeq counts Fetch calls so crypto/stock legs poll on a slower cadence
+	// (they don't need 2s updates and it avoids CoinGecko/Yahoo rate limits).
+	pollSeq atomic.Int64
 }
+
+// slowEvery: crypto & BIST equities are fetched every Nth poll.
+const slowEvery = 3
 
 // yahooChart is the minimal shape we parse from the chart endpoint.
 type yahooChart struct {
@@ -276,6 +283,19 @@ func (p *Provider) Fetch(ctx context.Context) ([]domain.Tick, error) {
 		}
 	}
 
+	// Crypto + BIST equities on a slower cadence (best-effort: any failure here
+	// must never break the core FX/gold legs above).
+	if p.pollSeq.Add(1)%slowEvery == 1 {
+		if usdtry > 0 {
+			for sym, price := range p.fetchCrypto(ctx, usdtry) {
+				add(sym, price)
+			}
+		}
+		for sym, price := range p.fetchStocks(ctx) {
+			add(sym, price)
+		}
+	}
+
 	if len(out) == 0 {
 		if firstErr != nil {
 			return nil, firstErr
@@ -317,6 +337,69 @@ func (p *Provider) fetchFXAll(ctx context.Context) (map[string]float64, error) {
 		return nil, fmt.Errorf("empty fx rates")
 	}
 	return r.Rates, nil
+}
+
+// fetchCrypto pulls USD quotes for all tracked coins from Yahoo ("<SYM>-USD")
+// concurrently and converts them to TRY. Best-effort: individual failures are
+// skipped so crypto never breaks the core feed.
+func (p *Provider) fetchCrypto(ctx context.Context, usdtry float64) map[string]float64 {
+	if usdtry <= 0 || len(domain.Cryptos) == 0 {
+		return nil
+	}
+	type res struct {
+		sym   string
+		price float64
+	}
+	results := make(chan res, len(domain.Cryptos))
+	var wg sync.WaitGroup
+	for _, c := range domain.Cryptos {
+		wg.Add(1)
+		go func(sym, yahooSym string) {
+			defer wg.Done()
+			usd, err := p.fetchSymbol(ctx, yahooSym)
+			if err == nil && usd > 0 {
+				results <- res{sym: sym, price: usd * usdtry}
+			}
+		}(c.Symbol, c.YahooSymbol)
+	}
+	go func() { wg.Wait(); close(results) }()
+
+	out := make(map[string]float64, len(domain.Cryptos))
+	for r := range results {
+		out[r.sym] = r.price
+	}
+	return out
+}
+
+// fetchStocks pulls BIST equity prices (native TRY) from Yahoo concurrently.
+// Best-effort: returns whatever resolved, ignoring individual failures.
+func (p *Provider) fetchStocks(ctx context.Context) map[string]float64 {
+	if len(domain.Stocks) == 0 {
+		return nil
+	}
+	type res struct {
+		sym   string
+		price float64
+	}
+	results := make(chan res, len(domain.Stocks))
+	var wg sync.WaitGroup
+	for _, s := range domain.Stocks {
+		wg.Add(1)
+		go func(sym, yahooSym string) {
+			defer wg.Done()
+			price, err := p.fetchSymbol(ctx, yahooSym)
+			if err == nil && price > 0 {
+				results <- res{sym: sym, price: price}
+			}
+		}(s.Symbol, s.YahooSymbol)
+	}
+	go func() { wg.Wait(); close(results) }()
+
+	out := make(map[string]float64, len(domain.Stocks))
+	for r := range results {
+		out[r.sym] = r.price
+	}
+	return out
 }
 
 func (p *Provider) fetchSymbol(ctx context.Context, yahooSym string) (float64, error) {

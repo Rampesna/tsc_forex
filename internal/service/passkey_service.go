@@ -174,10 +174,13 @@ func (s *PasskeyService) FinishRegistration(ctx context.Context, userID uuid.UUI
 
 	parsed, err := protocol.ParseCredentialCreationResponseBody(body)
 	if err != nil {
+		s.log.Warn("passkey register: parse attestation failed", zap.Error(err))
 		return err
 	}
 	cred, err := s.wa.CreateCredential(wu, *sd, parsed)
 	if err != nil {
+		s.log.Warn("passkey register: create credential failed",
+			zap.String("rp_id", s.wa.Config.RPID), zap.Error(err))
 		return err
 	}
 	rec := &models.WebAuthnCredential{
@@ -215,6 +218,7 @@ func (s *PasskeyService) FinishLogin(ctx context.Context, sessionToken string, b
 	}
 	parsed, err := protocol.ParseCredentialRequestResponseBody(body)
 	if err != nil {
+		s.log.Warn("passkey login: parse assertion failed", zap.Error(err))
 		return "", "", err
 	}
 
@@ -222,19 +226,25 @@ func (s *PasskeyService) FinishLogin(ctx context.Context, sessionToken string, b
 	handler := func(rawID, userHandle []byte) (webauthn.User, error) {
 		uid, uerr := uuid.FromBytes(userHandle)
 		if uerr != nil {
+			s.log.Warn("passkey login: bad user handle", zap.Int("len", len(userHandle)), zap.Error(uerr))
 			return nil, uerr
 		}
 		u, uerr := s.auth.Users().ByID(ctx, uid)
 		if uerr != nil {
+			s.log.Warn("passkey login: user not found", zap.String("uid", uid.String()), zap.Error(uerr))
 			return nil, uerr
 		}
 		creds, _ := s.creds.ListByUser(ctx, uid)
+		s.log.Info("passkey login: resolved user",
+			zap.String("email", u.Email), zap.Int("stored_creds", len(creds)))
 		resolved = u
 		return webUser{user: u, creds: creds}, nil
 	}
 
 	cred, err := s.wa.ValidateDiscoverableLogin(handler, *sd, parsed)
 	if err != nil {
+		s.log.Warn("passkey login: validate assertion failed",
+			zap.String("rp_id", s.wa.Config.RPID), zap.Error(err))
 		return "", "", err
 	}
 	// Persist the updated sign counter (clone detection).

@@ -8,6 +8,8 @@ type InstrumentKind string
 const (
 	KindCurrency InstrumentKind = "currency"
 	KindGold     InstrumentKind = "gold"
+	KindCrypto   InstrumentKind = "crypto"
+	KindStock    InstrumentKind = "stock"
 )
 
 // Base market symbols emitted by providers (raw feed legs).
@@ -42,6 +44,65 @@ type Instrument struct {
 type CurrencyDef struct {
 	ISO         string // ISO-4217 code, e.g. "USD"
 	DisplayName string // Turkish name
+}
+
+// CryptoDef defines a cryptocurrency tracked against TRY. Priced from a USD
+// quote (Yahoo "<SYM>-USD") × live USD/TRY. Code == Base == Symbol (e.g. "BTC").
+type CryptoDef struct {
+	Symbol      string // canonical short symbol, e.g. "BTC" (instrument code + base)
+	DisplayName string
+	YahooSymbol string // Yahoo Finance ticker, e.g. "BTC-USD"
+}
+
+// Cryptos are the major coins the platform tracks (priced in TRY).
+var Cryptos = []CryptoDef{
+	{"BTC", "Bitcoin", "BTC-USD"},
+	{"ETH", "Ethereum", "ETH-USD"},
+	{"BNB", "BNB", "BNB-USD"},
+	{"SOL", "Solana", "SOL-USD"},
+	{"XRP", "XRP", "XRP-USD"},
+	{"ADA", "Cardano", "ADA-USD"},
+	{"DOGE", "Dogecoin", "DOGE-USD"},
+	{"TRX", "TRON", "TRX-USD"},
+	{"AVAX", "Avalanche", "AVAX-USD"},
+	{"DOT", "Polkadot", "DOT-USD"},
+	{"LINK", "Chainlink", "LINK-USD"},
+	{"MATIC", "Polygon", "MATIC-USD"},
+	{"LTC", "Litecoin", "LTC-USD"},
+	{"ATOM", "Cosmos", "ATOM-USD"},
+	{"XLM", "Stellar", "XLM-USD"},
+	{"SHIB", "Shiba Inu", "SHIB-USD"},
+	{"BCH", "Bitcoin Cash", "BCH-USD"},
+}
+
+// StockDef defines a Borsa İstanbul (BIST) equity, quoted natively in TRY.
+// Code == Base == Symbol (e.g. "THYAO"); YahooSymbol appends the ".IS" suffix.
+type StockDef struct {
+	Symbol      string // BIST ticker, e.g. "THYAO" (instrument code + base)
+	DisplayName string
+	YahooSymbol string // Yahoo Finance ticker, e.g. "THYAO.IS"
+}
+
+// Stocks are liquid BIST-30 names tracked in TRY.
+var Stocks = []StockDef{
+	{"THYAO", "Türk Hava Yolları", "THYAO.IS"},
+	{"GARAN", "Garanti BBVA", "GARAN.IS"},
+	{"AKBNK", "Akbank", "AKBNK.IS"},
+	{"ISCTR", "İş Bankası (C)", "ISCTR.IS"},
+	{"YKBNK", "Yapı Kredi", "YKBNK.IS"},
+	{"SISE", "Şişecam", "SISE.IS"},
+	{"EREGL", "Ereğli Demir Çelik", "EREGL.IS"},
+	{"KCHOL", "Koç Holding", "KCHOL.IS"},
+	{"SAHOL", "Sabancı Holding", "SAHOL.IS"},
+	{"ASELS", "Aselsan", "ASELS.IS"},
+	{"BIMAS", "BİM Mağazalar", "BIMAS.IS"},
+	{"TUPRS", "Tüpraş", "TUPRS.IS"},
+	{"FROTO", "Ford Otosan", "FROTO.IS"},
+	{"TCELL", "Turkcell", "TCELL.IS"},
+	{"PGSUS", "Pegasus", "PGSUS.IS"},
+	{"KOZAL", "Koza Altın", "KOZAL.IS"},
+	{"TOASO", "Tofaş", "TOASO.IS"},
+	{"SASA", "Sasa Polyester", "SASA.IS"},
 }
 
 // Currencies is the full set of world currencies the platform tracks against
@@ -81,9 +142,9 @@ func goldProducts() []Instrument {
 }
 
 // Catalog is the full set of instruments the platform tracks: every world
-// currency (vs TRY) followed by the Turkish gold products.
+// currency (vs TRY), Turkish gold products, crypto and BIST equities.
 var Catalog = func() []Instrument {
-	out := make([]Instrument, 0, len(Currencies)+10)
+	out := make([]Instrument, 0, len(Currencies)+len(Cryptos)+len(Stocks)+10)
 	for _, c := range Currencies {
 		out = append(out, Instrument{
 			Code:        c.ISO + "TRY",
@@ -93,7 +154,26 @@ var Catalog = func() []Instrument {
 			Unit:        "₺",
 		})
 	}
-	return append(out, goldProducts()...)
+	out = append(out, goldProducts()...)
+	for _, c := range Cryptos {
+		out = append(out, Instrument{
+			Code:        c.Symbol,
+			DisplayName: c.DisplayName,
+			Kind:        KindCrypto,
+			Base:        c.Symbol,
+			Unit:        "₺",
+		})
+	}
+	for _, s := range Stocks {
+		out = append(out, Instrument{
+			Code:        s.Symbol,
+			DisplayName: s.DisplayName,
+			Kind:        KindStock,
+			Base:        s.Symbol,
+			Unit:        "₺",
+		})
+	}
+	return out
 }()
 
 // currencySymbolSet indexes every currency base symbol for O(1) membership.
@@ -107,6 +187,44 @@ var currencySymbolSet = func() map[string]bool {
 
 // IsCurrencySymbol reports whether a provider symbol is a tracked TRY currency.
 func IsCurrencySymbol(sym string) bool { return currencySymbolSet[sym] }
+
+// directTRYSymbolSet indexes every symbol whose provider tick is already a TRY
+// value read straight from the map: currencies, crypto and BIST equities.
+var directTRYSymbolSet = func() map[string]bool {
+	m := make(map[string]bool, len(Currencies)+len(Cryptos)+len(Stocks))
+	for _, c := range Currencies {
+		m[c.ISO+"TRY"] = true
+	}
+	for _, c := range Cryptos {
+		m[c.Symbol] = true
+	}
+	for _, s := range Stocks {
+		m[s.Symbol] = true
+	}
+	return m
+}()
+
+// IsDirectTRYSymbol reports whether a provider symbol carries a direct TRY value
+// (currency, crypto or stock) that the engine stores verbatim.
+func IsDirectTRYSymbol(sym string) bool { return directTRYSymbolSet[sym] }
+
+// CryptoSymbols returns every tracked crypto symbol (== instrument code).
+func CryptoSymbols() []string {
+	out := make([]string, 0, len(Cryptos))
+	for _, c := range Cryptos {
+		out = append(out, c.Symbol)
+	}
+	return out
+}
+
+// StockSymbols returns every tracked BIST symbol (== instrument code).
+func StockSymbols() []string {
+	out := make([]string, 0, len(Stocks))
+	for _, s := range Stocks {
+		out = append(out, s.Symbol)
+	}
+	return out
+}
 
 // CurrencyBaseSymbols returns every "<ISO>TRY" feed symbol.
 func CurrencyBaseSymbols() []string {
@@ -151,7 +269,8 @@ type InstrumentPrice struct {
 //   - Gold: (XAUUSD / troy) * USDTRY * gramWeight * fineness.
 func ComputeInstrumentPrice(in Instrument, xauusd, usdtry float64, currencyTRY map[string]float64) (price, bid, ask float64, ok bool) {
 	switch in.Kind {
-	case KindCurrency:
+	case KindCurrency, KindCrypto, KindStock:
+		// All three carry a direct TRY value keyed by their base symbol.
 		p := currencyTRY[in.Base]
 		if p <= 0 {
 			return 0, 0, 0, false

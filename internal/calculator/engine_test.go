@@ -30,6 +30,17 @@ func TestEngineComputesCatalog(t *testing.T) {
 			Symbol: c.ISO + "TRY", Price: 34.5 + float64(i), Timestamp: now, Provider: "test",
 		})
 	}
+	// Feed crypto + BIST equity legs (direct TRY values) so they compute too.
+	for i, c := range domain.Cryptos {
+		bus.Publish(eventbus.TopicTickReceived, domain.Tick{
+			Symbol: c.Symbol, Price: 1000 + float64(i), Timestamp: now, Provider: "test",
+		})
+	}
+	for i, s := range domain.Stocks {
+		bus.Publish(eventbus.TopicTickReceived, domain.Tick{
+			Symbol: s.Symbol, Price: 50 + float64(i), Timestamp: now, Provider: "test",
+		})
+	}
 	// USDTRY must be exactly 34.5 for the assertion below.
 	bus.Publish(eventbus.TopicTickReceived, domain.Tick{Symbol: domain.SymbolUSDTRY, Price: 34.5, Bid: 34.4, Ask: 34.6, Timestamp: now, Provider: "test"})
 

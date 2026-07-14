@@ -7,24 +7,41 @@
 
 import SwiftUI
 
-enum MarketCategory: String, CaseIterable { case favorites, all, gold, currency }
+enum MarketCategory: String, CaseIterable { case favorites, all, gold, currency, crypto, stock }
 
-// Curated fixed order for the main list (gold products first, then currencies).
+// Curated fixed order for the main list: gold, then majors, then crypto/stock.
 private let fixedOrder: [String: Int] = {
     let codes = [
+        // Gold
         "GRAM_GOLD", "CEYREK_GOLD", "YARIM_GOLD", "TAM_GOLD",
-        "CUMHURIYET_GOLD", "ATA_GOLD", "RESAT_GOLD",
-        "GOLD_22K", "GOLD_18K", "GOLD_14K", "ONS_GOLD",
-        "USDTRY", "EURTRY", "GBPTRY", "JPYTRY", "CHFTRY",
+        "CUMHURIYET_GOLD", "ATA_GOLD", "GRAM_22K", "GRAM_18K", "GRAM_14K", "ONS_GOLD",
+        // Major currencies
+        "USDTRY", "EURTRY", "GBPTRY", "CHFTRY", "JPYTRY",
+        // Crypto (by market cap)
+        "BTC", "ETH", "BNB", "SOL", "XRP", "ADA", "DOGE", "TRX", "AVAX", "DOT",
+        "LINK", "MATIC", "LTC", "ATOM", "XLM", "SHIB", "BCH",
+        // BIST equities
+        "THYAO", "GARAN", "AKBNK", "ISCTR", "YKBNK", "SISE", "EREGL", "KCHOL",
+        "SAHOL", "ASELS", "BIMAS", "TUPRS", "FROTO", "TCELL", "PGSUS", "KOZAL", "TOASO", "SASA",
     ]
     var m: [String: Int] = [:]
     for (i, c) in codes.enumerated() { m[c] = i }
     return m
 }()
 
+private func kindRank(_ kind: String) -> Int {
+    switch kind {
+    case "gold": return 0
+    case "currency": return 100
+    case "crypto": return 400
+    case "stock": return 700
+    default: return 900
+    }
+}
+
 private func fixedRank(_ p: InstrumentPrice) -> Int {
     if let r = fixedOrder[p.code] { return r }
-    return (p.kind == "gold" ? 500 : 900) + Int(p.code.hashValue & 0xFF)
+    return kindRank(p.kind) + 90 + Int(p.code.hashValue & 0x3F)
 }
 
 struct MarketsView: View {
@@ -34,8 +51,13 @@ struct MarketsView: View {
     @State private var editMode: EditMode = .inactive
     @State private var path = NavigationPath()
 
-    private var tabs: [(value: MarketCategory, label: String)] {
-        [(.favorites, "Favoriler"), (.all, "Tümü"), (.gold, "Altın"), (.currency, "Döviz")]
+    private var tabs: [(value: MarketCategory, label: String, icon: String)] {
+        [(.favorites, "Favoriler", "star.fill"),
+         (.all, "Tümü", "square.grid.2x2.fill"),
+         (.gold, "Altın", "circle.hexagongrid.fill"),
+         (.currency, "Döviz", "banknote.fill"),
+         (.crypto, "Kripto", "bitcoinsign.circle.fill"),
+         (.stock, "Hisse", "chart.line.uptrend.xyaxis")]
     }
 
     private func filtered(_ base: [InstrumentPrice]) -> [InstrumentPrice] {
@@ -51,6 +73,8 @@ struct MarketsView: View {
         case .all:       base = prices.sorted
         case .gold:      base = prices.gold()
         case .currency:  base = prices.currencies()
+        case .crypto:    base = prices.crypto()
+        case .stock:     base = prices.stocks()
         }
         if category != .favorites { base.sort { fixedRank($0) < fixedRank($1) } }
         return filtered(base)
@@ -63,12 +87,7 @@ struct MarketsView: View {
                 VStack(spacing: 0) {
                     header
                     searchBar
-                    SegBar(items: tabs, selection: $category)
-                        .padding(.horizontal, 16).padding(.top, 6)
-                        .onChange(of: category) { _, _ in
-                            Haptics.tap(); editMode = .inactive
-                        }
-                    if category == .all && query.isEmpty { moversStrip }
+                    categoryStrip
                     columnHeader
                     content
                 }
@@ -86,7 +105,7 @@ struct MarketsView: View {
         HStack(alignment: .center) {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Piyasalar").font(.system(size: 28, weight: .bold)).foregroundStyle(Theme.text)
-                Text("Canlı altın & döviz").font(.system(size: 12)).foregroundStyle(Theme.textDim)
+                Text("Altın · Döviz · Kripto · Hisse").font(.system(size: 12)).foregroundStyle(Theme.textDim)
             }
             Spacer()
             if category == .favorites && !prices.orderedFavorites().isEmpty {
@@ -122,55 +141,33 @@ struct MarketsView: View {
         .padding(.horizontal, 16)
     }
 
-    // MARK: Top movers
+    // MARK: Category strip (horizontally scrollable: Favoriler/Tümü/Altın/Döviz/Kripto/Hisse)
 
-    private var moversStrip: some View {
-        let items = prices.topGainerCurrencies(10)
-        return Group {
-            if !items.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "flame.fill").font(.system(size: 11, weight: .bold))
-                            .foregroundStyle(Theme.up)
-                        Text("Günün en çok kazandıranları")
-                            .font(.system(size: 12, weight: .bold)).foregroundStyle(Theme.text)
-                    }
-                    .padding(.horizontal, 16)
-                    ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 10) {
-                            ForEach(Array(items.enumerated()), id: \.element.id) { idx, p in
-                                Button { Haptics.tap(); path.append(p.code) } label: {
-                                    moverCard(p, rank: idx + 1)
-                                }.buttonStyle(.plain)
-                            }
+    private var categoryStrip: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 8) {
+                ForEach(tabs, id: \.value) { tab in
+                    let active = category == tab.value
+                    Button {
+                        withAnimation(.easeInOut(duration: 0.15)) { category = tab.value }
+                        Haptics.tap(); editMode = .inactive
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: tab.icon).font(.system(size: 11, weight: .bold))
+                            Text(tab.label).font(.system(size: 13, weight: active ? .bold : .semibold))
                         }
-                        .padding(.horizontal, 16)
+                        .foregroundStyle(active ? Color.white : Theme.textDim)
+                        .padding(.horizontal, 14).padding(.vertical, 8)
+                        .background(active ? Theme.accent : Theme.surface,
+                                    in: Capsule())
+                        .overlay(Capsule().stroke(active ? .clear : Theme.stroke, lineWidth: 1))
                     }
+                    .buttonStyle(.plain)
                 }
-                .padding(.top, 12)
             }
+            .padding(.horizontal, 16)
         }
-    }
-
-    private func moverCard(_ p: InstrumentPrice, rank: Int) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
-                AssetIcon(code: p.code, kind: p.kind, size: 22)
-                Text("#\(rank)").font(.system(size: 10, weight: .bold))
-                    .foregroundStyle(Theme.textFaint)
-                Spacer(minLength: 0)
-            }
-            Text(p.displayName).font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(Theme.text).lineLimit(1).truncationMode(.tail)
-            Text(Fmt.tl(p.price)).font(Theme.number(14, weight: .bold)).foregroundStyle(Theme.text)
-                .lineLimit(1).minimumScaleFactor(0.7)
-            Text(Fmt.signedPct(p.changePct)).font(Theme.number(12, weight: .bold))
-                .foregroundStyle(Theme.trend(p.changePct)).lineLimit(1)
-        }
-        .padding(12)
-        .frame(width: 138, alignment: .leading)
-        .background(Theme.surface, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(RoundedRectangle(cornerRadius: 12).stroke(Theme.stroke, lineWidth: 1))
+        .padding(.top, 10).padding(.bottom, 2)
     }
 
     // MARK: Column header
@@ -189,11 +186,7 @@ struct MarketsView: View {
     @ViewBuilder
     private var content: some View {
         if prices.prices.isEmpty {
-            VStack(spacing: 12) {
-                ProgressView().tint(Theme.accent)
-                Text("Sunucuya bağlanılıyor…").font(.system(size: 13)).foregroundStyle(Theme.textDim)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            ScrollView { MarketListSkeleton(rows: 12) }
         } else if category == .favorites {
             favoritesList
         } else {

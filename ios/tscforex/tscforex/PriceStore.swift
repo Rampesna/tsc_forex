@@ -54,6 +54,8 @@ final class PriceStore: ObservableObject {
     }
     func gold() -> [InstrumentPrice] { sorted.filter { $0.kind == "gold" } }
     func currencies() -> [InstrumentPrice] { sorted.filter { $0.kind == "currency" } }
+    func crypto() -> [InstrumentPrice] { sorted.filter { $0.kind == "crypto" } }
+    func stocks() -> [InstrumentPrice] { sorted.filter { $0.kind == "stock" } }
 
     // Favorites in the user's custom order (drag-to-reorder).
     func orderedFavorites() -> [InstrumentPrice] {

@@ -125,11 +125,23 @@ struct AssetDetailView: View {
 
     private var stats24h: some View {
         Card(padding: 14) {
-            HStack(spacing: 10) {
-                StatTile(label: "24s Yüksek", value: statVal(stats?.high), tint: Theme.up)
-                StatTile(label: "24s Düşük", value: statVal(stats?.low), tint: Theme.down)
-                StatTile(label: "24s Açılış", value: statVal(stats?.open))
-                StatTile(label: "24s Son", value: statVal(stats?.last ?? price?.price))
+            if stats == nil && price == nil {
+                HStack(spacing: 10) {
+                    ForEach(0..<4, id: \.self) { _ in
+                        VStack(alignment: .leading, spacing: 6) {
+                            SkeletonBlock(width: 48, height: 10)
+                            SkeletonBlock(width: 62, height: 14)
+                        }.frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+                .shimmer()
+            } else {
+                HStack(spacing: 10) {
+                    StatTile(label: "24s Yüksek", value: statVal(stats?.high), tint: Theme.up)
+                    StatTile(label: "24s Düşük", value: statVal(stats?.low), tint: Theme.down)
+                    StatTile(label: "24s Açılış", value: statVal(stats?.open))
+                    StatTile(label: "24s Son", value: statVal(stats?.last ?? price?.price))
+                }
             }
         }
     }
@@ -151,8 +163,12 @@ struct AssetDetailView: View {
                     Spacer()
                     if loadingChart { ProgressView().tint(Theme.accent).scaleEffect(0.8) }
                 }
-                PriceChart(candles: candles, mode: mode, trendUp: trendUp)
-                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                if candles.isEmpty && loadingChart {
+                    SkeletonBlock(height: 300, corner: 10).shimmer()
+                } else {
+                    PriceChart(candles: candles, mode: mode, trendUp: trendUp)
+                        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                }
                 SegBar(items: timeframes.map { ($0.interval, $0.label) }, selection: $tf)
             }
         }

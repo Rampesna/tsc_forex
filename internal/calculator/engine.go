@@ -135,7 +135,8 @@ func (e *Engine) onTick(t domain.Tick) {
 	case t.Symbol == domain.SymbolUSDTRY:
 		e.usd = t.Mid()
 		e.currency[domain.SymbolUSDTRY] = t.Mid()
-	case domain.IsCurrencySymbol(t.Symbol):
+	case domain.IsDirectTRYSymbol(t.Symbol):
+		// Currencies, crypto and BIST equities all carry a direct TRY value.
 		e.currency[t.Symbol] = t.Mid()
 	default:
 		e.mu.Unlock()

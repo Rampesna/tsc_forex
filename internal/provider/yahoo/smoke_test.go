@@ -30,6 +30,8 @@ func TestLiveFetchBreadth(t *testing.T) {
 	t.Logf("got %d ticks; USDTRY=%v XAUUSD=%v EURTRY=%v CHFTRY=%v INRTRY=%v",
 		len(ticks), seen[domain.SymbolUSDTRY], seen[domain.SymbolXAUUSD],
 		seen["EURTRY"], seen["CHFTRY"], seen["INRTRY"])
+	t.Logf("crypto TRY: BTC=%v ETH=%v SOL=%v | stocks TRY: THYAO=%v GARAN=%v ASELS=%v",
+		seen["BTC"], seen["ETH"], seen["SOL"], seen["THYAO"], seen["GARAN"], seen["ASELS"])
 	if len(ticks) < 40 {
 		t.Fatalf("expected broad currency coverage, got %d ticks", len(ticks))
 	}
