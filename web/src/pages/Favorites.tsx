@@ -57,7 +57,7 @@ export function Favorites() {
       </div>
 
       {ordered.length === 0 ? (
-        <EmptyState icon="⭐" title="Henüz favori yok" hint="Bir varlık detayından ‘Favori ekle’ ile ekleyin" />
+        <EmptyState icon="star" title="Henüz favori yok" hint="Bir varlık detayından ‘Favori ekle’ ile ekleyin" />
       ) : (
         <Card style={{ overflow: "hidden" }}>
           {ordered.map((code, i) => {

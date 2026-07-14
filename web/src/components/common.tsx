@@ -1,47 +1,46 @@
 import type { CSSProperties, ReactNode } from "react";
-import { signedPct } from "../lib/format";
+import { Icon, type IconName } from "./Icon";
 
 export function ChangePill({ pct, small }: { pct: number; small?: boolean }) {
   const up = pct >= 0;
+  // Linear-style: quiet colored text with a small caret — no chunky pill.
   return (
     <span
       className="mono"
       style={{
-        display: "inline-block",
-        padding: small ? "1px 6px" : "3px 8px",
-        borderRadius: 6,
-        fontSize: small ? 11 : 12,
-        fontWeight: 600,
+        display: "inline-flex",
+        alignItems: "center",
+        gap: 3,
+        fontSize: small ? 12 : 12.5,
+        fontWeight: 550,
         color: up ? "var(--up)" : "var(--down)",
-        background: up ? "rgba(14,203,129,0.12)" : "rgba(246,70,93,0.12)",
         whiteSpace: "nowrap",
       }}
     >
-      {signedPct(pct)}
+      <span style={{ fontSize: small ? 8 : 9, lineHeight: 1 }}>{up ? "▲" : "▼"}</span>
+      {Math.abs(pct).toFixed(2)}%
     </span>
   );
 }
 
-const PALETTE = ["#17a2b8", "#0ecb81", "#f0a63b", "#8b5cf6", "#e05299", "#3b82f6", "#14b8a6"];
-
 export function AssetBadge({ code, size = 34 }: { code: string; size?: number }) {
+  // Monochrome, restrained — the ticker on a neutral surface. No decorative color.
   const initials = code.replace(/[^A-Z]/g, "").slice(0, 2) || code.slice(0, 2).toUpperCase();
-  let hash = 0;
-  for (let i = 0; i < code.length; i++) hash = (hash * 31 + code.charCodeAt(i)) & 0xffff;
-  const color = PALETTE[hash % PALETTE.length];
   return (
     <div
       style={{
         width: size,
         height: size,
-        borderRadius: size / 2,
-        background: `${color}22`,
-        color,
+        borderRadius: size / 3,
+        background: "var(--surface-hi)",
+        border: "1px solid var(--stroke)",
+        color: "var(--text-dim)",
         display: "flex",
         alignItems: "center",
         justifyContent: "center",
-        fontSize: size * 0.36,
-        fontWeight: 700,
+        fontSize: size * 0.32,
+        fontWeight: 600,
+        letterSpacing: "-0.02em",
         flexShrink: 0,
       }}
     >
@@ -116,10 +115,10 @@ export function Button({
   type?: "button" | "submit";
 }) {
   const styles: Record<string, CSSProperties> = {
-    primary: { background: "var(--accent)", color: "#04222a" },
-    soft: { background: "var(--accent-soft)", color: "var(--accent-hi)" },
-    ghost: { background: "var(--surface-hi)", color: "var(--text)" },
-    danger: { background: "rgba(246,70,93,0.14)", color: "var(--down)" },
+    primary: { background: "var(--accent)", color: "#04222a", border: "1px solid transparent" },
+    soft: { background: "var(--accent-soft)", color: "var(--accent-hi)", border: "1px solid transparent" },
+    ghost: { background: "var(--surface-hi)", color: "var(--text)", border: "1px solid var(--stroke)" },
+    danger: { background: "transparent", color: "var(--down)", border: "1px solid var(--stroke-strong)" },
   };
   return (
     <button
@@ -128,17 +127,17 @@ export function Button({
       disabled={disabled}
       style={{
         ...styles[variant],
-        border: "none",
-        borderRadius: 12,
-        padding: "12px 16px",
-        fontSize: 15,
-        fontWeight: 700,
+        borderRadius: 9,
+        padding: "10px 15px",
+        fontSize: 13.5,
+        fontWeight: 600,
+        letterSpacing: "-0.01em",
         cursor: disabled ? "not-allowed" : "pointer",
-        opacity: disabled ? 0.55 : 1,
+        opacity: disabled ? 0.5 : 1,
         width: full ? "100%" : undefined,
-        transition: "filter 0.15s",
+        transition: "filter 0.15s, background 0.15s",
       }}
-      onMouseDown={(e) => (e.currentTarget.style.filter = "brightness(0.92)")}
+      onMouseDown={(e) => (e.currentTarget.style.filter = "brightness(0.93)")}
       onMouseUp={(e) => (e.currentTarget.style.filter = "none")}
       onMouseLeave={(e) => (e.currentTarget.style.filter = "none")}
     >
@@ -147,11 +146,26 @@ export function Button({
   );
 }
 
-export function EmptyState({ icon, title, hint }: { icon: string; title: string; hint?: string }) {
+export function EmptyState({ icon, title, hint }: { icon: IconName; title: string; hint?: string }) {
   return (
     <div style={{ textAlign: "center", padding: "60px 20px", color: "var(--text-dim)" }}>
-      <div style={{ fontSize: 40, marginBottom: 12 }}>{icon}</div>
-      <div style={{ fontSize: 16, fontWeight: 600, color: "var(--text)" }}>{title}</div>
+      <div
+        style={{
+          width: 48,
+          height: 48,
+          borderRadius: 12,
+          margin: "0 auto 14px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          background: "var(--surface-hi)",
+          border: "1px solid var(--stroke)",
+          color: "var(--text-faint)",
+        }}
+      >
+        <Icon name={icon} size={22} />
+      </div>
+      <div style={{ fontSize: 15, fontWeight: 600, color: "var(--text)" }}>{title}</div>
       {hint && <div style={{ fontSize: 13, marginTop: 6 }}>{hint}</div>}
     </div>
   );

@@ -26,7 +26,7 @@ export function Notifications() {
       </div>
 
       {items.length === 0 ? (
-        <EmptyState icon="📨" title="Bildirim yok" hint="Alarmların tetiklendiğinde burada görünür" />
+        <EmptyState icon="inbox" title="Bildirim yok" hint="Alarmların tetiklendiğinde burada görünür" />
       ) : (
         <Card style={{ overflow: "hidden" }}>
           {items.map((n, i) => (

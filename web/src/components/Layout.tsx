@@ -4,15 +4,16 @@ import { useAuth } from "../auth/AuthContext";
 import { useMarkets } from "../store/markets";
 import type { NotificationPayload } from "../lib/types";
 import { ConnectionDot } from "./common";
+import { Icon, type IconName } from "./Icon";
 
-const NAV = [
-  { to: "/", label: "Piyasalar", icon: "📈", end: true },
-  { to: "/favorites", label: "Favoriler", icon: "⭐" },
-  { to: "/rewards", label: "Ödüller", icon: "🏆" },
-  { to: "/alerts", label: "Alarmlar", icon: "🔔" },
-  { to: "/portfolio", label: "Portföy", icon: "💼" },
-  { to: "/notifications", label: "Bildirimler", icon: "📨" },
-  { to: "/settings", label: "Ayarlar", icon: "⚙️" },
+const NAV: { to: string; label: string; icon: IconName; end?: boolean }[] = [
+  { to: "/", label: "Piyasalar", icon: "markets", end: true },
+  { to: "/favorites", label: "Favoriler", icon: "star" },
+  { to: "/rewards", label: "Ödüller", icon: "trophy" },
+  { to: "/alerts", label: "Alarmlar", icon: "bell" },
+  { to: "/portfolio", label: "Portföy", icon: "portfolio" },
+  { to: "/notifications", label: "Bildirimler", icon: "inbox" },
+  { to: "/settings", label: "Ayarlar", icon: "settings" },
 ];
 
 interface Toast extends NotificationPayload {
@@ -39,25 +40,22 @@ export function Layout() {
       {/* Sidebar */}
       <aside
         style={{
-          width: 232,
+          width: 236,
           borderRight: "1px solid var(--stroke)",
-          padding: "20px 14px",
+          padding: "18px 12px",
           position: "sticky",
           top: 0,
           height: "100vh",
           display: "flex",
           flexDirection: "column",
-          gap: 4,
+          gap: 2,
           background: "var(--bg-elev)",
         }}
         className="tsc-sidebar"
       >
-        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "4px 8px 18px" }}>
-          <img src="/logo.png" width={34} height={34} style={{ borderRadius: 9 }} alt="" />
-          <div>
-            <div style={{ fontWeight: 800, fontSize: 16 }}>TSC Forex</div>
-            <div style={{ fontSize: 11, color: "var(--text-faint)" }}>Canlı Piyasa</div>
-          </div>
+        <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "4px 10px 16px" }}>
+          <img src="/logo.png" width={28} height={28} style={{ borderRadius: 7 }} alt="" />
+          <div style={{ fontWeight: 650, fontSize: 15, letterSpacing: "-0.02em" }}>TSC Forex</div>
         </div>
 
         {NAV.map((n) => (
@@ -68,17 +66,22 @@ export function Layout() {
             style={({ isActive }) => ({
               display: "flex",
               alignItems: "center",
-              gap: 12,
-              padding: "11px 12px",
-              borderRadius: 10,
-              fontSize: 14,
-              fontWeight: 600,
-              color: isActive ? "var(--accent-hi)" : "var(--text-dim)",
-              background: isActive ? "var(--accent-soft)" : "transparent",
+              gap: 11,
+              padding: "8px 10px",
+              borderRadius: 7,
+              fontSize: 13.5,
+              fontWeight: 500,
+              color: isActive ? "var(--text)" : "var(--text-dim)",
+              background: isActive ? "var(--surface-hi)" : "transparent",
+              transition: "background 0.12s, color 0.12s",
             })}
           >
-            <span style={{ fontSize: 16 }}>{n.icon}</span>
-            {n.label}
+            {({ isActive }) => (
+              <>
+                <Icon name={n.icon} size={17} style={{ color: isActive ? "var(--accent-hi)" : "var(--text-faint)" }} />
+                {n.label}
+              </>
+            )}
           </NavLink>
         ))}
 
@@ -155,17 +158,21 @@ export function Layout() {
           <button
             onClick={logout}
             style={{
-              marginTop: 8,
+              marginTop: 6,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 7,
               width: "100%",
               background: "transparent",
               border: "none",
               color: "var(--text-faint)",
-              fontSize: 12,
+              fontSize: 12.5,
               cursor: "pointer",
-              padding: 6,
+              padding: 7,
             }}
           >
-            Çıkış yap
+            <Icon name="logout" size={14} /> Çıkış yap
           </button>
           </>
           )}

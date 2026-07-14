@@ -5,6 +5,7 @@ import { api } from "../lib/endpoints";
 import { useMarkets } from "../store/markets";
 import { signed, tl } from "../lib/format";
 import { Button, Card, ChangePill } from "../components/common";
+import { Icon } from "../components/Icon";
 import { PriceChart } from "../components/PriceChart";
 
 const INTERVALS = [
@@ -40,24 +41,32 @@ export function AssetDetail() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 18 }}>
-      <button onClick={() => nav(-1)} style={backBtn}>← Geri</button>
+      <button onClick={() => nav(-1)} style={backBtn}>
+        <Icon name="arrow-left" size={16} /> Geri
+      </button>
 
-      <div style={{ display: "flex", alignItems: "flex-end", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+      <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
         <div>
-          <h2 style={{ margin: "0 0 6px", fontSize: 22 }}>{name}</h2>
+          <h2 style={{ margin: "0 0 6px", fontSize: 20, fontWeight: 600, letterSpacing: "-0.02em" }}>{name}</h2>
           <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
-            <span className="mono" style={{ fontSize: 30, fontWeight: 800 }}>{tl(p)}</span>
+            <span className="mono" style={{ fontSize: 28, fontWeight: 700 }}>{tl(p)}</span>
             <ChangePill pct={changePct} />
-            <span className="mono" style={{ color: change >= 0 ? "var(--up)" : "var(--down)", fontSize: 14 }}>
+            <span className="mono" style={{ color: change >= 0 ? "var(--up)" : "var(--down)", fontSize: 13.5 }}>
               {signed(change)}
             </span>
           </div>
         </div>
-        <div style={{ display: "flex", gap: 10 }}>
-          <Button variant={isFav ? "soft" : "ghost"} onClick={() => toggleFav.mutate()}>
-            {isFav ? "★ Favoride" : "☆ Favori ekle"}
-          </Button>
-          <Button variant="primary" onClick={() => setAlertOpen(true)}>🔔 Alarm kur</Button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button
+            onClick={() => toggleFav.mutate()}
+            title={isFav ? "Favoriden çıkar" : "Favori ekle"}
+            style={{ ...iconBtn, color: isFav ? "var(--accent-hi)" : "var(--text-dim)", borderColor: isFav ? "var(--stroke-strong)" : "var(--stroke)" }}
+          >
+            <Icon name={isFav ? "star-filled" : "star"} size={18} />
+          </button>
+          <button onClick={() => setAlertOpen(true)} title="Alarm kur" style={iconBtn}>
+            <Icon name="bell" size={18} />
+          </button>
         </div>
       </div>
 
@@ -188,13 +197,28 @@ function SegBtn({ active, onClick, children }: { active: boolean; onClick: () =>
 }
 
 const backBtn: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 6,
   background: "none",
   border: "none",
   color: "var(--text-dim)",
-  fontSize: 14,
+  fontSize: 13.5,
   cursor: "pointer",
   padding: 0,
   alignSelf: "flex-start",
+};
+const iconBtn: React.CSSProperties = {
+  width: 38,
+  height: 38,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  background: "var(--surface)",
+  border: "1px solid var(--stroke)",
+  borderRadius: 9,
+  color: "var(--text-dim)",
+  cursor: "pointer",
 };
 const overlay: React.CSSProperties = {
   position: "fixed",

@@ -4,6 +4,7 @@ import { useAuth } from "../auth/AuthContext";
 import { googleSignIn } from "../auth/google";
 import { passkeySupported } from "../auth/passkey";
 import { BRAND } from "../lib/config";
+import { Icon, type IconName } from "../components/Icon";
 
 export function Login() {
   const auth = useAuth();
@@ -75,7 +76,7 @@ export function Login() {
         </div>
 
         <form onSubmit={submit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-          <Field icon="✉️">
+          <Field icon="mail">
             <input
               type="email"
               value={email}
@@ -85,7 +86,7 @@ export function Login() {
               style={inputStyle}
             />
           </Field>
-          <Field icon="🔒">
+          <Field icon="lock">
             <input
               type="password"
               value={password}
@@ -117,7 +118,7 @@ export function Login() {
 
         {passkeySupported() && (
           <button onClick={() => auth.loginWithPasskey().catch(() => {})} style={passkeyBtn}>
-            🔑 Geçiş anahtarı ile giriş
+            <Icon name="key" size={16} /> Geçiş anahtarı ile giriş
           </button>
         )}
 
@@ -153,7 +154,7 @@ const inputStyle: React.CSSProperties = {
   fontSize: 15,
 };
 
-function Field({ icon, children }: { icon: string; children: React.ReactNode }) {
+function Field({ icon, children }: { icon: IconName; children: React.ReactNode }) {
   return (
     <div
       style={{
@@ -166,7 +167,9 @@ function Field({ icon, children }: { icon: string; children: React.ReactNode }) 
         padding: "13px 14px",
       }}
     >
-      <span style={{ opacity: 0.6 }}>{icon}</span>
+      <span style={{ color: "var(--text-faint)", display: "flex" }}>
+        <Icon name={icon} size={17} />
+      </span>
       {children}
     </div>
   );
@@ -219,4 +222,8 @@ const passkeyBtn: React.CSSProperties = {
   fontSize: 15,
   fontWeight: 600,
   cursor: "pointer",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: 8,
 };

@@ -23,7 +23,7 @@ export function Alerts() {
       </div>
 
       {items.length === 0 ? (
-        <EmptyState icon="🔔" title="Aktif alarm yok" hint="Bir varlık detayından ‘Alarm kur’ ile ekleyin" />
+        <EmptyState icon="bell" title="Aktif alarm yok" hint="Bir varlık detayından ‘Alarm kur’ ile ekleyin" />
       ) : (
         <Card style={{ overflow: "hidden" }}>
           {items.map((a, i) => (

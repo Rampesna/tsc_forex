@@ -14,6 +14,7 @@ import { Profile } from "./pages/Profile";
 import { Settings } from "./pages/Settings";
 import { Rewards } from "./pages/Rewards";
 import { Privacy, Support, Terms } from "./pages/Legal";
+import { Icon } from "./components/Icon";
 
 // Market data (list + detail) is public — no login required to browse. Personal
 // features (favorites, portfolio, alerts, rewards, profile) are gated behind a
@@ -32,8 +33,23 @@ function RequireAuth({ children, title }: { children: ReactElement; title: strin
           padding: "40px 28px",
         }}
       >
-        <div style={{ fontSize: 42, marginBottom: 14 }}>🔐</div>
-        <h2 style={{ fontSize: 20, fontWeight: 800, margin: "0 0 8px" }}>{title}</h2>
+        <div
+          style={{
+            width: 52,
+            height: 52,
+            borderRadius: 14,
+            margin: "0 auto 16px",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            background: "var(--surface-hi)",
+            border: "1px solid var(--stroke)",
+            color: "var(--text-dim)",
+          }}
+        >
+          <Icon name="star" size={24} />
+        </div>
+        <h2 style={{ fontSize: 19, fontWeight: 650, margin: "0 0 8px", letterSpacing: "-0.02em" }}>{title}</h2>
         <p style={{ color: "var(--text-dim)", fontSize: 14, margin: "0 0 22px", lineHeight: 1.5 }}>
           Bu özelliği kullanmak için ücretsiz TSC Forex hesabınla giriş yap. Piyasaları giriş
           yapmadan da izleyebilirsin.

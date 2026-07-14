@@ -81,7 +81,7 @@ export function Portfolio() {
       </Card>
 
       {rows.length === 0 ? (
-        <EmptyState icon="💼" title="Portföyün boş" hint="Bir varlık ekleyerek başla" />
+        <EmptyState icon="portfolio" title="Portföyün boş" hint="Bir varlık ekleyerek başla" />
       ) : (
         <Card style={{ overflow: "hidden" }}>
           {rows.map((r, i) => (

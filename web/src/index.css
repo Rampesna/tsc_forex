@@ -1,31 +1,38 @@
-/* TSC Forex — dark, Binance/Stripe-grade design system.
-   Brand palette derived from the logo (deep teal #003D4D). The deep tone is
-   illegible on near-black, so interactive elements use a readable brand teal. */
+/* TSC Forex — Linear-grade design system.
+   Restrained, near-monochrome dark UI. Color is used sparingly and only where it
+   carries meaning (price up/down, the single brand accent). No decorative color. */
 :root {
-  --bg: #0b0e11;
-  --bg-elev: #12161c;
-  --surface: #181c22;
-  --surface-hi: #21262e;
+  /* Neutrals — warm charcoal ladder, Linear-style */
+  --bg: #08090a;
+  --bg-elev: #0d0e10;
+  --surface: #121315;
+  --surface-hi: #1a1b1e;
+  --surface-hover: #17181b;
   --stroke: rgba(255, 255, 255, 0.06);
-  --stroke-strong: rgba(255, 255, 255, 0.12);
+  --stroke-strong: rgba(255, 255, 255, 0.11);
 
-  --text: #eaecef;
-  --text-dim: #8a94a6;
-  --text-faint: #5e6673;
+  --text: #f7f8f8;
+  --text-dim: #9ca3af;
+  --text-faint: #6b7280;
 
-  --up: #0ecb81;
-  --down: #f6465d;
+  /* Signal colors — muted, not neon */
+  --up: #4ec99a;
+  --down: #f16b7d;
+  --up-soft: rgba(78, 201, 154, 0.12);
+  --down-soft: rgba(241, 107, 125, 0.12);
+
+  /* Single brand accent (teal), used sparingly */
   --brand-deep: #003d4d;
-  --accent: #17a2b8;
-  --accent-hi: #1fb6ce;
-  --accent-soft: rgba(23, 162, 184, 0.16);
+  --accent: #2ea9c0;
+  --accent-hi: #45c0d6;
+  --accent-soft: rgba(46, 169, 192, 0.12);
 
-  --radius: 16px;
-  --radius-sm: 10px;
-  --shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  --radius: 12px;
+  --radius-sm: 8px;
+  --shadow: 0 8px 28px rgba(0, 0, 0, 0.5);
 
-  --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial,
-    "Inter", sans-serif;
+  --font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica,
+    Arial, sans-serif;
   --mono: "SF Mono", ui-monospace, "JetBrains Mono", Menlo, monospace;
   color-scheme: dark;
 }
@@ -37,6 +44,8 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: var(--font);
+  font-size: 14px;
+  letter-spacing: -0.01em;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -44,19 +53,29 @@ a { color: inherit; text-decoration: none; }
 button { font-family: inherit; }
 ::selection { background: var(--accent-soft); }
 
-/* Scrollbars */
-::-webkit-scrollbar { width: 10px; height: 10px; }
-::-webkit-scrollbar-thumb { background: #232a32; border-radius: 8px; }
+/* Scrollbars — thin and quiet */
+::-webkit-scrollbar { width: 9px; height: 9px; }
+::-webkit-scrollbar-thumb { background: #202225; border-radius: 8px; }
+::-webkit-scrollbar-thumb:hover { background: #2a2d31; }
 ::-webkit-scrollbar-track { background: transparent; }
 
 .mono { font-variant-numeric: tabular-nums; font-feature-settings: "tnum"; }
 .up { color: var(--up); }
 .down { color: var(--down); }
 
-@keyframes flash-up { 0% { background: rgba(14,203,129,0.22);} 100% { background: transparent;} }
-@keyframes flash-down { 0% { background: rgba(246,70,93,0.22);} 100% { background: transparent;} }
-.flash-up { animation: flash-up 0.6s ease-out; }
-.flash-down { animation: flash-down 0.6s ease-out; }
+/* Subtle price-tick flash */
+@keyframes flash-up { 0% { background: var(--up-soft); } 100% { background: transparent; } }
+@keyframes flash-down { 0% { background: var(--down-soft); } 100% { background: transparent; } }
+.flash-up { animation: flash-up 0.7s ease-out; }
+.flash-down { animation: flash-down 0.7s ease-out; }
+
+/* Quiet row hover used across lists */
+.row-hover { transition: background 0.12s ease; }
+.row-hover:hover { background: var(--surface-hover); }
+
+/* Horizontal strips without a visible scrollbar */
+.no-sb { scrollbar-width: none; }
+.no-sb::-webkit-scrollbar { height: 0; width: 0; }
 
 @keyframes spin { to { transform: rotate(360deg); } }
 .spinner {
@@ -64,4 +83,13 @@ button { font-family: inherit; }
   border: 2px solid rgba(0,0,0,0.25); border-top-color: rgba(0,0,0,0.7);
   animation: spin 0.7s linear infinite;
 }
-.spinner.light { border-color: rgba(255,255,255,0.2); border-top-color: var(--accent); }
+.spinner.light { border-color: rgba(255,255,255,0.18); border-top-color: var(--accent); }
+
+/* Skeleton shimmer (Facebook-style loaders) */
+@keyframes shimmer { 0% { background-position: -420px 0; } 100% { background-position: 420px 0; } }
+.skeleton {
+  background: linear-gradient(90deg, #141517 25%, #1c1d20 37%, #141517 63%);
+  background-size: 840px 100%;
+  animation: shimmer 1.3s infinite linear;
+  border-radius: 6px;
+}
