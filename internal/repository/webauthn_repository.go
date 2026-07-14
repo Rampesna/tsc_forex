@@ -17,6 +17,7 @@ type WebAuthnCredentialRepository interface {
 	ListByUser(ctx context.Context, userID uuid.UUID) ([]models.WebAuthnCredential, error)
 	ByCredentialID(ctx context.Context, credentialID []byte) (models.WebAuthnCredential, error)
 	UpdateSignCount(ctx context.Context, id uuid.UUID, signCount uint32) error
+	UpdateFlags(ctx context.Context, id uuid.UUID, backupEligible, backupState bool) error
 }
 
 type webAuthnCredentialRepository struct{ gormBase }
@@ -57,6 +58,20 @@ func (r *webAuthnCredentialRepository) UpdateSignCount(ctx context.Context, id u
 	start := time.Now()
 	err := r.db.WithContext(ctx).Model(&models.WebAuthnCredential{}).
 		Where("id = ?", id).Update("sign_count", signCount).Error
+	r.observe(start, err)
+	return err
+}
+
+// UpdateFlags reconciles the persisted backup-eligibility/state flags with the
+// values observed on a live assertion. Used to self-heal credentials that were
+// stored before these flags were captured at registration time.
+func (r *webAuthnCredentialRepository) UpdateFlags(ctx context.Context, id uuid.UUID, backupEligible, backupState bool) error {
+	start := time.Now()
+	err := r.db.WithContext(ctx).Model(&models.WebAuthnCredential{}).
+		Where("id = ?", id).Updates(map[string]interface{}{
+		"backup_eligible": backupEligible,
+		"backup_state":    backupState,
+	}).Error
 	r.observe(start, err)
 	return err
 }

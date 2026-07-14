@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -228,7 +229,19 @@ func (s *PasskeyService) FinishLogin(ctx context.Context, sessionToken string, b
 		return "", "", err
 	}
 
-	var resolved models.User
+	// Backup Eligible/State are static properties of the credential. Legacy
+	// credentials created before we captured these flags default to false in
+	// our store, which would trip go-webauthn's consistency check against a
+	// synced (iCloud/Google) passkey that always asserts BE=BS=true. Read the
+	// live flags so we can reconcile the stored record and let login proceed.
+	asrBE := parsed.Response.AuthenticatorData.Flags.HasBackupEligible()
+	asrBS := parsed.Response.AuthenticatorData.Flags.HasBackupState()
+
+	var (
+		resolved      models.User
+		reconcileID   uuid.UUID
+		needReconcile bool
+	)
 	handler := func(rawID, userHandle []byte) (webauthn.User, error) {
 		uid, uerr := uuid.FromBytes(userHandle)
 		if uerr != nil {
@@ -241,8 +254,21 @@ func (s *PasskeyService) FinishLogin(ctx context.Context, sessionToken string, b
 			return nil, uerr
 		}
 		creds, _ := s.creds.ListByUser(ctx, uid)
+		// Reconcile the flags of the credential actually being used so the
+		// consistency check passes; remember it to persist after validation.
+		for i := range creds {
+			if bytes.Equal(creds[i].CredentialID, rawID) {
+				if creds[i].BackupEligible != asrBE || creds[i].BackupState != asrBS {
+					reconcileID = creds[i].ID
+					needReconcile = true
+					creds[i].BackupEligible = asrBE
+					creds[i].BackupState = asrBS
+				}
+			}
+		}
 		s.log.Info("passkey login: resolved user",
-			zap.String("email", u.Email), zap.Int("stored_creds", len(creds)))
+			zap.String("email", u.Email), zap.Int("stored_creds", len(creds)),
+			zap.Bool("reconcile_flags", needReconcile))
 		resolved = u
 		return webUser{user: u, creds: creds}, nil
 	}
@@ -256,6 +282,15 @@ func (s *PasskeyService) FinishLogin(ctx context.Context, sessionToken string, b
 	// Persist the updated sign counter (clone detection).
 	if stored, serr := s.creds.ByCredentialID(ctx, cred.ID); serr == nil {
 		_ = s.creds.UpdateSignCount(ctx, stored.ID, cred.Authenticator.SignCount)
+	}
+	// Persist reconciled backup flags so future logins are consistent.
+	if needReconcile {
+		if uerr := s.creds.UpdateFlags(ctx, reconcileID, asrBE, asrBS); uerr != nil {
+			s.log.Warn("passkey login: reconcile flags failed", zap.Error(uerr))
+		} else {
+			s.log.Info("passkey login: reconciled backup flags",
+				zap.Bool("backup_eligible", asrBE), zap.Bool("backup_state", asrBS))
+		}
 	}
 	return s.auth.IssueSession(ctx, resolved)
 }
