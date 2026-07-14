@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"sort"
 	"strings"
 	"time"
 
@@ -24,6 +25,7 @@ import (
 var (
 	ErrPasskeyDisabled = errors.New("passkey not configured")
 	ErrPasskeySession  = errors.New("invalid or expired passkey session")
+	ErrPasskeyNotFound = errors.New("passkey not found")
 )
 
 // PasskeyService wraps go-webauthn for passwordless registration and login.
@@ -293,6 +295,76 @@ func (s *PasskeyService) FinishLogin(ctx context.Context, sessionToken string, b
 		}
 	}
 	return s.auth.IssueSession(ctx, resolved)
+}
+
+// PasskeyInfo is the client-facing view of a registered credential.
+type PasskeyInfo struct {
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	Synced    bool      `json:"synced"` // BackupState: usable across the user's devices
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// ListCredentials returns the user's registered passkeys (newest first).
+func (s *PasskeyService) ListCredentials(ctx context.Context, userID uuid.UUID) ([]PasskeyInfo, error) {
+	rows, err := s.creds.ListByUser(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]PasskeyInfo, 0, len(rows))
+	for _, c := range rows {
+		out = append(out, PasskeyInfo{
+			ID:        c.ID.String(),
+			Name:      defaultName(c),
+			Synced:    c.BackupState,
+			CreatedAt: c.CreatedAt,
+		})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].CreatedAt.After(out[j].CreatedAt) })
+	return out, nil
+}
+
+// DeleteCredential removes a passkey the user owns. Returns ErrPasskeyNotFound
+// when the id doesn't belong to the user.
+func (s *PasskeyService) DeleteCredential(ctx context.Context, userID, id uuid.UUID) error {
+	n, err := s.creds.DeleteByUser(ctx, userID, id)
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return ErrPasskeyNotFound
+	}
+	return nil
+}
+
+// RenameCredential sets a user-friendly label for a passkey the user owns.
+func (s *PasskeyService) RenameCredential(ctx context.Context, userID, id uuid.UUID, name string) error {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return errors.New("name required")
+	}
+	if len(name) > 80 {
+		name = name[:80]
+	}
+	n, err := s.creds.RenameByUser(ctx, userID, id, name)
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return ErrPasskeyNotFound
+	}
+	return nil
+}
+
+// defaultName falls back to a sensible label when the user hasn't named the key.
+func defaultName(c models.WebAuthnCredential) string {
+	if strings.TrimSpace(c.Name) != "" {
+		return c.Name
+	}
+	if c.BackupState {
+		return "Eşitlenen geçiş anahtarı"
+	}
+	return "Bu cihaz"
 }
 
 func credentialDescriptors(creds []models.WebAuthnCredential) []protocol.CredentialDescriptor {

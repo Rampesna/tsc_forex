@@ -18,6 +18,11 @@ type WebAuthnCredentialRepository interface {
 	ByCredentialID(ctx context.Context, credentialID []byte) (models.WebAuthnCredential, error)
 	UpdateSignCount(ctx context.Context, id uuid.UUID, signCount uint32) error
 	UpdateFlags(ctx context.Context, id uuid.UUID, backupEligible, backupState bool) error
+	// DeleteByUser removes a credential owned by the given user; returns the
+	// number of rows affected so callers can distinguish not-found from success.
+	DeleteByUser(ctx context.Context, userID, id uuid.UUID) (int64, error)
+	// RenameByUser sets the user-editable label for a credential the user owns.
+	RenameByUser(ctx context.Context, userID, id uuid.UUID, name string) (int64, error)
 }
 
 type webAuthnCredentialRepository struct{ gormBase }
@@ -60,6 +65,24 @@ func (r *webAuthnCredentialRepository) UpdateSignCount(ctx context.Context, id u
 		Where("id = ?", id).Update("sign_count", signCount).Error
 	r.observe(start, err)
 	return err
+}
+
+func (r *webAuthnCredentialRepository) DeleteByUser(ctx context.Context, userID, id uuid.UUID) (int64, error) {
+	start := time.Now()
+	tx := r.db.WithContext(ctx).
+		Where("id = ? AND user_id = ?", id, userID).
+		Delete(&models.WebAuthnCredential{})
+	r.observe(start, tx.Error)
+	return tx.RowsAffected, tx.Error
+}
+
+func (r *webAuthnCredentialRepository) RenameByUser(ctx context.Context, userID, id uuid.UUID, name string) (int64, error) {
+	start := time.Now()
+	tx := r.db.WithContext(ctx).Model(&models.WebAuthnCredential{}).
+		Where("id = ? AND user_id = ?", id, userID).
+		Update("name", name)
+	r.observe(start, tx.Error)
+	return tx.RowsAffected, tx.Error
 }
 
 // UpdateFlags reconciles the persisted backup-eligibility/state flags with the

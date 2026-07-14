@@ -3,9 +3,11 @@ package api
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 
 	"github.com/tsc-forex/tsc_forex/internal/service"
 )
@@ -59,6 +61,74 @@ func (h *PasskeyHandler) RegisterFinish(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusCreated, gin.H{"status": "registered"})
+}
+
+// List returns the current user's registered passkeys.
+func (h *PasskeyHandler) List(c *gin.Context) {
+	uid, ok := currentUserID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, ErrorResponse{Error: "unauthorized"})
+		return
+	}
+	items, err := h.svc.ListCredentials(c.Request.Context(), uid)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "list failed"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"passkeys": items})
+}
+
+// Delete removes one of the current user's passkeys by id.
+func (h *PasskeyHandler) Delete(c *gin.Context) {
+	uid, ok := currentUserID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, ErrorResponse{Error: "unauthorized"})
+		return
+	}
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "invalid id"})
+		return
+	}
+	if err := h.svc.DeleteCredential(c.Request.Context(), uid, id); err != nil {
+		if errors.Is(err, service.ErrPasskeyNotFound) {
+			c.JSON(http.StatusNotFound, ErrorResponse{Error: "not found"})
+			return
+		}
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "delete failed"})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "deleted"})
+}
+
+// Rename sets a user-friendly label for one of the user's passkeys.
+func (h *PasskeyHandler) Rename(c *gin.Context) {
+	uid, ok := currentUserID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, ErrorResponse{Error: "unauthorized"})
+		return
+	}
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "invalid id"})
+		return
+	}
+	var req struct {
+		Name string `json:"name"`
+	}
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		return
+	}
+	if err := h.svc.RenameCredential(c.Request.Context(), uid, id, req.Name); err != nil {
+		if errors.Is(err, service.ErrPasskeyNotFound) {
+			c.JSON(http.StatusNotFound, ErrorResponse{Error: "not found"})
+			return
+		}
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "renamed"})
 }
 
 // LoginBegin returns assertion options for usernameless passkey login.

@@ -147,10 +147,13 @@ func NewEngine(d Deps) *gin.Engine {
 					authed.GET("/me/gamification/leaderboard", d.Gamification.Leaderboard)
 				}
 
-				// Passkey registration for the signed-in user.
+				// Passkey registration + management for the signed-in user.
 				if d.Passkey != nil {
 					authed.POST("/me/passkey/register/begin", d.Passkey.RegisterBegin)
 					authed.POST("/me/passkey/register/finish", d.Passkey.RegisterFinish)
+					authed.GET("/me/passkeys", d.Passkey.List)
+					authed.PATCH("/me/passkeys/:id", d.Passkey.Rename)
+					authed.DELETE("/me/passkeys/:id", d.Passkey.Delete)
 				}
 			}
 		}

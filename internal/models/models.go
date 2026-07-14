@@ -239,7 +239,9 @@ type WebAuthnCredential struct {
 	// Eligible flag inconsistency").
 	BackupEligible bool      `gorm:"not null;default:false" json:"-"`
 	BackupState    bool      `gorm:"not null;default:false" json:"-"`
-	CreatedAt      time.Time `json:"created_at"`
+	// Name is a user-editable label for the passkey (e.g. "iPhone'um").
+	Name      string    `gorm:"type:varchar(80)" json:"name"`
+	CreatedAt time.Time `json:"created_at"`
 }
 
 func (WebAuthnCredential) TableName() string { return "webauthn_credentials" }
