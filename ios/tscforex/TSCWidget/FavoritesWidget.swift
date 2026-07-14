@@ -153,103 +153,105 @@ struct FavoritesWidgetView: View {
     @Environment(\.widgetFamily) private var family
     let entry: FavEntry
 
-    private var maxRows: Int { family == .systemSmall ? 3 : 4 }
-
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            header
+        Group {
             if entry.items.isEmpty {
                 emptyState
             } else {
-                VStack(spacing: family == .systemSmall ? 7 : 9) {
-                    ForEach(Array(entry.items.prefix(maxRows)), id: \.code) { item in
-                        row(item)
+                VStack(spacing: 10) {
+                    ForEach(Array(entry.items.prefix(2)), id: \.code) { item in
+                        card(item)
                     }
                 }
-                .padding(.top, family == .systemSmall ? 8 : 10)
-                Spacer(minLength: 0)
             }
         }
+        .overlay(alignment: .topTrailing) { updatedBadge }
         .containerBackground(for: .widget) {
             LinearGradient(colors: [WTheme.bgTop, WTheme.bgBottom],
                            startPoint: .top, endPoint: .bottom)
         }
     }
 
-    private var header: some View {
-        HStack(spacing: 7) {
-            RoundedRectangle(cornerRadius: 6, style: .continuous)
-                .fill(WTheme.accent)
-                .frame(width: 18, height: 18)
-                .overlay(
-                    Image(systemName: "star.fill")
-                        .font(.system(size: 9, weight: .black))
-                        .foregroundStyle(.white)
-                )
-            Text("Favoriler")
-                .font(.system(size: 13, weight: .bold))
-                .foregroundStyle(WTheme.text)
-            Spacer(minLength: 0)
-            HStack(spacing: 3) {
-                Circle().fill(WTheme.up).frame(width: 5, height: 5)
-                Text(hhmm(entry.date))
-                    .font(.system(size: 10, weight: .medium, design: .rounded))
-                    .foregroundStyle(WTheme.faint)
-            }
+    // Small, unobtrusive "last updated" pill in the corner (no title clutter).
+    private var updatedBadge: some View {
+        HStack(spacing: 3) {
+            Circle().fill(WTheme.up).frame(width: 5, height: 5)
+            Text(hhmm(entry.date))
+                .font(.system(size: 9.5, weight: .semibold, design: .rounded))
+                .foregroundStyle(WTheme.faint)
         }
+        .padding(.top, 1)
     }
 
-    private func row(_ item: Shared.Item) -> some View {
-        HStack(spacing: 8) {
-            Text(item.name)
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(WTheme.text)
-                .lineLimit(1)
-                .minimumScaleFactor(0.8)
-                .layoutPriority(1)
-            Spacer(minLength: 6)
-            VStack(alignment: .trailing, spacing: 2) {
-                Text(fmtTRY(item.price))
-                    .font(.system(size: 13, weight: .bold, design: .rounded))
+    private func card(_ item: Shared.Item) -> some View {
+        HStack(spacing: 12) {
+            // Asset initial badge for a bit of visual identity.
+            RoundedRectangle(cornerRadius: 11, style: .continuous)
+                .fill(WTheme.accent.opacity(0.16))
+                .frame(width: 44, height: 44)
+                .overlay(
+                    Text(String(item.name.prefix(1)).uppercased())
+                        .font(.system(size: 18, weight: .heavy, design: .rounded))
+                        .foregroundStyle(WTheme.accent)
+                )
+
+            VStack(alignment: .leading, spacing: 5) {
+                Text(item.name)
+                    .font(.system(size: 16, weight: .bold))
                     .foregroundStyle(WTheme.text)
                     .lineLimit(1)
                     .minimumScaleFactor(0.75)
                 changeChip(item.changePct)
             }
-            .fixedSize(horizontal: true, vertical: false)
+
+            Spacer(minLength: 8)
+
+            Text(fmtTRY(item.price))
+                .font(.system(size: 20, weight: .bold, design: .rounded))
+                .foregroundStyle(WTheme.text)
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
         }
+        .padding(.vertical, 11)
+        .padding(.horizontal, 13)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(
+            RoundedRectangle(cornerRadius: 16, style: .continuous)
+                .fill(Color.white.opacity(0.045))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .stroke(WTheme.hair, lineWidth: 1)
+                )
+        )
     }
 
     private func changeChip(_ pct: Double) -> some View {
         let positive = pct >= 0
-        return HStack(spacing: 2) {
+        return HStack(spacing: 3) {
             Image(systemName: positive ? "arrowtriangle.up.fill" : "arrowtriangle.down.fill")
-                .font(.system(size: 7, weight: .bold))
+                .font(.system(size: 8, weight: .bold))
             Text(fmtPct(pct))
-                .font(.system(size: 10, weight: .bold, design: .rounded))
+                .font(.system(size: 11.5, weight: .bold, design: .rounded))
         }
         .foregroundStyle(positive ? WTheme.up : WTheme.down)
-        .padding(.horizontal, 6)
-        .padding(.vertical, 2)
-        .background(positive ? WTheme.upSoft : WTheme.downSoft,
-                    in: Capsule())
+        .padding(.horizontal, 7)
+        .padding(.vertical, 3)
+        .background(positive ? WTheme.upSoft : WTheme.downSoft, in: Capsule())
     }
 
     private var emptyState: some View {
-        VStack(spacing: 5) {
-            Spacer()
+        VStack(spacing: 6) {
             Image(systemName: "star")
-                .font(.system(size: 22))
+                .font(.system(size: 24))
                 .foregroundStyle(WTheme.faint)
             Text("Henüz favori yok")
-                .font(.system(size: 12, weight: .semibold))
+                .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(WTheme.text)
             Text("Uygulamada yıldıza dokunun")
-                .font(.system(size: 10))
+                .font(.system(size: 11))
                 .foregroundStyle(WTheme.dim)
-            Spacer()
         }
-        .frame(maxWidth: .infinity)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
