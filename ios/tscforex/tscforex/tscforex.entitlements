@@ -7,11 +7,12 @@
 	<array>
 		<string>Default</string>
 	</array>
-	<!-- Passkeys (WebAuthn) + credential autofill for the API domain (AASA is
-	     served at tsc-api.talhacan.com). RP ID on the backend matches this. -->
+	<!-- Passkeys (WebAuthn) + credential autofill. RP ID on the backend is
+	     tsc.talhacan.com; its /.well-known/apple-app-site-association is served
+	     by the web nginx (proxied to the API), so web + iOS share one RP. -->
 	<key>com.apple.developer.associated-domains</key>
 	<array>
-		<string>webcredentials:tsc-api.talhacan.com</string>
+		<string>webcredentials:tsc.talhacan.com</string>
 	</array>
 	<!-- APNs background push. Xcode toggles this to "production" for release. -->
 	<key>aps-environment</key>

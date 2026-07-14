@@ -33,7 +33,7 @@ enum PasskeyError: Error, LocalizedError {
 final class PasskeyAuth: NSObject {
     static let shared = PasskeyAuth()
 
-    private let rpID = "tsc-api.talhacan.com"
+    private let rpID = "tsc.talhacan.com"
     private var continuation: CheckedContinuation<ASAuthorization, Error>?
 
     // MARK: - Public API

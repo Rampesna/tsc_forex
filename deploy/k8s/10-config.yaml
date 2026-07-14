@@ -44,12 +44,16 @@ data:
   # screen; it is then served at
   # https://tsc.talhacan.com/.well-known/apple-developer-domain-association.txt
   APP_OAUTH_APPLE_DOMAIN_ASSOCIATION: ""
-  # Passkey (WebAuthn) usernameless login. RP ID = the API domain the native
-  # apps are associated with (AASA at tsc-api.talhacan.com) so iOS passkeys work.
+  # Passkey (WebAuthn) usernameless login. RP ID = the web domain that hosts the
+  # login UI (tsc.talhacan.com). The web nginx proxies /.well-known/* to this
+  # backend, so the AASA/assetlinks that the native apps fetch from
+  # https://tsc.talhacan.com are the same ones this service serves — one RP ID
+  # works for web + iOS + Android. RP ID MUST be a registrable suffix of every
+  # client origin, which is why the API subdomain cannot be used for the web UI.
   APP_WEBAUTHN_ENABLED: "true"
   APP_WEBAUTHN_RP_DISPLAY_NAME: "TSC Forex"
-  APP_WEBAUTHN_RP_ID: "tsc-api.talhacan.com"
-  APP_WEBAUTHN_RP_ORIGINS: "https://tsc-api.talhacan.com"
+  APP_WEBAUTHN_RP_ID: "tsc.talhacan.com"
+  APP_WEBAUTHN_RP_ORIGINS: "https://tsc.talhacan.com"
   APP_LOG_ENCODING: "json"
   APP_LOG_LEVEL: "info"
   APP_METRICS_ENABLED: "true"
