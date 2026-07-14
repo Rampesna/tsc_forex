@@ -214,6 +214,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("provider.rest.poll_interval", "2s")
 	v.SetDefault("provider.rest.fx_base_url", "https://open.er-api.com/v6/latest/USD")
 	v.SetDefault("provider.rest.gold_url", "https://api.gold-api.com/price/XAU")
+	v.SetDefault("provider.rest.crypto_base_url", "https://api.binance.com/api/v3/ticker/price")
 	v.SetDefault("provider.rest.timeout", "4s")
 
 	v.SetDefault("jwt.secret", "CHANGE_ME_TO_A_LONG_RANDOM_SECRET_KEY_32+")

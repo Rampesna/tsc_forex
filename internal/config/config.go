@@ -169,8 +169,17 @@ type RESTProviderConfig struct {
 	PollInterval time.Duration `mapstructure:"poll_interval"`
 	FXBaseURL    string        `mapstructure:"fx_base_url"` // e.g. https://open.er-api.com/v6/latest/USD
 	GoldURL      string        `mapstructure:"gold_url"`    // XAUUSD source (optional)
-	APIKey       string        `mapstructure:"api_key"`
-	Timeout      time.Duration `mapstructure:"timeout"`
+	// CryptoBaseURL is the Binance batch price endpoint used for crypto legs
+	// (e.g. https://api.binance.com/api/v3/ticker/price). Symbols are quoted in
+	// USDT and converted to TRY via the live USD/TRY leg. Swappable/optional.
+	CryptoBaseURL string        `mapstructure:"crypto_base_url"`
+	APIKey        string        `mapstructure:"api_key"`
+	// Binance API credentials. Public market data (prices) needs NO key, so the
+	// crypto feed does not use these; they are plumbed for future authenticated
+	// endpoints (account/user features) and kept only in the K8s secret.
+	BinanceAPIKey    string        `mapstructure:"binance_api_key"`
+	BinanceSecretKey string        `mapstructure:"binance_secret_key"`
+	Timeout          time.Duration `mapstructure:"timeout"`
 }
 
 type MockProviderConfig struct {

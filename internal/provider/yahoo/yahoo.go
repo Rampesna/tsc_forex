@@ -6,6 +6,9 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"net/url"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -283,14 +286,16 @@ func (p *Provider) Fetch(ctx context.Context) ([]domain.Tick, error) {
 		}
 	}
 
-	// Crypto + BIST equities on a slower cadence (best-effort: any failure here
-	// must never break the core FX/gold legs above).
-	if p.pollSeq.Add(1)%slowEvery == 1 {
-		if usdtry > 0 {
-			for sym, price := range p.fetchCrypto(ctx, usdtry) {
-				add(sym, price)
-			}
+	// Crypto every poll (single cheap Binance batch call) for a genuinely live
+	// feed; BIST equities on a slower cadence (18 individual Yahoo calls).
+	// Best-effort: any failure here must never break the core FX/gold legs.
+	seq := p.pollSeq.Add(1)
+	if usdtry > 0 {
+		for sym, price := range p.fetchCrypto(ctx, usdtry) {
+			add(sym, price)
 		}
+	}
+	if seq%slowEvery == 1 {
 		for sym, price := range p.fetchStocks(ctx) {
 			add(sym, price)
 		}
@@ -339,13 +344,81 @@ func (p *Provider) fetchFXAll(ctx context.Context) (map[string]float64, error) {
 	return r.Rates, nil
 }
 
-// fetchCrypto pulls USD quotes for all tracked coins from Yahoo ("<SYM>-USD")
-// concurrently and converts them to TRY. Best-effort: individual failures are
-// skipped so crypto never breaks the core feed.
+// binanceTicker is the minimal shape of a Binance /ticker/price entry.
+type binanceTicker struct {
+	Symbol string `json:"symbol"`
+	Price  string `json:"price"`
+}
+
+// fetchCrypto returns TRY prices for every tracked coin. It prefers Binance —
+// the deepest, most real-time crypto source — pulling ALL symbols in ONE batch
+// request (<SYM>USDT) and converting to TRY via the canonical live USD/TRY leg
+// (so crypto stays consistent with our currency rates, avoiding the Tether
+// premium). If Binance is unreachable it transparently falls back to Yahoo.
 func (p *Provider) fetchCrypto(ctx context.Context, usdtry float64) map[string]float64 {
 	if usdtry <= 0 || len(domain.Cryptos) == 0 {
 		return nil
 	}
+	if out := p.fetchCryptoBinance(ctx, usdtry); len(out) > 0 {
+		return out
+	}
+	return p.fetchCryptoYahoo(ctx, usdtry)
+}
+
+// fetchCryptoBinance pulls all coins in a single batched Binance call. Returns
+// nil on any error so the caller can fall back to Yahoo.
+func (p *Provider) fetchCryptoBinance(ctx context.Context, usdtry float64) map[string]float64 {
+	base := p.cfg.CryptoBaseURL
+	if base == "" {
+		base = "https://api.binance.com/api/v3/ticker/price"
+	}
+	// Build ["BTCUSDT","ETHUSDT",...]; keep a reverse map to canonical symbols.
+	pairs := make([]string, 0, len(domain.Cryptos))
+	canonical := make(map[string]string, len(domain.Cryptos))
+	for _, c := range domain.Cryptos {
+		bs := c.Symbol + "USDT"
+		pairs = append(pairs, `"`+bs+`"`)
+		canonical[bs] = c.Symbol
+	}
+	q := url.Values{}
+	q.Set("symbols", "["+strings.Join(pairs, ",")+"]")
+	reqURL := base + "?" + q.Encode()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+	if err != nil {
+		return nil
+	}
+	req.Header.Set("Accept", "application/json")
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return nil
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return nil
+	}
+	var tickers []binanceTicker
+	if err := json.NewDecoder(resp.Body).Decode(&tickers); err != nil {
+		return nil
+	}
+	out := make(map[string]float64, len(tickers))
+	for _, t := range tickers {
+		sym, ok := canonical[t.Symbol]
+		if !ok {
+			continue
+		}
+		usd, perr := strconv.ParseFloat(t.Price, 64)
+		if perr != nil || usd <= 0 {
+			continue
+		}
+		out[sym] = usd * usdtry
+	}
+	return out
+}
+
+// fetchCryptoYahoo is the resilient fallback: per-symbol Yahoo "<SYM>-USD"
+// quotes converted to TRY. Best-effort; individual failures are skipped.
+func (p *Provider) fetchCryptoYahoo(ctx context.Context, usdtry float64) map[string]float64 {
 	type res struct {
 		sym   string
 		price float64

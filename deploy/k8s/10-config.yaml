@@ -21,6 +21,9 @@ data:
   APP_PROVIDER_REST_POLL_INTERVAL: "2s"
   APP_PROVIDER_REST_FX_BASE_URL: "https://open.er-api.com/v6/latest/USD"
   APP_PROVIDER_REST_GOLD_URL: "https://api.gold-api.com/price/XAU"
+  # Crypto priced from Binance (deepest/most real-time), converted to TRY via
+  # the live USD/TRY leg. Public market data needs no API key.
+  APP_PROVIDER_REST_CRYPTO_BASE_URL: "https://api.binance.com/api/v3/ticker/price"
   APP_PROVIDER_SYNTHETIC_TICK_INTERVAL: "5s"
   # Object storage (MinIO) for profile pictures — shared across all pods.
   APP_STORAGE_ENABLED: "true"

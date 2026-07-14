@@ -70,6 +70,9 @@ provider:
     poll_interval: 2s          # also controls the binance provider poll cadence
     fx_base_url: "https://open.er-api.com/v6/latest/USD"
     gold_url: "https://api.gold-api.com/price/XAU"   # XAU USD/oz, returns {"price": <usd>}
+    # Crypto: Binance batch price endpoint (deepest/most real-time source).
+    # Symbols are <SYM>USDT, converted to TRY via the live USD/TRY leg.
+    crypto_base_url: "https://api.binance.com/api/v3/ticker/price"
     timeout: 4s
   twelvedata:
     enabled: false
