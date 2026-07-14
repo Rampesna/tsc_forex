@@ -36,6 +36,10 @@ struct Shimmer: ViewModifier {
 
 extension View {
     func shimmer() -> some View { modifier(Shimmer()) }
+
+    @ViewBuilder func shimmerIf(_ active: Bool) -> some View {
+        if active { modifier(Shimmer()) } else { self }
+    }
 }
 
 // MARK: - Building blocks

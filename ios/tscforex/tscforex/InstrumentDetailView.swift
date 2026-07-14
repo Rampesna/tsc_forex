@@ -16,6 +16,7 @@ struct AssetDetailView: View {
 
     @State private var candles: [Candle] = []
     @State private var stats: InstrumentStats?
+    @State private var detail: InstrumentDetail?
     @State private var mode: ChartMode = .line
     @State private var tf = "5m"
     @State private var loadingChart = false
@@ -39,10 +40,9 @@ struct AssetDetailView: View {
             ScrollView {
                 VStack(spacing: 16) {
                     priceHeader
-                    actionsRow
                     stats24h
                     chartCard
-                    bidAskCard
+                    detailSections
                     converterCard
                     Color.clear.frame(height: 96)
                 }
@@ -64,9 +64,15 @@ struct AssetDetailView: View {
                 }
             }
             ToolbarItem(placement: .topBarTrailing) {
-                Button { Haptics.tap(); prices.toggleFavorite(code) } label: {
-                    Image(systemName: prices.isFavorite(code) ? "star.fill" : "star")
-                        .foregroundStyle(prices.isFavorite(code) ? Theme.accent : Theme.textDim)
+                HStack(spacing: 18) {
+                    Button { Haptics.tap(); prices.toggleFavorite(code) } label: {
+                        Image(systemName: prices.isFavorite(code) ? "star.fill" : "star")
+                            .foregroundStyle(prices.isFavorite(code) ? Theme.accent : Theme.textDim)
+                    }
+                    Button { Haptics.tap(); showAlert = true } label: {
+                        Image(systemName: "bell")
+                            .foregroundStyle(Theme.textDim)
+                    }
                 }
             }
         }
@@ -74,6 +80,7 @@ struct AssetDetailView: View {
         .toolbarBackground(.visible, for: .navigationBar)
         .task(id: tf) { await loadChart() }
         .task { await loadStats() }
+        .task { await loadDetail() }
         .sheet(isPresented: $showAlert) {
             AlertSheet(code: code, current: price?.price ?? stats?.last ?? 0)
                 .environmentObject(auth)
@@ -100,25 +107,6 @@ struct AssetDetailView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    // MARK: Actions (inline, above the fold — not hidden behind the tab bar)
-
-    private var actionsRow: some View {
-        HStack(spacing: 12) {
-            Button { Haptics.tap(); prices.toggleFavorite(code) } label: {
-                Label(prices.isFavorite(code) ? "Favoride" : "Favori Ekle",
-                      systemImage: prices.isFavorite(code) ? "star.fill" : "star")
-            }
-            .buttonStyle(FilledButtonStyle(color: Theme.surfaceHi, textColor: Theme.text))
-            .frame(maxWidth: .infinity)
-
-            Button { Haptics.tap(); showAlert = true } label: {
-                Label("Alarm Kur", systemImage: "bell.badge")
-            }
-            .buttonStyle(FilledButtonStyle())
-            .frame(maxWidth: .infinity)
-        }
     }
 
     // MARK: 24h stats
@@ -172,6 +160,132 @@ struct AssetDetailView: View {
                 SegBar(items: timeframes.map { ($0.interval, $0.label) }, selection: $tf)
             }
         }
+    }
+
+    // MARK: Kind-specific rich detail (Binance-style)
+
+    @ViewBuilder private var detailSections: some View {
+        if let d = detail {
+            switch d.kind {
+            case "crypto":   cryptoSections(d)
+            case "stock":    stockSections(d)
+            case "gold":     goldSections(d)
+            case "currency": currencySections(d)
+            default:         EmptyView()
+            }
+        } else {
+            MetricGrid(title: "Piyasa Verileri", metrics: Metric.placeholders(6), loading: true)
+        }
+    }
+
+    // Crypto: market cap / supply / dominance + 24h stats + ATH/ATL records.
+    @ViewBuilder private func cryptoSections(_ d: InstrumentDetail) -> some View {
+        let market = cryptoMarket(d)
+        let stats = cryptoStats(d)
+        let records = cryptoRecords(d)
+        VStack(spacing: 16) {
+            if !market.isEmpty { MetricGrid(title: "Piyasa Verileri", metrics: market) }
+            if !stats.isEmpty { MetricGrid(title: "24s İstatistikler", metrics: stats) }
+            if !records.isEmpty { MetricGrid(title: "Rekorlar", metrics: records) }
+        }
+    }
+
+    // Stock: day & 52-week ranges, volume, exchange.
+    @ViewBuilder private func stockSections(_ d: InstrumentDetail) -> some View {
+        let stats = stockStats(d)
+        let info = stockInfo(d)
+        VStack(spacing: 16) {
+            if !stats.isEmpty { MetricGrid(title: "İstatistikler", metrics: stats) }
+            if !info.isEmpty { MetricGrid(title: "Şirket Bilgisi", metrics: info, columns: 1) }
+        }
+    }
+
+    // Gold: ounce (USD/TRY), gram-has, purity, product weight.
+    @ViewBuilder private func goldSections(_ d: InstrumentDetail) -> some View {
+        let m = goldMetrics(d)
+        if !m.isEmpty { MetricGrid(title: "Altın Verileri", metrics: m) }
+    }
+
+    // Currency: parity, inverse, USD cross.
+    @ViewBuilder private func currencySections(_ d: InstrumentDetail) -> some View {
+        let m = currencyMetrics(d)
+        if !m.isEmpty { MetricGrid(title: "Kur Verileri", metrics: m) }
+    }
+
+    // MARK: Metric builders (plain — kept out of @ViewBuilder bodies)
+
+    private func cryptoMarket(_ d: InstrumentDetail) -> [Metric] {
+        var m: [Metric] = []
+        if let v = d.marketCapUsd { m.append(Metric("Piyasa Değeri", Fmt.usd(v, compact: true))) }
+        if let v = d.rank { m.append(Metric("Sıralama", "#\(v)")) }
+        if let v = d.dominancePct { m.append(Metric("Dominans", Fmt.pct(v))) }
+        if let v = d.quoteVolumeUsd { m.append(Metric("24s Hacim", Fmt.usd(v, compact: true))) }
+        if let v = d.circulatingSupply { m.append(Metric("Dolaşan Arz", "\(Fmt.compactNum(v)) \(code)")) }
+        if let v = d.maxSupply {
+            m.append(Metric("Maks. Arz", "\(Fmt.compactNum(v)) \(code)"))
+        } else if let v = d.totalSupply {
+            m.append(Metric("Toplam Arz", "\(Fmt.compactNum(v)) \(code)"))
+        }
+        if let v = d.fdvUsd { m.append(Metric("FDV", Fmt.usd(v, compact: true))) }
+        if let v = d.trades { m.append(Metric("İşlem (24s)", Fmt.compactNum(Double(v)))) }
+        return m
+    }
+
+    private func cryptoStats(_ d: InstrumentDetail) -> [Metric] {
+        var m: [Metric] = []
+        if let v = d.high24h, v > 0 { m.append(Metric("24s Yüksek", Fmt.tl(v), tint: Theme.up)) }
+        if let v = d.low24h, v > 0 { m.append(Metric("24s Düşük", Fmt.tl(v), tint: Theme.down)) }
+        if let v = d.open24h, v > 0 { m.append(Metric("24s Açılış", Fmt.tl(v))) }
+        if let v = d.weightedAvg, v > 0 { m.append(Metric("Ort. Fiyat", Fmt.tl(v))) }
+        if let v = d.changePct24h { m.append(Metric("24s Değişim", Fmt.signedPct(v), tint: Theme.trend(v))) }
+        if let v = d.priceUsd, v > 0 { m.append(Metric("USD Fiyat", Fmt.usd(v))) }
+        return m
+    }
+
+    private func cryptoRecords(_ d: InstrumentDetail) -> [Metric] {
+        var m: [Metric] = []
+        if let v = d.athUsd, v > 0 { m.append(Metric("En Yüksek (ATH)", Fmt.usd(v), sub: Fmt.dateShort(d.athDate))) }
+        if let v = d.atlUsd, v > 0 { m.append(Metric("En Düşük (ATL)", Fmt.usd(v), sub: Fmt.dateShort(d.atlDate))) }
+        return m
+    }
+
+    private func stockStats(_ d: InstrumentDetail) -> [Metric] {
+        var m: [Metric] = []
+        if let v = d.dayHigh, v > 0 { m.append(Metric("Gün Yüksek", Fmt.tl(v), tint: Theme.up)) }
+        if let v = d.dayLow, v > 0 { m.append(Metric("Gün Düşük", Fmt.tl(v), tint: Theme.down)) }
+        if let v = d.week52High, v > 0 { m.append(Metric("52H Yüksek", Fmt.tl(v))) }
+        if let v = d.week52Low, v > 0 { m.append(Metric("52H Düşük", Fmt.tl(v))) }
+        if let v = d.prevClose, v > 0 { m.append(Metric("Önceki Kapanış", Fmt.tl(v))) }
+        if let v = d.volume, v > 0 { m.append(Metric("Hacim (Lot)", Fmt.compactNum(v))) }
+        return m
+    }
+
+    private func stockInfo(_ d: InstrumentDetail) -> [Metric] {
+        var m: [Metric] = []
+        if let v = d.exchange { m.append(Metric("Borsa", v == "IST" ? "BIST" : v)) }
+        if let v = d.longName { m.append(Metric("Şirket", v)) }
+        return m
+    }
+
+    private func goldMetrics(_ d: InstrumentDetail) -> [Metric] {
+        var m: [Metric] = []
+        if let v = d.onsUsd, v > 0 { m.append(Metric("Ons (XAU/USD)", Fmt.usd(v))) }
+        if let v = d.onsTry, v > 0 { m.append(Metric("Ons (₺)", Fmt.tl(v))) }
+        if let v = d.gramHasTry, v > 0 { m.append(Metric("Gram Has Altın", Fmt.tl(v))) }
+        if let v = d.usdTry, v > 0 { m.append(Metric("USD/TRY", Fmt.tl(v))) }
+        if let v = d.purityLabel { m.append(Metric("Saflık", v)) }
+        if let v = d.gramWeight, v > 0 { m.append(Metric("Gram Ağırlığı", "\(Fmt.trim(v)) gr")) }
+        return m
+    }
+
+    private func currencyMetrics(_ d: InstrumentDetail) -> [Metric] {
+        let iso = d.iso ?? code.replacingOccurrences(of: "TRY", with: "")
+        var m: [Metric] = []
+        if let v = d.priceTry, v > 0 { m.append(Metric("1 \(iso)", Fmt.tl(v))) }
+        if let v = d.inverse, v > 0 { m.append(Metric("1 ₺", "\(Fmt.compactPrice(v)) \(iso)")) }
+        if let v = d.usdCross, v > 0 { m.append(Metric("\(iso)/USD", Fmt.usd(v))) }
+        if let v = d.usdTry, v > 0 { m.append(Metric("USD/TRY", Fmt.tl(v))) }
+        return m
     }
 
     // MARK: Bid / Ask
@@ -246,6 +360,11 @@ struct AssetDetailView: View {
         let client = APIClient(token: auth.accessToken)
         stats = try? await client.stats(code: code)
     }
+
+    private func loadDetail() async {
+        let client = APIClient(token: auth.accessToken)
+        detail = try? await client.detail(code: code)
+    }
 }
 
 // MARK: - Alert creation sheet
@@ -309,6 +428,76 @@ struct AlertSheet: View {
             dismiss()
         } catch {
             status = error.localizedDescription
+        }
+    }
+}
+
+// MARK: - Metric grid (Binance-style labelled stat cards)
+
+struct Metric: Identifiable {
+    let id = UUID()
+    let label: String
+    let value: String
+    var tint: Color?
+    var sub: String?
+
+    init(_ label: String, _ value: String, tint: Color? = nil, sub: String? = nil) {
+        self.label = label
+        self.value = value
+        self.tint = tint
+        self.sub = sub
+    }
+
+    static func placeholders(_ n: Int) -> [Metric] {
+        (0..<n).map { _ in Metric("", "") }
+    }
+}
+
+struct MetricGrid: View {
+    var title: String?
+    let metrics: [Metric]
+    var columns: Int = 2
+    var loading: Bool = false
+
+    var body: some View {
+        Card(padding: 14) {
+            VStack(alignment: .leading, spacing: 14) {
+                if let title {
+                    Text(title)
+                        .font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(Theme.text)
+                }
+                LazyVGrid(
+                    columns: Array(repeating: GridItem(.flexible(), alignment: .topLeading), count: columns),
+                    alignment: .leading, spacing: 16
+                ) {
+                    ForEach(metrics) { m in
+                        VStack(alignment: .leading, spacing: 3) {
+                            if loading {
+                                SkeletonBlock(width: 52, height: 9)
+                                SkeletonBlock(width: 74, height: 15)
+                            } else {
+                                Text(m.label)
+                                    .font(.system(size: 11))
+                                    .foregroundStyle(Theme.textDim)
+                                    .lineLimit(1)
+                                Text(m.value)
+                                    .font(Theme.number(15, weight: .semibold))
+                                    .foregroundStyle(m.tint ?? Theme.text)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.6)
+                                if let sub = m.sub, !sub.isEmpty {
+                                    Text(sub)
+                                        .font(.system(size: 10))
+                                        .foregroundStyle(Theme.textFaint)
+                                }
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+                .shimmerIf(loading)
+            }
         }
     }
 }

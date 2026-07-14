@@ -91,6 +91,7 @@ func NewEngine(d Deps) *gin.Engine {
 			v1.GET("/instruments/:code", d.Instrument.Get)
 			v1.GET("/instruments/:code/history", d.Instrument.History)
 			v1.GET("/instruments/:code/stats", d.Instrument.Stats)
+			v1.GET("/instruments/:code/detail", d.Instrument.Detail)
 		}
 
 		if d.Auth != nil {

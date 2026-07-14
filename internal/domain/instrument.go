@@ -47,33 +47,45 @@ type CurrencyDef struct {
 }
 
 // CryptoDef defines a cryptocurrency tracked against TRY. Priced from a USD
-// quote (Yahoo "<SYM>-USD") × live USD/TRY. Code == Base == Symbol (e.g. "BTC").
+// quote (Binance "<SYM>USDT", Yahoo "<SYM>-USD" fallback) × live USD/TRY.
+// Code == Base == Symbol (e.g. "BTC"). CoinGeckoID feeds the detail page
+// (market cap, supply, ATH/ATL, rank).
 type CryptoDef struct {
 	Symbol      string // canonical short symbol, e.g. "BTC" (instrument code + base)
 	DisplayName string
 	YahooSymbol string // Yahoo Finance ticker, e.g. "BTC-USD"
+	CoinGeckoID string // CoinGecko coin id, e.g. "bitcoin"
 }
 
 // Cryptos are the major coins the platform tracks (priced in TRY).
 var Cryptos = []CryptoDef{
-	{"BTC", "Bitcoin", "BTC-USD"},
-	{"ETH", "Ethereum", "ETH-USD"},
-	{"BNB", "BNB", "BNB-USD"},
-	{"SOL", "Solana", "SOL-USD"},
-	{"XRP", "XRP", "XRP-USD"},
-	{"ADA", "Cardano", "ADA-USD"},
-	{"DOGE", "Dogecoin", "DOGE-USD"},
-	{"TRX", "TRON", "TRX-USD"},
-	{"AVAX", "Avalanche", "AVAX-USD"},
-	{"DOT", "Polkadot", "DOT-USD"},
-	{"LINK", "Chainlink", "LINK-USD"},
-	{"MATIC", "Polygon", "MATIC-USD"},
-	{"LTC", "Litecoin", "LTC-USD"},
-	{"ATOM", "Cosmos", "ATOM-USD"},
-	{"XLM", "Stellar", "XLM-USD"},
-	{"SHIB", "Shiba Inu", "SHIB-USD"},
-	{"BCH", "Bitcoin Cash", "BCH-USD"},
+	{"BTC", "Bitcoin", "BTC-USD", "bitcoin"},
+	{"ETH", "Ethereum", "ETH-USD", "ethereum"},
+	{"BNB", "BNB", "BNB-USD", "binancecoin"},
+	{"SOL", "Solana", "SOL-USD", "solana"},
+	{"XRP", "XRP", "XRP-USD", "ripple"},
+	{"ADA", "Cardano", "ADA-USD", "cardano"},
+	{"DOGE", "Dogecoin", "DOGE-USD", "dogecoin"},
+	{"TRX", "TRON", "TRX-USD", "tron"},
+	{"AVAX", "Avalanche", "AVAX-USD", "avalanche-2"},
+	{"DOT", "Polkadot", "DOT-USD", "polkadot"},
+	{"LINK", "Chainlink", "LINK-USD", "chainlink"},
+	{"MATIC", "Polygon", "MATIC-USD", "matic-network"},
+	{"LTC", "Litecoin", "LTC-USD", "litecoin"},
+	{"ATOM", "Cosmos", "ATOM-USD", "cosmos"},
+	{"XLM", "Stellar", "XLM-USD", "stellar"},
+	{"SHIB", "Shiba Inu", "SHIB-USD", "shiba-inu"},
+	{"BCH", "Bitcoin Cash", "BCH-USD", "bitcoin-cash"},
 }
+
+// CryptoByCode indexes crypto defs by canonical symbol for O(1) lookup.
+var CryptoByCode = func() map[string]CryptoDef {
+	m := make(map[string]CryptoDef, len(Cryptos))
+	for _, c := range Cryptos {
+		m[c.Symbol] = c
+	}
+	return m
+}()
 
 // StockDef defines a Borsa İstanbul (BIST) equity, quoted natively in TRY.
 // Code == Base == Symbol (e.g. "THYAO"); YahooSymbol appends the ".IS" suffix.

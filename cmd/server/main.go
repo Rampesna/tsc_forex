@@ -258,7 +258,7 @@ func run() error {
 		WS:         ws.NewHandler(hub, log, wsOpts...),
 		Metrics:    m,
 		Gold:       api.NewGoldHandler(calc, redisCache, goldRepo, log),
-		Instrument: api.NewInstrumentHandler(engine, instrRepo, log),
+		Instrument: api.NewInstrumentHandler(engine, instrRepo, cfg.Provider.REST.CryptoBaseURL, log),
 		System: api.NewSystemHandler(api.SystemDeps{
 			Provider:  pm,
 			Calc:      calc,

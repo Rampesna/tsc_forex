@@ -18,15 +18,22 @@ import (
 type InstrumentHandler struct {
 	engine *calculator.Engine
 	repo   repository.PriceRepository // may be nil in minimal mode
+	meta   *marketMeta                // per-kind rich detail (external data)
 	log    *zap.Logger
 }
 
-// NewInstrumentHandler builds the handler.
-func NewInstrumentHandler(engine *calculator.Engine, repo repository.PriceRepository, log *zap.Logger) *InstrumentHandler {
+// NewInstrumentHandler builds the handler. cryptoBaseURL is the Binance price
+// endpoint (from config) used to derive the 24h ticker URL for crypto detail.
+func NewInstrumentHandler(engine *calculator.Engine, repo repository.PriceRepository, cryptoBaseURL string, log *zap.Logger) *InstrumentHandler {
 	if log == nil {
 		log = zap.NewNop()
 	}
-	return &InstrumentHandler{engine: engine, repo: repo, log: log}
+	return &InstrumentHandler{
+		engine: engine,
+		repo:   repo,
+		meta:   newMarketMeta(engine, cryptoBaseURL, log),
+		log:    log,
+	}
 }
 
 // Catalog returns the static instrument catalog metadata.
@@ -187,6 +194,26 @@ func (h *InstrumentHandler) Stats(c *gin.Context) {
 		"change_pct": changePct,
 		"count":      s.Count,
 	})
+}
+
+// Detail returns kind-specific rich market data for one instrument, powering
+// the Binance-style detail sections (crypto: market cap/supply/ATH; stock:
+// 52-week range/volume; gold: ounce/purity/weight; currency: parity/cross).
+// @Summary Rich per-kind detail for one instrument
+// @Tags    instruments
+// @Router  /instruments/{code}/detail [get]
+func (h *InstrumentHandler) Detail(c *gin.Context) {
+	code := c.Param("code")
+	in, ok := domain.CatalogByCode[code]
+	if !ok {
+		c.JSON(http.StatusNotFound, ErrorResponse{Error: "unknown instrument"})
+		return
+	}
+	if h.meta == nil {
+		c.JSON(http.StatusOK, gin.H{"code": code, "kind": string(in.Kind)})
+		return
+	}
+	c.JSON(http.StatusOK, h.meta.Detail(c.Request.Context(), in))
 }
 
 // Sparklines returns the last N prices per instrument for the market-list mini

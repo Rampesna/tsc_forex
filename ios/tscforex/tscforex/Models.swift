@@ -99,6 +99,97 @@ struct InstrumentStats: Codable {
     }
 }
 
+// Rich per-kind market detail (GET /instruments/{code}/detail). Every field is
+// optional so the same struct covers crypto / stock / gold / currency; the view
+// renders whichever section matches `kind`.
+struct InstrumentDetail: Codable {
+    let code: String
+    let kind: String
+    var priceTry: Double?
+    var priceUsd: Double?
+
+    // Crypto — 24h (Binance) + fundamentals (CoinGecko)
+    var high24h: Double?
+    var low24h: Double?
+    var open24h: Double?
+    var prevClose: Double?
+    var weightedAvg: Double?
+    var volumeBase: Double?
+    var quoteVolumeUsd: Double?
+    var trades: Int?
+    var changePct24h: Double?
+    var marketCapUsd: Double?
+    var fdvUsd: Double?
+    var totalVolumeUsd: Double?
+    var dominancePct: Double?
+    var rank: Int?
+    var circulatingSupply: Double?
+    var totalSupply: Double?
+    var maxSupply: Double?
+    var athUsd: Double?
+    var atlUsd: Double?
+    var athDate: String?
+    var atlDate: String?
+
+    // Stock — Yahoo meta
+    var dayHigh: Double?
+    var dayLow: Double?
+    var week52High: Double?
+    var week52Low: Double?
+    var volume: Double?
+    var exchange: String?
+    var longName: String?
+
+    // Gold — derived
+    var onsUsd: Double?
+    var onsTry: Double?
+    var usdTry: Double?
+    var gramHasTry: Double?
+    var gramWeight: Double?
+    var fineness: Double?
+    var purityLabel: String?
+
+    // Currency — derived
+    var inverse: Double?
+    var usdCross: Double?
+    var iso: String?
+
+    enum CodingKeys: String, CodingKey {
+        case code, kind, trades, rank, volume, exchange, inverse, iso, fineness
+        case priceTry = "price_try"
+        case priceUsd = "price_usd"
+        case high24h, low24h, open24h
+        case prevClose = "prev_close"
+        case weightedAvg = "weighted_avg"
+        case volumeBase = "volume_base"
+        case quoteVolumeUsd = "quote_volume_usd"
+        case changePct24h = "change_pct24h"
+        case marketCapUsd = "market_cap_usd"
+        case fdvUsd = "fdv_usd"
+        case totalVolumeUsd = "total_volume_usd"
+        case dominancePct = "dominance_pct"
+        case circulatingSupply = "circulating_supply"
+        case totalSupply = "total_supply"
+        case maxSupply = "max_supply"
+        case athUsd = "ath_usd"
+        case atlUsd = "atl_usd"
+        case athDate = "ath_date"
+        case atlDate = "atl_date"
+        case dayHigh = "day_high"
+        case dayLow = "day_low"
+        case week52High = "week52_high"
+        case week52Low = "week52_low"
+        case longName = "long_name"
+        case onsUsd = "ons_usd"
+        case onsTry = "ons_try"
+        case usdTry = "usd_try"
+        case gramHasTry = "gram_has_try"
+        case gramWeight = "gram_weight"
+        case purityLabel = "purity_label"
+        case usdCross = "usd_cross"
+    }
+}
+
 struct CatalogItem: Codable, Identifiable {
     var id: String { code }
     let code: String

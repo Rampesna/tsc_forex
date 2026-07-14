@@ -96,6 +96,51 @@ enum Fmt {
         String(format: "%+.2f", v)
     }
 
+    // Compact large-number formatting with Turkish scale suffixes
+    // (B = bin, Mn = milyon, Mr = milyar, Tn = trilyon).
+    static func compactNum(_ v: Double) -> String {
+        let a = abs(v)
+        switch a {
+        case 1e12...: return grouped(v / 1e12, digits: 2) + " Tn"
+        case 1e9...:  return grouped(v / 1e9, digits: 2) + " Mr"
+        case 1e6...:  return grouped(v / 1e6, digits: 2) + " Mn"
+        case 1e3...:  return grouped(v / 1e3, digits: 2) + " B"
+        default:      return grouped(v, digits: a >= 1 ? 2 : 4)
+        }
+    }
+
+    // USD-quoted value ($). `compact` uses the scale suffixes for big figures.
+    static func usd(_ v: Double, compact: Bool = false) -> String {
+        if compact { return "$" + compactNum(v) }
+        let digits = v >= 1 ? 2 : 6
+        return "$" + grouped(v, digits: digits)
+    }
+
+    // TRY value with compact scale suffix (for large amounts like ons/market cap).
+    static func tlCompact(_ v: Double) -> String { "₺" + compactNum(v) }
+
+    // Unsigned percentage, Turkish decimal ("58,78%").
+    static func pct(_ v: Double) -> String { grouped(v, digits: 2) + "%" }
+
+    // ISO date (2025-10-06T..) → "06.10.2025".
+    static func dateShort(_ s: String?) -> String? {
+        guard let s, s.count >= 10 else { return nil }
+        let parts = String(s.prefix(10)).split(separator: "-")
+        guard parts.count == 3 else { return String(s.prefix(10)) }
+        return "\(parts[2]).\(parts[1]).\(parts[0])"
+    }
+
+    // Trims trailing zeros (e.g. gram weights: 1.754 → "1,754", 1.0 → "1").
+    static func trim(_ v: Double) -> String {
+        let f = NumberFormatter()
+        f.numberStyle = .decimal
+        f.minimumFractionDigits = 0
+        f.maximumFractionDigits = 4
+        f.groupingSeparator = "."
+        f.decimalSeparator = ","
+        return f.string(from: NSNumber(value: v)) ?? String(v)
+    }
+
     private static func grouped(_ v: Double, digits: Int) -> String {
         let f = NumberFormatter()
         f.numberStyle = .decimal

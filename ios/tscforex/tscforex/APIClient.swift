@@ -228,6 +228,11 @@ struct APIClient {
         return try makeDecoder().decode(InstrumentStats.self, from: data)
     }
 
+    func detail(code: String) async throws -> InstrumentDetail {
+        let data = try await request("instruments/\(code)/detail")
+        return try makeDecoder().decode(InstrumentDetail.self, from: data)
+    }
+
     // MARK: Watchlist
 
     func watchlist() async throws -> [String] {
