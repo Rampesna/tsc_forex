@@ -180,8 +180,17 @@ func (e *Engine) onTick(t domain.Tick) {
 			continue
 		}
 		last, had := e.prev[in.Code]
-		if had && math.Abs(price-last) < e.epsilon {
-			continue
+		// Skip immaterial moves using a RELATIVE threshold so both high-value
+		// (BTC ~2.5M) and micro-priced (SHIB ~0.0002) instruments update: an
+		// absolute epsilon would freeze SHIB whose per-tick move is < 1e-6.
+		if had && last != 0 {
+			threshold := e.epsilon * math.Abs(last)
+			if threshold < 1e-9 {
+				threshold = 1e-9
+			}
+			if math.Abs(price-last) < threshold {
+				continue
+			}
 		}
 		e.prev[in.Code] = price
 		// Establish the day-open baseline on the first price seen today, then

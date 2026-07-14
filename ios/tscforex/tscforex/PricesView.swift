@@ -22,7 +22,7 @@ private let fixedOrder: [String: Int] = {
         "LINK", "MATIC", "LTC", "ATOM", "XLM", "SHIB", "BCH",
         // BIST equities
         "THYAO", "GARAN", "AKBNK", "ISCTR", "YKBNK", "SISE", "EREGL", "KCHOL",
-        "SAHOL", "ASELS", "BIMAS", "TUPRS", "FROTO", "TCELL", "PGSUS", "KOZAL", "TOASO", "SASA",
+        "SAHOL", "ASELS", "BIMAS", "TUPRS", "FROTO", "TCELL", "PGSUS", "TTKOM", "TOASO", "SASA",
     ]
     var m: [String: Int] = [:]
     for (i, c) in codes.enumerated() { m[c] = i }

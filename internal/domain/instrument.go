@@ -100,7 +100,7 @@ var Stocks = []StockDef{
 	{"FROTO", "Ford Otosan", "FROTO.IS"},
 	{"TCELL", "Turkcell", "TCELL.IS"},
 	{"PGSUS", "Pegasus", "PGSUS.IS"},
-	{"KOZAL", "Koza Altın", "KOZAL.IS"},
+	{"TTKOM", "Türk Telekom", "TTKOM.IS"},
 	{"TOASO", "Tofaş", "TOASO.IS"},
 	{"SASA", "Sasa Polyester", "SASA.IS"},
 }
