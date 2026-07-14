@@ -47,6 +47,18 @@ class ApiClient(
     suspend fun refresh(refreshToken: String): TokenResponse =
         TokenResponse.from(postJson("auth/refresh", JSONObject().put("refresh_token", refreshToken), auth = false))
 
+    /** Begins usernameless passkey login; returns {options, session}. */
+    suspend fun passkeyLoginBegin(): JSONObject =
+        postJson("auth/passkey/login/begin", JSONObject(), auth = false)
+
+    /** Finishes passkey login with the signed session + authenticator response. */
+    suspend fun passkeyLoginFinish(session: String, credential: JSONObject): TokenResponse =
+        TokenResponse.from(postJson(
+            "auth/passkey/login/finish",
+            JSONObject().put("session", session).put("credential", credential),
+            auth = false,
+        ))
+
     suspend fun logout(refreshToken: String) {
         runCatching { postJson("auth/logout", JSONObject().put("refresh_token", refreshToken), auth = false) }
     }
@@ -61,6 +73,9 @@ class ApiClient(
 
     suspend fun stats(code: String): InstrumentStats =
         InstrumentStats.from(JSONObject(getRaw("instruments/$code/stats")).let { unwrap(it) })
+
+    suspend fun detail(code: String): InstrumentDetail =
+        InstrumentDetail.from(unwrap(JSONObject(getRaw("instruments/$code/detail"))))
 
     suspend fun sparklines(points: Int = 30): Map<String, List<Double>> {
         val raw = getRaw("instruments/sparklines?points=$points")

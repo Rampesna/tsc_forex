@@ -18,6 +18,8 @@ data class InstrumentPrice(
 ) {
     val isCurrency get() = kind == "currency"
     val isGold get() = kind == "gold"
+    val isCrypto get() = kind == "crypto"
+    val isStock get() = kind == "stock"
 
     companion object {
         fun from(o: JSONObject) = InstrumentPrice(
@@ -135,6 +137,54 @@ data class AppNotification(
             title = o.optString("title"),
             body = o.optString("body").ifEmpty { o.optString("message") },
             createdAt = o.optString("created_at"),
+        )
+    }
+}
+
+/**
+ * Rich, per-kind market data from GET /instruments/{code}/detail. All fields are
+ * optional; only the ones relevant to the instrument kind are populated.
+ */
+data class InstrumentDetail(
+    val code: String,
+    val kind: String,
+    val priceTry: Double?,
+    val priceUsd: Double?,
+    // Crypto
+    val high24h: Double?, val low24h: Double?, val open24h: Double?,
+    val changePct24h: Double?, val quoteVolumeUsd: Double?, val trades: Int?,
+    val marketCapUsd: Double?, val fdvUsd: Double?, val dominancePct: Double?, val rank: Int?,
+    val circulatingSupply: Double?, val totalSupply: Double?, val maxSupply: Double?,
+    val athUsd: Double?, val atlUsd: Double?, val athDate: String?, val atlDate: String?,
+    // Stock
+    val dayHigh: Double?, val dayLow: Double?, val week52High: Double?, val week52Low: Double?,
+    val volume: Double?, val exchange: String?, val longName: String?,
+    // Gold
+    val onsUsd: Double?, val onsTry: Double?, val usdTry: Double?, val gramHasTry: Double?,
+    val gramWeight: Double?, val fineness: Double?, val purityLabel: String?,
+    // Currency
+    val inverse: Double?, val usdCross: Double?, val iso: String?,
+) {
+    companion object {
+        private fun JSONObject.d(k: String): Double? = if (has(k) && !isNull(k)) optDouble(k) else null
+        private fun JSONObject.i(k: String): Int? = if (has(k) && !isNull(k)) optInt(k) else null
+        private fun JSONObject.s(k: String): String? = optString(k).ifEmpty { null }
+
+        fun from(o: JSONObject) = InstrumentDetail(
+            code = o.optString("code"), kind = o.optString("kind"),
+            priceTry = o.d("price_try"), priceUsd = o.d("price_usd"),
+            high24h = o.d("high24h"), low24h = o.d("low24h"), open24h = o.d("open24h"),
+            changePct24h = o.d("change_pct24h"), quoteVolumeUsd = o.d("quote_volume_usd"), trades = o.i("trades"),
+            marketCapUsd = o.d("market_cap_usd"), fdvUsd = o.d("fdv_usd"),
+            dominancePct = o.d("dominance_pct"), rank = o.i("rank"),
+            circulatingSupply = o.d("circulating_supply"), totalSupply = o.d("total_supply"), maxSupply = o.d("max_supply"),
+            athUsd = o.d("ath_usd"), atlUsd = o.d("atl_usd"), athDate = o.s("ath_date"), atlDate = o.s("atl_date"),
+            dayHigh = o.d("day_high"), dayLow = o.d("day_low"),
+            week52High = o.d("week52_high"), week52Low = o.d("week52_low"),
+            volume = o.d("volume"), exchange = o.s("exchange"), longName = o.s("long_name"),
+            onsUsd = o.d("ons_usd"), onsTry = o.d("ons_try"), usdTry = o.d("usd_try"), gramHasTry = o.d("gram_has_try"),
+            gramWeight = o.d("gram_weight"), fineness = o.d("fineness"), purityLabel = o.s("purity_label"),
+            inverse = o.d("inverse"), usdCross = o.d("usd_cross"), iso = o.s("iso"),
         )
     }
 }

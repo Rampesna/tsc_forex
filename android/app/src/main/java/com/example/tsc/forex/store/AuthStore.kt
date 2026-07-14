@@ -6,6 +6,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.example.tsc.forex.auth.GoogleSignIn
 import com.example.tsc.forex.auth.GoogleSignInCancelled
+import com.example.tsc.forex.auth.PasskeyCancelled
+import com.example.tsc.forex.auth.PasskeySignIn
+import com.example.tsc.forex.auth.PasskeyUnavailable
 import com.example.tsc.forex.data.ApiClient
 import com.example.tsc.forex.data.ApiException
 import com.example.tsc.forex.data.Prefs
@@ -66,6 +69,27 @@ class AuthStore(private val prefs: Prefs) {
                 errorMessage = "Google girişi başarısız (${e.code})."
             } catch (e: Exception) {
                 errorMessage = "Google girişi tamamlanamadı."
+            } finally {
+                isBusy = false
+            }
+        }
+    }
+
+    /** Discoverable passkey (WebAuthn) login via Credential Manager. */
+    fun loginWithPasskey(context: Context, onSuccess: () -> Unit) {
+        isBusy = true; errorMessage = null
+        scope.launch {
+            try {
+                val tok = PasskeySignIn.login(context)
+                persist(tok)
+                loadProfile()
+                onSuccess()
+            } catch (e: PasskeyCancelled) {
+                // Silent.
+            } catch (e: PasskeyUnavailable) {
+                errorMessage = e.message
+            } catch (e: Exception) {
+                errorMessage = "Geçiş anahtarı girişi başarısız."
             } finally {
                 isBusy = false
             }

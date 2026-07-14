@@ -15,6 +15,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
@@ -128,6 +129,15 @@ fun LoginScreen(auth: AuthStore, onLoggedIn: () -> Unit) {
             ) {
                 Text("G", color = Color(0xFF4285F4), fontWeight = FontWeight.Black, fontSize = 17.sp)
                 Text("  Google ile devam et", fontWeight = FontWeight.SemiBold)
+            }
+
+            OutlinedButton(
+                onClick = { auth.loginWithPasskey(context, onLoggedIn) },
+                enabled = !auth.isBusy,
+                shape = RoundedCornerShape(12.dp),
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text("🔑  Geçiş anahtarı ile giriş", color = Th.text, fontWeight = FontWeight.SemiBold)
             }
 
             TextButton(onClick = { isRegister = !isRegister; auth.errorMessage = null }) {

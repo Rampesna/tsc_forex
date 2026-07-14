@@ -43,14 +43,16 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.tsc.forex.data.InstrumentPrice
 import com.example.tsc.forex.store.PriceStore
-import com.example.tsc.forex.ui.AssetBadge
+import com.example.tsc.forex.ui.AssetIcon
 import com.example.tsc.forex.ui.ChangePill
 import com.example.tsc.forex.ui.ConnectionDot
 import com.example.tsc.forex.ui.Fmt
 import com.example.tsc.forex.ui.Sparkline
 import com.example.tsc.forex.ui.theme.Th
 
-private enum class Cat(val label: String) { FAV("Favoriler"), ALL("Tümü"), GOLD("Altın"), CUR("Döviz") }
+private enum class Cat(val label: String) {
+    FAV("Favoriler"), ALL("Tümü"), GOLD("Altın"), CUR("Döviz"), CRYPTO("Kripto"), STOCK("Hisse")
+}
 
 @Composable
 fun MarketsScreen(store: PriceStore, onOpen: (String) -> Unit) {
@@ -63,6 +65,8 @@ fun MarketsScreen(store: PriceStore, onOpen: (String) -> Unit) {
         Cat.ALL -> store.all()
         Cat.GOLD -> store.gold()
         Cat.CUR -> store.currencies()
+        Cat.CRYPTO -> store.crypto()
+        Cat.STOCK -> store.stocks()
     }
     val list = if (query.isBlank()) base else base.filter {
         it.displayName.contains(query, true) || it.code.contains(query, true)
@@ -90,7 +94,7 @@ fun MarketsScreen(store: PriceStore, onOpen: (String) -> Unit) {
         OutlinedTextField(
             value = query,
             onValueChange = { query = it },
-            placeholder = { Text("Döviz veya altın ara", color = Th.textFaint) },
+            placeholder = { Text("Sembol veya isim ara", color = Th.textFaint) },
             singleLine = true,
             keyboardOptions = KeyboardOptions.Default,
             colors = OutlinedTextFieldDefaults.colors(
@@ -108,21 +112,22 @@ fun MarketsScreen(store: PriceStore, onOpen: (String) -> Unit) {
                 .padding(horizontal = 16.dp),
         )
 
-        // Category segmented control
-        Row(
+        // Category segmented control (scrollable — more classes than fit a row)
+        LazyRow(
             Modifier
                 .fillMaxWidth()
-                .padding(16.dp),
+                .padding(vertical = 16.dp),
+            contentPadding = PaddingValues(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Cat.entries.forEach { c ->
+            items(Cat.entries.toList(), key = { it.name }) { c ->
                 val selected = c == cat
                 Box(
                     Modifier
                         .clip(RoundedCornerShape(10.dp))
                         .background(if (selected) Th.accent.copy(alpha = 0.18f) else Th.surface)
                         .clickable { cat = c; editFavs = false }
-                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                        .padding(horizontal = 14.dp, vertical = 8.dp),
                 ) {
                     Text(
                         c.label,
@@ -134,8 +139,8 @@ fun MarketsScreen(store: PriceStore, onOpen: (String) -> Unit) {
             }
         }
 
-        if (cat != Cat.FAV && cat != Cat.GOLD && store.topMovers().isNotEmpty()) {
-            MoversStrip(store, onOpen)
+        if (cat == Cat.ALL && store.topGainers().isNotEmpty()) {
+            GainersStrip(store, onOpen)
         }
 
         if (cat == Cat.FAV && list.isNotEmpty()) {
@@ -181,25 +186,35 @@ fun MarketsScreen(store: PriceStore, onOpen: (String) -> Unit) {
 }
 
 @Composable
-private fun MoversStrip(store: PriceStore, onOpen: (String) -> Unit) {
-    LazyRow(
-        contentPadding = PaddingValues(horizontal = 16.dp),
-        horizontalArrangement = Arrangement.spacedBy(10.dp),
-        modifier = Modifier.padding(bottom = 10.dp),
-    ) {
-        items(store.topMovers(), key = { it.code }) { ip ->
-            Column(
-                Modifier
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(Th.surface)
-                    .clickable { onOpen(ip.code) }
-                    .padding(12.dp)
-                    .width(120.dp),
-                verticalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                Text(ip.code, color = Th.textDim, fontSize = 11.sp, maxLines = 1)
-                Text(Fmt.tl(ip.price), color = Th.text, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                ChangePill(ip.changePct)
+private fun GainersStrip(store: PriceStore, onOpen: (String) -> Unit) {
+    Column(Modifier.padding(bottom = 10.dp)) {
+        Text(
+            "Günün en çok kazandıranları",
+            color = Th.textDim, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
+        )
+        LazyRow(
+            contentPadding = PaddingValues(horizontal = 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
+        ) {
+            items(store.topGainers(), key = { it.code }) { ip ->
+                Column(
+                    Modifier
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Th.surface)
+                        .clickable { onOpen(ip.code) }
+                        .padding(12.dp)
+                        .width(130.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        AssetIcon(ip, size = 24)
+                        Text(ip.displayName, color = Th.textDim, fontSize = 11.sp, maxLines = 1)
+                    }
+                    Text(Fmt.tl(ip.price), color = Th.text, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                    ChangePill(ip.changePct)
+                }
             }
         }
     }
@@ -221,7 +236,7 @@ private fun MarketRow(
             .padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        AssetBadge(ip.code, ip.isGold)
+        AssetIcon(ip)
         Column(
             Modifier
                 .weight(1f)
@@ -268,7 +283,7 @@ private fun ReorderRow(
             .padding(horizontal = 16.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        AssetBadge(ip.code, ip.isGold)
+        AssetIcon(ip)
         Column(
             Modifier
                 .weight(1f)

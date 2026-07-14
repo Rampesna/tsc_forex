@@ -9,19 +9,18 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Notifications
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material.icons.outlined.StarBorder
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -39,6 +38,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.tsc.forex.data.InstrumentDetail
 import com.example.tsc.forex.data.InstrumentStats
 import com.example.tsc.forex.store.AuthStore
 import com.example.tsc.forex.store.PriceStore
@@ -52,6 +52,9 @@ import kotlinx.coroutines.launch
 
 private val TIMEFRAMES = listOf("1m" to "1dk", "5m" to "5dk", "15m" to "15dk", "1h" to "1sa", "1d" to "1g")
 
+/** A single label/value metric shown in the detail grid. */
+private data class Metric(val label: String, val value: String)
+
 @Composable
 fun AssetDetailScreen(code: String, auth: AuthStore, store: PriceStore, onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
@@ -59,8 +62,10 @@ fun AssetDetailScreen(code: String, auth: AuthStore, store: PriceStore, onBack: 
     var interval by remember { mutableStateOf("5m") }
     var series by remember { mutableStateOf<List<Double>>(emptyList()) }
     var stats by remember { mutableStateOf<InstrumentStats?>(null) }
+    var detail by remember { mutableStateOf<InstrumentDetail?>(null) }
     var showAlert by remember { mutableStateOf(false) }
     var toast by remember { mutableStateOf<String?>(null) }
+    var isFav by remember { mutableStateOf(store.isFavorite(code)) }
 
     LaunchedEffect(code, interval) {
         val api = auth.newApiClient()
@@ -68,6 +73,9 @@ fun AssetDetailScreen(code: String, auth: AuthStore, store: PriceStore, onBack: 
             .getOrElse { store.sparklines[code].orEmpty() }
         if (series.isEmpty()) series = store.sparklines[code].orEmpty()
         stats = runCatching { api.stats(code) }.getOrNull()
+    }
+    LaunchedEffect(code) {
+        detail = runCatching { auth.newApiClient().detail(code) }.getOrNull()
     }
 
     Column(
@@ -85,7 +93,22 @@ fun AssetDetailScreen(code: String, auth: AuthStore, store: PriceStore, onBack: 
             IconButton(onClick = onBack) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, "geri", tint = Th.text)
             }
-            Text(ip?.displayName ?: code, color = Th.text, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+            Text(
+                ip?.displayName ?: code,
+                color = Th.text, fontSize = 18.sp, fontWeight = FontWeight.Bold,
+                modifier = Modifier.weight(1f),
+            )
+            IconButton(onClick = {
+                store.toggleFavorite(code); isFav = store.isFavorite(code)
+            }) {
+                Icon(
+                    if (isFav) Icons.Filled.Star else Icons.Outlined.StarBorder,
+                    "favori", tint = if (isFav) Th.accent else Th.textFaint,
+                )
+            }
+            IconButton(onClick = { showAlert = true }) {
+                Icon(Icons.Filled.Notifications, "alarm", tint = Th.textFaint)
+            }
         }
 
         Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
@@ -97,7 +120,6 @@ fun AssetDetailScreen(code: String, auth: AuthStore, store: PriceStore, onBack: 
                 Box(Modifier.padding(start = 10.dp, bottom = 6.dp)) { ChangePill(ip?.changePct ?: 0.0) }
             }
 
-            // Timeframe selector
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TIMEFRAMES.forEach { (key, label) ->
                     val selected = key == interval
@@ -117,7 +139,6 @@ fun AssetDetailScreen(code: String, auth: AuthStore, store: PriceStore, onBack: 
                 PriceChart(series)
             }
 
-            // 24h stats
             stats?.let { s ->
                 Card {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -128,7 +149,6 @@ fun AssetDetailScreen(code: String, auth: AuthStore, store: PriceStore, onBack: 
                 }
             }
 
-            // Bid / Ask
             ip?.let {
                 Card {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -139,24 +159,12 @@ fun AssetDetailScreen(code: String, auth: AuthStore, store: PriceStore, onBack: 
                 }
             }
 
-            // Actions
-            Row(horizontalArrangement = Arrangement.spacedBy(12.dp), modifier = Modifier.padding(bottom = 24.dp)) {
-                OutlinedButton(
-                    onClick = { store.toggleFavorite(code) },
-                    modifier = Modifier.weight(1f),
-                    shape = RoundedCornerShape(12.dp),
-                ) {
-                    Text(if (store.isFavorite(code)) "Favoriden çıkar" else "Favori ekle", color = Th.text)
-                }
-                Button(
-                    onClick = { showAlert = true },
-                    modifier = Modifier.weight(1f),
-                    colors = ButtonDefaults.buttonColors(containerColor = Th.accent, contentColor = Th.bg),
-                    shape = RoundedCornerShape(12.dp),
-                ) { Text("Alarm kur", fontWeight = FontWeight.Bold) }
-            }
+            // Per-kind rich detail (crypto/stock/gold/currency).
+            DetailSections(detail)
 
-            toast?.let { Text(it, color = Th.up, fontSize = 12.sp, modifier = Modifier.padding(bottom = 12.dp)) }
+            Box(Modifier.padding(bottom = 24.dp)) {
+                toast?.let { Text(it, color = Th.up, fontSize = 12.sp) }
+            }
         }
     }
 
@@ -174,6 +182,121 @@ fun AssetDetailScreen(code: String, auth: AuthStore, store: PriceStore, onBack: 
                 }
             },
         )
+    }
+}
+
+@Composable
+private fun DetailSections(d: InstrumentDetail?) {
+    if (d == null) {
+        // Facebook-style skeleton while the rich data loads.
+        MetricGridCard("Piyasa Verileri", null)
+        return
+    }
+    when (d.kind) {
+        "crypto" -> {
+            MetricGridCard("Piyasa Verileri", cryptoMarket(d))
+            MetricGridCard("24 Saat", crypto24h(d))
+            MetricGridCard("Arz", cryptoSupply(d))
+        }
+        "stock" -> {
+            MetricGridCard("Hisse Verileri", stockStats(d))
+            MetricGridCard("Bilgi", stockInfo(d))
+        }
+        "gold" -> MetricGridCard("Altın Verileri", goldMetrics(d))
+        "currency" -> MetricGridCard("Kur Verileri", currencyMetrics(d))
+    }
+}
+
+// ---- Metric builders (per kind) ----
+
+private fun cryptoMarket(d: InstrumentDetail): List<Metric> = buildList {
+    d.marketCapUsd?.let { add(Metric("Piyasa Değeri", Fmt.usd(it))) }
+    d.fdvUsd?.let { add(Metric("Tam Seyrelt. Değer", Fmt.usd(it))) }
+    d.rank?.let { add(Metric("Sıralama", "#$it")) }
+    d.dominancePct?.let { add(Metric("Dominans", Fmt.pctUnsigned(it))) }
+    d.priceUsd?.let { add(Metric("Fiyat (USD)", Fmt.usd(it))) }
+}
+
+private fun crypto24h(d: InstrumentDetail): List<Metric> = buildList {
+    d.high24h?.let { add(Metric("24s Yüksek", Fmt.usd(it))) }
+    d.low24h?.let { add(Metric("24s Düşük", Fmt.usd(it))) }
+    d.changePct24h?.let { add(Metric("24s Değişim", Fmt.pct(it))) }
+    d.quoteVolumeUsd?.let { add(Metric("24s Hacim", Fmt.usd(it))) }
+    d.trades?.let { add(Metric("İşlem Sayısı", Fmt.compact(it.toDouble()))) }
+}
+
+private fun cryptoSupply(d: InstrumentDetail): List<Metric> = buildList {
+    d.circulatingSupply?.let { add(Metric("Dolaşımdaki Arz", Fmt.compact(it))) }
+    d.totalSupply?.let { add(Metric("Toplam Arz", Fmt.compact(it))) }
+    d.maxSupply?.let { add(Metric("Maks. Arz", Fmt.compact(it))) }
+    d.athUsd?.let { add(Metric("ATH", Fmt.usd(it) + (d.athDate?.let { dt -> " · ${Fmt.dateShort(dt)}" } ?: ""))) }
+    d.atlUsd?.let { add(Metric("ATL", Fmt.usd(it) + (d.atlDate?.let { dt -> " · ${Fmt.dateShort(dt)}" } ?: ""))) }
+}
+
+private fun stockStats(d: InstrumentDetail): List<Metric> = buildList {
+    d.dayHigh?.let { add(Metric("Gün Yüksek", Fmt.tl(it))) }
+    d.dayLow?.let { add(Metric("Gün Düşük", Fmt.tl(it))) }
+    d.week52High?.let { add(Metric("52h Yüksek", Fmt.tl(it))) }
+    d.week52Low?.let { add(Metric("52h Düşük", Fmt.tl(it))) }
+    d.volume?.let { add(Metric("Hacim", Fmt.compact(it))) }
+}
+
+private fun stockInfo(d: InstrumentDetail): List<Metric> = buildList {
+    d.longName?.let { add(Metric("Şirket", it)) }
+    d.exchange?.let { add(Metric("Borsa", it)) }
+    d.priceUsd?.let { add(Metric("Fiyat (USD)", Fmt.usd(it))) }
+}
+
+private fun goldMetrics(d: InstrumentDetail): List<Metric> = buildList {
+    d.gramHasTry?.let { add(Metric("Gram Has (₺)", Fmt.tl(it))) }
+    d.onsTry?.let { add(Metric("Ons (₺)", Fmt.tl(it))) }
+    d.onsUsd?.let { add(Metric("Ons (USD)", Fmt.usd(it))) }
+    d.usdTry?.let { add(Metric("USD/TRY", Fmt.number(it))) }
+    d.gramWeight?.let { add(Metric("Gram Ağırlık", Fmt.number(it))) }
+    d.purityLabel?.let { add(Metric("Ayar", it)) }
+}
+
+private fun currencyMetrics(d: InstrumentDetail): List<Metric> = buildList {
+    d.iso?.let { add(Metric("Kod", it)) }
+    d.priceTry?.let { add(Metric("Fiyat (₺)", Fmt.tl(it))) }
+    d.inverse?.let { add(Metric("Ters Kur", Fmt.number(it))) }
+    d.usdCross?.let { add(Metric("USD Çapraz", Fmt.number(it))) }
+}
+
+// ---- Metric grid card ----
+
+@Composable
+private fun MetricGridCard(title: String, metrics: List<Metric>?) {
+    // Hide sections that ended up with no data (once loaded).
+    if (metrics != null && metrics.isEmpty()) return
+    Card {
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(title.uppercase(), color = Th.textDim, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+            val rows = (metrics ?: List(4) { Metric("", "") }).chunked(2)
+            rows.forEach { row ->
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
+                    row.forEach { m -> MetricCell(m, metrics == null, Modifier.weight(1f)) }
+                    if (row.size == 1) Box(Modifier.weight(1f))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun MetricCell(m: Metric, skeleton: Boolean, modifier: Modifier) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        if (skeleton) {
+            Box(Modifier.fillMaxWidth(0.6f).clip(RoundedCornerShape(4.dp)).background(Th.surfaceAlt).padding(6.dp)) {
+                Text("", fontSize = 11.sp)
+            }
+            Box(Modifier.fillMaxWidth(0.85f).clip(RoundedCornerShape(4.dp)).background(Th.surfaceAlt).padding(8.dp)) {
+                Text("", fontSize = 14.sp)
+            }
+        } else {
+            Text(m.label, color = Th.textDim, fontSize = 11.sp, maxLines = 1)
+            Text(m.value, color = Th.text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+        }
     }
 }
 

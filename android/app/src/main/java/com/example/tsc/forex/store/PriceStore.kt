@@ -71,12 +71,17 @@ class PriceStore(private val prefs: Prefs, private val auth: AuthStore) {
     fun all(): List<InstrumentPrice> = prices.values.sortedBy { it.code }
     fun gold(): List<InstrumentPrice> = all().filter { it.isGold }
     fun currencies(): List<InstrumentPrice> = all().filter { it.isCurrency }
+    fun crypto(): List<InstrumentPrice> = all().filter { it.kind == "crypto" }
+    fun stocks(): List<InstrumentPrice> = all().filter { it.kind == "stock" }
 
     fun orderedFavorites(): List<InstrumentPrice> =
         favoriteOrder.mapNotNull { prices[it] }.filter { favorites.contains(it.code) }
 
-    fun topMovers(n: Int = 6): List<InstrumentPrice> =
-        prices.values.sortedByDescending { kotlin.math.abs(it.changePct) }.take(n)
+    /** Top daily gainers (positive change only), highest first. */
+    fun topGainers(n: Int = 10): List<InstrumentPrice> =
+        prices.values.filter { it.changePct > 0 }
+            .sortedByDescending { it.changePct }
+            .take(n)
 
     // ---- Favorites ----
 

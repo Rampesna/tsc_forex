@@ -23,7 +23,14 @@ Bu doküman, TSC Forex Android uygulamasını Google Play'e **ilk seferde, red/a
 
 > **ÖNEMLİ:** `applicationId` artık `com.talhacan.tscforex`'tir. `com.example.*` paketleri Play tarafından **reddedilir**; bu düzeltildi. Dahili `namespace` (com.example.tsc.forex) yalnızca R/BuildConfig üretimi içindir ve yayınlanan pakete yansımaz.
 
-### 1.1 Google Sign-In için ZORUNLU adım (release)
+### 1.1 Passkey (geçiş anahtarı) için ZORUNLU adım (release)
+Passkey/WebAuthn login (`/auth/passkey/login/*`) Android'de Credential Manager ile bağlandı. Çalışması için:
+1. Backend config `android_package_name = com.talhacan.tscforex` ve `android_sha256 = [<release SHA-256>]` doldurulmalı (assetlinks.json bunları yayınlar).
+2. RP domaini `tsc-api.talhacan.com` altında `/.well-known/assetlinks.json` `delegate_permission/common.get_login_creds` ile erişilebilir olmalı.
+3. Kullanıcı önce hesabında bir passkey kaydetmiş olmalı.
+> Bu yapılandırma tamamlanana kadar passkey butonu "kayıtlı geçiş anahtarı bulunamadı" mesajı verir; e-posta/Google girişi etkilenmez.
+
+### 1.2 Google Sign-In için ZORUNLU adım (release)
 `applicationId` ve release imzası değiştiği için, Google Cloud Console'da **yeni bir OAuth Android istemcisi** tanımlanmalıdır:
 1. Google Cloud Console → APIs & Services → Credentials → Create OAuth client ID → **Android**.
 2. Package name: `com.talhacan.tscforex`.
@@ -55,7 +62,7 @@ TSC Forex bir bilgilendirme uygulamasıdır. Alım-satım, aracılık veya yatı
 • Portföy: Varlıklarınızı ekleyin, güncel değer ve kâr/zararı görün.
 • Günün kazananları: En çok yükselen varlıkları hızlıca keşfedin.
 • Ödüller: Günlük giriş serileri, XP, seviyeler ve rozetlerle motive kalın.
-• Güvenli giriş: E-posta veya Google ile giriş.
+• Güvenli giriş: E-posta, Google veya geçiş anahtarı (passkey) ile giriş.
 
 GİZLİLİK
 Yalnızca hizmeti sunmak için gereken asgari veriyi toplarız. Reklam kimliği kullanmaz, verilerinizi satmayız. Hesabınızı ve tüm verilerinizi uygulama içinden kalıcı olarak silebilirsiniz.
