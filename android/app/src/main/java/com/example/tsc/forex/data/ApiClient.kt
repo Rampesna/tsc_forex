@@ -103,6 +103,22 @@ class ApiClient(
         postJson("me/devices", JSONObject().put("token", token).put("platform", platform))
     }
 
+    // ---- Gamification ----
+
+    suspend fun gamification(): GamProfile =
+        GamProfile.from(unwrap(JSONObject(getRaw("me/gamification"))))
+
+    suspend fun gamificationCheckIn(): GamCheckInResult =
+        GamCheckInResult.from(unwrap(postJson("me/gamification/checkin", JSONObject())))
+
+    suspend fun leaderboard(limit: Int = 50): Leaderboard =
+        Leaderboard.from(unwrap(JSONObject(getRaw("me/gamification/leaderboard?limit=$limit"))))
+
+    // ---- Account ----
+
+    /** Permanently deletes the user and all their data (store compliance). */
+    suspend fun deleteAccount() { delete("me/account") }
+
     // ---- Profile ----
 
     suspend fun profile(): Profile = Profile.from(unwrap(JSONObject(getRaw("me/profile"))))

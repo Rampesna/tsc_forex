@@ -118,6 +118,7 @@ func NewEngine(d Deps) *gin.Engine {
 				authed.GET("/me/profile", d.User.Profile)
 				authed.PATCH("/me/profile", d.User.UpdateProfile)
 				authed.POST("/me/avatar", d.User.UploadAvatar)
+				authed.DELETE("/me/account", d.User.DeleteAccount)
 
 				// Multi-provider account linking (Google + Apple on one account).
 				authed.GET("/me/providers", d.Auth.LinkedProviders)

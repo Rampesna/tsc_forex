@@ -148,6 +148,26 @@ class AuthStore(private val prefs: Prefs) {
         onAccessTokenChanged?.invoke(null)
     }
 
+    /**
+     * Permanently deletes the account and all data on the server, then signs out.
+     * Required for Google Play in-app account-deletion compliance.
+     */
+    fun deleteAccount(onDone: () -> Unit = {}) {
+        isBusy = true; errorMessage = null
+        scope.launch {
+            try {
+                newApiClient().deleteAccount()
+            } catch (e: Exception) {
+                // Even if the server call fails we still sign the user out locally.
+                errorMessage = "Hesap silinemedi, tekrar deneyin."
+            } finally {
+                logout()
+                isBusy = false
+                onDone()
+            }
+        }
+    }
+
     private fun persist(tok: TokenResponse) {
         prefs.accessToken = tok.accessToken
         prefs.refreshToken = tok.refreshToken

@@ -3,7 +3,10 @@ import type {
   Alert,
   Candle,
   CatalogItem,
+  GamCheckInResult,
+  GamProfile,
   InstrumentPrice,
+  Leaderboard,
   Notification,
   Profile,
   Stats,
@@ -72,4 +75,14 @@ export const api = {
   deleteNotification: (id: string) =>
     request(`/me/notifications/${id}`, { method: "DELETE", auth: true }),
   clearNotifications: () => request("/me/notifications", { method: "DELETE", auth: true }),
+
+  // --- account ---
+  deleteAccount: () => request<{ deleted: boolean }>("/me/account", { method: "DELETE", auth: true }),
+
+  // --- gamification ---
+  gamification: () => request<GamProfile>("/me/gamification", { auth: true }),
+  checkIn: () =>
+    request<GamCheckInResult>("/me/gamification/checkin", { method: "POST", auth: true }),
+  leaderboard: (limit = 20) =>
+    request<Leaderboard>(`/me/gamification/leaderboard?limit=${limit}`, { auth: true }),
 };

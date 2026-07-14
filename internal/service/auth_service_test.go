@@ -49,6 +49,14 @@ func (m *memUserRepo) Update(_ context.Context, u *models.User) error {
 	m.byEmail[u.Email] = *u
 	return nil
 }
+func (m *memUserRepo) DeleteUser(_ context.Context, id uuid.UUID) error {
+	for e, u := range m.byEmail {
+		if u.ID == id {
+			delete(m.byEmail, e)
+		}
+	}
+	return nil
+}
 
 func testJWTCfg() config.JWTConfig {
 	return config.JWTConfig{

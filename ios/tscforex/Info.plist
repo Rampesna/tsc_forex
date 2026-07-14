@@ -2,12 +2,11 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<!-- Allow cleartext HTTP/WS to the local backend over Wi-Fi during development.
-	     Tighten (remove NSAllowsArbitraryLoads) once you serve the API over HTTPS. -->
+	<!-- Production talks to the API over HTTPS (tsc-api.talhacan.com), so App
+	     Transport Security stays enabled. NSAllowsLocalNetworking permits the
+	     DEBUG-only cleartext connection to a *.local backend on the same Wi-Fi. -->
 	<key>NSAppTransportSecurity</key>
 	<dict>
-		<key>NSAllowsArbitraryLoads</key>
-		<true/>
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>

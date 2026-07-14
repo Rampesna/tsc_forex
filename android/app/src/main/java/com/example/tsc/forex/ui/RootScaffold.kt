@@ -3,6 +3,7 @@ package com.example.tsc.forex.ui
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ShowChart
+import androidx.compose.material.icons.filled.EmojiEvents
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.PieChart
@@ -32,6 +33,7 @@ import com.example.tsc.forex.ui.screens.AssetDetailScreen
 import com.example.tsc.forex.ui.screens.MarketsScreen
 import com.example.tsc.forex.ui.screens.NotificationsScreen
 import com.example.tsc.forex.ui.screens.PortfolioScreen
+import com.example.tsc.forex.ui.screens.RewardsScreen
 import com.example.tsc.forex.ui.screens.SettingsScreen
 import com.example.tsc.forex.ui.theme.Th
 
@@ -40,6 +42,7 @@ private data class Tab(val route: String, val label: String, val icon: ImageVect
 private val TABS = listOf(
     Tab("markets", "Piyasalar", Icons.AutoMirrored.Filled.ShowChart),
     Tab("portfolio", "Portföy", Icons.Filled.PieChart),
+    Tab("rewards", "Ödüller", Icons.Filled.EmojiEvents),
     Tab("alerts", "Alarmlar", Icons.Filled.NotificationsActive),
     Tab("notifications", "Bildirim", Icons.Filled.Notifications),
     Tab("settings", "Ayarlar", Icons.Filled.Settings),
@@ -89,6 +92,7 @@ fun RootScaffold(auth: AuthStore, prices: PriceStore, portfolio: PortfolioStore,
         ) {
             composable("markets") { MarketsScreen(prices) { code -> nav.navigate("detail/$code") } }
             composable("portfolio") { PortfolioScreen(portfolio, prices) }
+            composable("rewards") { RewardsScreen(auth) }
             composable("alerts") { AlertsScreen(auth, prices) }
             composable("notifications") { NotificationsScreen(auth, prices) }
             composable("settings") { SettingsScreen(auth, prices, prefs) }

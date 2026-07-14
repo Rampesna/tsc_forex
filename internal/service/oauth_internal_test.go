@@ -41,6 +41,14 @@ func (r *tinyUserRepo) Update(_ context.Context, u *models.User) error {
 	r.m[u.Email] = *u
 	return nil
 }
+func (r *tinyUserRepo) DeleteUser(_ context.Context, id uuid.UUID) error {
+	for e, u := range r.m {
+		if u.ID == id {
+			delete(r.m, e)
+		}
+	}
+	return nil
+}
 
 func oauthTestCfg() config.JWTConfig {
 	return config.JWTConfig{

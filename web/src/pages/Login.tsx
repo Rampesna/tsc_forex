@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
 import { googleSignIn } from "../auth/google";
 import { passkeySupported } from "../auth/passkey";
@@ -6,10 +7,16 @@ import { BRAND } from "../lib/config";
 
 export function Login() {
   const auth = useAuth();
+  const nav = useNavigate();
   const [isRegister, setRegister] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const googleRef = useRef<HTMLDivElement>(null);
+
+  // Once signed in, leave the login screen and return to the app.
+  useEffect(() => {
+    if (auth.authed) nav("/", { replace: true });
+  }, [auth.authed, nav]);
 
   useEffect(() => {
     if (!googleRef.current) return;
@@ -40,6 +47,21 @@ export function Login() {
       }}
     >
       <div style={{ width: "100%", maxWidth: 400 }}>
+        <button
+          onClick={() => nav("/")}
+          style={{
+            background: "none",
+            border: "none",
+            color: "var(--text-dim)",
+            fontSize: 13,
+            fontWeight: 600,
+            cursor: "pointer",
+            marginBottom: 8,
+            padding: 4,
+          }}
+        >
+          ← Piyasalara dön
+        </button>
         <div style={{ textAlign: "center", marginBottom: 28 }}>
           <img
             src="/logo.png"

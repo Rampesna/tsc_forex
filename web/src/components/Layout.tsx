@@ -8,6 +8,7 @@ import { ConnectionDot } from "./common";
 const NAV = [
   { to: "/", label: "Piyasalar", icon: "📈", end: true },
   { to: "/favorites", label: "Favoriler", icon: "⭐" },
+  { to: "/rewards", label: "Ödüller", icon: "🏆" },
   { to: "/alerts", label: "Alarmlar", icon: "🔔" },
   { to: "/portfolio", label: "Portföy", icon: "💼" },
   { to: "/notifications", label: "Bildirimler", icon: "📨" },
@@ -19,7 +20,7 @@ interface Toast extends NotificationPayload {
 }
 
 export function Layout() {
-  const { profile, logout } = useAuth();
+  const { profile, authed, logout } = useAuth();
   const connected = useMarkets((s) => s.connected);
   const setNotificationHandler = useMarkets((s) => s.setNotificationHandler);
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -82,6 +83,25 @@ export function Layout() {
         ))}
 
         <div style={{ marginTop: "auto" }}>
+          {!authed ? (
+            <button
+              onClick={() => nav("/login")}
+              style={{
+                width: "100%",
+                background: "var(--accent)",
+                color: "#04222a",
+                border: "none",
+                borderRadius: 12,
+                padding: "12px 14px",
+                fontSize: 14,
+                fontWeight: 800,
+                cursor: "pointer",
+              }}
+            >
+              Giriş yap / Kayıt ol
+            </button>
+          ) : (
+          <>
           <button
             onClick={() => nav("/profile")}
             style={{
@@ -147,6 +167,8 @@ export function Layout() {
           >
             Çıkış yap
           </button>
+          </>
+          )}
         </div>
       </aside>
 

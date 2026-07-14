@@ -21,6 +21,11 @@ type UserRepository interface {
 	ByEmail(ctx context.Context, email string) (models.User, error)
 	ByID(ctx context.Context, id uuid.UUID) (models.User, error)
 	Update(ctx context.Context, u *models.User) error
+	// DeleteUser permanently removes the user and ALL of their owned data
+	// (watchlist, alerts, notifications, devices, identities, sessions,
+	// passkeys, gamification). Required for App Store / Play Store account
+	// deletion compliance.
+	DeleteUser(ctx context.Context, id uuid.UUID) error
 }
 
 type userRepository struct {
@@ -78,4 +83,32 @@ func (r *userRepository) ByID(ctx context.Context, id uuid.UUID) (models.User, e
 		return models.User{}, ErrUserNotFound
 	}
 	return u, err
+}
+
+// DeleteUser removes the user and every row they own, in a single transaction
+// so a partial failure cannot leave orphaned personal data behind.
+func (r *userRepository) DeleteUser(ctx context.Context, id uuid.UUID) error {
+	start := time.Now()
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		owned := []any{
+			&models.WatchlistItem{},
+			&models.PriceAlert{},
+			&models.Notification{},
+			&models.DeviceToken{},
+			&models.RefreshToken{},
+			&models.AuthIdentity{},
+			&models.WebAuthnCredential{},
+			&models.UserBadge{},
+			&models.GamificationEvent{},
+			&models.UserGamification{},
+		}
+		for _, m := range owned {
+			if err := tx.Where("user_id = ?", id).Delete(m).Error; err != nil {
+				return err
+			}
+		}
+		return tx.Where("id = ?", id).Delete(&models.User{}).Error
+	})
+	r.observe(start, err)
+	return err
 }

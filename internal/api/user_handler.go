@@ -50,6 +50,24 @@ func (h *UserHandler) award(userID uuid.UUID, action string) {
 	go h.gam.Award(context.Background(), userID, action)
 }
 
+// DeleteAccount permanently deletes the authenticated user and all of their
+// data. Exposed as DELETE /me/account for App Store / Play Store in-app
+// account-deletion compliance.
+func (h *UserHandler) DeleteAccount(c *gin.Context) {
+	uid, ok := currentUserID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, ErrorResponse{Error: "unauthorized"})
+		return
+	}
+	if err := h.users.DeleteUser(c.Request.Context(), uid); err != nil {
+		h.log.Error("account deletion failed", zap.String("user", uid.String()), zap.Error(err))
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "delete failed"})
+		return
+	}
+	h.log.Info("account deleted", zap.String("user", uid.String()))
+	c.JSON(http.StatusOK, gin.H{"deleted": true})
+}
+
 // NewUserHandler builds the user handler.
 func NewUserHandler(
 	watch repository.WatchlistRepository,

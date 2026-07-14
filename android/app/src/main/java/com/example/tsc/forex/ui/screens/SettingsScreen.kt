@@ -6,6 +6,7 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -16,6 +17,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.OutlinedTextField
@@ -31,6 +33,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -47,6 +50,9 @@ import java.io.ByteArrayOutputStream
 
 @Composable
 fun SettingsScreen(auth: AuthStore, store: PriceStore, prefs: Prefs) {
+    val uriHandler = LocalUriHandler.current
+    var confirmDelete by remember { mutableStateOf(false) }
+
     Column(
         Modifier
             .fillMaxSize()
@@ -61,6 +67,15 @@ fun SettingsScreen(auth: AuthStore, store: PriceStore, prefs: Prefs) {
             ProfileCard(auth)
 
             Card {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("YASAL", color = Th.textDim, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    LegalRow("Gizlilik Politikası") { uriHandler.openUri("https://tsc.talhacan.com/privacy") }
+                    LegalRow("Kullanım Şartları") { uriHandler.openUri("https://tsc.talhacan.com/terms") }
+                    LegalRow("Destek & Yardım") { uriHandler.openUri("https://tsc.talhacan.com/support") }
+                }
+            }
+
+            Card {
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Text("UYGULAMA", color = Th.textDim, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     Text("TSC Forex v${BuildConfig.VERSION_NAME}", color = Th.textFaint, fontSize = 11.sp)
@@ -73,11 +88,57 @@ fun SettingsScreen(auth: AuthStore, store: PriceStore, prefs: Prefs) {
 
             Button(
                 onClick = { auth.logout() },
-                colors = ButtonDefaults.buttonColors(containerColor = Th.down.copy(alpha = 0.15f), contentColor = Th.down),
+                colors = ButtonDefaults.buttonColors(containerColor = Th.surfaceAlt, contentColor = Th.text),
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.fillMaxWidth(),
             ) { Text("Çıkış yap", fontWeight = FontWeight.Bold) }
+
+            Card {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("TEHLİKELİ BÖLGE", color = Th.textDim, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Text("Hesabını silersen tüm verilerin (favoriler, alarmlar, portföy, bildirimler, ödüller) kalıcı olarak kaldırılır. Bu işlem geri alınamaz.",
+                        color = Th.textDim, fontSize = 12.sp)
+                    Button(
+                        onClick = { confirmDelete = true },
+                        enabled = !auth.isBusy,
+                        colors = ButtonDefaults.buttonColors(containerColor = Th.down.copy(alpha = 0.15f), contentColor = Th.down),
+                        shape = RoundedCornerShape(12.dp),
+                        modifier = Modifier.fillMaxWidth(),
+                    ) { Text("Hesabı Sil", fontWeight = FontWeight.Bold) }
+                }
+            }
         }
+    }
+
+    if (confirmDelete) {
+        AlertDialog(
+            onDismissRequest = { confirmDelete = false },
+            containerColor = Th.surface,
+            title = { Text("Hesabını sil?", color = Th.text) },
+            text = { Text("Tüm verilerin kalıcı olarak silinecek. Bu işlem geri alınamaz.", color = Th.textDim) },
+            confirmButton = {
+                TextButton(onClick = { confirmDelete = false; auth.deleteAccount() }) {
+                    Text("Hesabı Sil", color = Th.down, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmDelete = false }) { Text("Vazgeç", color = Th.textDim) }
+            },
+        )
+    }
+}
+
+@Composable
+private fun LegalRow(title: String, onClick: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth()
+            .clip(RoundedCornerShape(8.dp))
+            .clickable(onClick = onClick)
+            .padding(vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(title, color = Th.text, fontSize = 14.sp, modifier = Modifier.weight(1f))
+        Text("↗", color = Th.textFaint, fontSize = 14.sp)
     }
 }
 

@@ -278,6 +278,95 @@ struct WSNotificationEnvelope: Decodable {
     let payload: WSNotificationPayload
 }
 
+// MARK: - Gamification (streak / XP / badges / leaderboard)
+
+struct GamBadge: Codable, Identifiable {
+    var id: String { code }
+    let code: String
+    let name: String
+    let description: String
+    let icon: String
+    let earned: Bool
+    let earnedAt: Date?
+
+    enum CodingKeys: String, CodingKey {
+        case code, name, description, icon, earned
+        case earnedAt = "earned_at"
+    }
+}
+
+struct GamQuest: Codable, Identifiable {
+    var id: String { code }
+    let code: String
+    let title: String
+    let description: String
+    let xp: Int
+    let completed: Bool
+}
+
+struct GamProfile: Codable {
+    let xp: Int
+    let level: Int
+    let xpIntoLevel: Int
+    let xpForNextLevel: Int
+    let progress: Double
+    let currentStreak: Int
+    let longestStreak: Int
+    let checkedInToday: Bool
+    let totalCheckIns: Int
+    let weeklyXp: Int
+    let rank: Int
+    let badges: [GamBadge]
+    let quests: [GamQuest]
+
+    enum CodingKeys: String, CodingKey {
+        case xp, level, progress, rank, badges, quests
+        case xpIntoLevel = "xp_into_level"
+        case xpForNextLevel = "xp_for_next_level"
+        case currentStreak = "current_streak"
+        case longestStreak = "longest_streak"
+        case checkedInToday = "checked_in_today"
+        case totalCheckIns = "total_check_ins"
+        case weeklyXp = "weekly_xp"
+    }
+}
+
+struct GamCheckInResult: Codable {
+    let profile: GamProfile
+    let xpGained: Int
+    let newBadges: [GamBadge]
+    let alreadyCheckedIn: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case profile
+        case xpGained = "xp_gained"
+        case newBadges = "new_badges"
+        case alreadyCheckedIn = "already_checked_in"
+    }
+}
+
+struct LeaderEntry: Codable, Identifiable {
+    var id: String { "\(rank)-\(userId)" }
+    let rank: Int
+    let userId: String
+    let displayName: String
+    let avatarUrl: String
+    let xp: Int
+    let level: Int
+
+    enum CodingKeys: String, CodingKey {
+        case rank, xp, level
+        case userId = "user_id"
+        case displayName = "display_name"
+        case avatarUrl = "avatar_url"
+    }
+}
+
+struct LeaderboardResponse: Codable {
+    let entries: [LeaderEntry]
+    let me: LeaderEntry
+}
+
 // MARK: - Shared JSON decoder (handles Go's RFC3339 with/without fractional seconds)
 
 extension JSONDecoder {

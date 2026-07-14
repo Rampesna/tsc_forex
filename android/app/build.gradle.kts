@@ -12,7 +12,10 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.example.tsc.forex"
+        // Published package name on Google Play. Mirrors the iOS bundle
+        // (talhacan.tscforex). NOTE: "com.example.*" is rejected by Play, so this
+        // differs from the internal `namespace` (which only affects R/BuildConfig).
+        applicationId = "com.talhacan.tscforex"
         minSdk = 24
         targetSdk = 36
         versionCode = 1

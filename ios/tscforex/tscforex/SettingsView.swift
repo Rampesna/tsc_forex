@@ -11,6 +11,13 @@ struct SettingsView: View {
     @State private var host = AppConfig.host
     @State private var saved = false
     @State private var showProfile = false
+    @State private var confirmDelete = false
+    @State private var deleting = false
+    @State private var deleteError: String?
+
+    private let privacyURL = URL(string: "https://tsc.talhacan.com/privacy")!
+    private let termsURL = URL(string: "https://tsc.talhacan.com/terms")!
+    private let supportURL = URL(string: "https://tsc.talhacan.com/support")!
 
     var body: some View {
         ZStack {
@@ -93,10 +100,44 @@ struct SettingsView: View {
 
                         Card {
                             VStack(alignment: .leading, spacing: 12) {
+                                sectionLabel("YASAL")
+                                Link(destination: privacyURL) { legalRow("Gizlilik Politikası", "lock.shield") }
+                                Divider().overlay(Theme.stroke)
+                                Link(destination: termsURL) { legalRow("Kullanım Şartları", "doc.text") }
+                                Divider().overlay(Theme.stroke)
+                                Link(destination: supportURL) { legalRow("Destek & Yardım", "questionmark.circle") }
+                            }
+                        }
+
+                        Card {
+                            VStack(alignment: .leading, spacing: 12) {
                                 sectionLabel("UYGULAMA")
                                 infoRow("Sürüm", AppConfig.appVersion)
                                 Divider().overlay(Theme.stroke)
                                 infoRow("İzlenen varlık", "\(prices.prices.count)")
+                            }
+                        }
+
+                        // Account deletion — required by App Store guidelines when
+                        // the app supports account creation.
+                        Card {
+                            VStack(alignment: .leading, spacing: 10) {
+                                sectionLabel("TEHLİKELİ BÖLGE")
+                                Text("Hesabını silersen izleme listen, alarmların, portföyün, bildirimlerin ve ödül verilerin kalıcı olarak kaldırılır. Bu işlem geri alınamaz.")
+                                    .font(.system(size: 12)).foregroundStyle(Theme.textDim)
+                                Button(role: .destructive) {
+                                    confirmDelete = true
+                                } label: {
+                                    HStack {
+                                        if deleting { ProgressView().tint(Theme.down) }
+                                        Label(deleting ? "Siliniyor…" : "Hesabı Sil", systemImage: "trash")
+                                    }
+                                }
+                                .disabled(deleting)
+                                .buttonStyle(FilledButtonStyle(color: Theme.down.opacity(0.16), textColor: Theme.down))
+                                if let deleteError {
+                                    Text(deleteError).font(.system(size: 11)).foregroundStyle(Theme.down)
+                                }
                             }
                         }
 
@@ -112,6 +153,35 @@ struct SettingsView: View {
         .onChange(of: host) { _, _ in saved = false }
         .sheet(isPresented: $showProfile) {
             NavigationStack { ProfileView() }.preferredColorScheme(.dark)
+        }
+        .alert("Hesabını silmek istediğinden emin misin?", isPresented: $confirmDelete) {
+            Button("Vazgeç", role: .cancel) {}
+            Button("Hesabı Sil", role: .destructive) { Task { await deleteAccount() } }
+        } message: {
+            Text("Tüm verilerin kalıcı olarak silinecek. Bu işlem geri alınamaz.")
+        }
+    }
+
+    private func deleteAccount() async {
+        deleting = true; deleteError = nil
+        do {
+            try await APIClient(token: auth.accessToken).deleteAccount()
+            prices.disconnect()
+            auth.logout()
+            Haptics.success()
+        } catch {
+            deleteError = "Silme başarısız: \(error.localizedDescription)"
+            Haptics.error()
+        }
+        deleting = false
+    }
+
+    private func legalRow(_ title: String, _ icon: String) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon).foregroundStyle(Theme.accent).frame(width: 22)
+            Text(title).font(.system(size: 14)).foregroundStyle(Theme.text)
+            Spacer()
+            Image(systemName: "arrow.up.right").font(.system(size: 11)).foregroundStyle(Theme.textFaint)
         }
     }
 

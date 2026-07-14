@@ -23,11 +23,12 @@ struct RootView: View {
 }
 
 enum AppTab: Int, CaseIterable {
-    case markets, portfolio, alerts, notifications, settings
+    case markets, portfolio, rewards, alerts, notifications, settings
     var title: String {
         switch self {
         case .markets: return "Piyasa"
         case .portfolio: return "Portföy"
+        case .rewards: return "Ödüller"
         case .alerts: return "Alarm"
         case .notifications: return "Bildirim"
         case .settings: return "Ayarlar"
@@ -37,6 +38,7 @@ enum AppTab: Int, CaseIterable {
         switch self {
         case .markets: return "chart.bar.xaxis"
         case .portfolio: return "briefcase"
+        case .rewards: return "trophy"
         case .alerts: return "bell"
         case .notifications: return "tray.full"
         case .settings: return "gearshape"
@@ -46,6 +48,7 @@ enum AppTab: Int, CaseIterable {
         switch self {
         case .markets: return "chart.bar.xaxis"
         case .portfolio: return "briefcase.fill"
+        case .rewards: return "trophy.fill"
         case .alerts: return "bell.fill"
         case .notifications: return "tray.full.fill"
         case .settings: return "gearshape.fill"
@@ -63,6 +66,7 @@ struct MainTabView: View {
             switch tab {
             case .markets:        MarketsView()
             case .portfolio:      PortfolioView()
+            case .rewards:        GamificationView()
             case .alerts:         AlertsView()
             case .notifications:  NotificationsView()
             case .settings:       SettingsView()

@@ -287,6 +287,31 @@ struct APIClient {
         _ = try await request("me/devices", method: "POST",
                               body: ["platform": "ios", "token": deviceToken], authed: true)
     }
+
+    // MARK: Account
+
+    /// Permanently deletes the signed-in user and all their data. Required for
+    /// App Store in-app account-deletion compliance.
+    func deleteAccount() async throws {
+        _ = try await request("me/account", method: "DELETE", authed: true)
+    }
+
+    // MARK: Gamification
+
+    func gamification() async throws -> GamProfile {
+        let data = try await request("me/gamification", authed: true)
+        return try makeDecoder().decode(GamProfile.self, from: data)
+    }
+
+    func gamificationCheckIn() async throws -> GamCheckInResult {
+        let data = try await request("me/gamification/checkin", method: "POST", authed: true)
+        return try makeDecoder().decode(GamCheckInResult.self, from: data)
+    }
+
+    func leaderboard(limit: Int = 50) async throws -> LeaderboardResponse {
+        let data = try await request("me/gamification/leaderboard?limit=\(limit)", authed: true)
+        return try makeDecoder().decode(LeaderboardResponse.self, from: data)
+    }
 }
 
 // AnyEncodable lets us pass dictionaries and structs uniformly as request bodies.

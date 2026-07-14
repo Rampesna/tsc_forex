@@ -106,3 +106,59 @@ export interface NotificationPayload {
   body: string;
   price: number;
 }
+
+// --- Gamification (streak / XP / badges / leaderboard) ---
+
+export interface GamBadge {
+  code: string;
+  name: string;
+  description: string;
+  icon: string;
+  earned: boolean;
+  earned_at?: string;
+}
+
+export interface GamQuest {
+  code: string;
+  title: string;
+  description: string;
+  xp: number;
+  completed: boolean;
+}
+
+export interface GamProfile {
+  xp: number;
+  level: number;
+  xp_into_level: number;
+  xp_for_next_level: number;
+  progress: number;
+  current_streak: number;
+  longest_streak: number;
+  checked_in_today: boolean;
+  total_check_ins: number;
+  weekly_xp: number;
+  rank: number;
+  badges: GamBadge[];
+  quests: GamQuest[];
+}
+
+export interface GamCheckInResult {
+  profile: GamProfile;
+  xp_gained: number;
+  new_badges: GamBadge[];
+  already_checked_in: boolean;
+}
+
+export interface LeaderEntry {
+  rank: number;
+  user_id: string;
+  display_name: string;
+  avatar_url: string;
+  xp: number;
+  level: number;
+}
+
+export interface Leaderboard {
+  entries: LeaderEntry[];
+  me: LeaderEntry;
+}
