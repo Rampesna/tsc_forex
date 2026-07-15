@@ -50,7 +50,19 @@ import com.example.tsc.forex.ui.StatTile
 import com.example.tsc.forex.ui.theme.Th
 import kotlinx.coroutines.launch
 
-private val TIMEFRAMES = listOf("1m" to "1dk", "5m" to "5dk", "15m" to "15dk", "1h" to "1sa", "1d" to "1g")
+/** A chart time range: label + aggregation interval + lookback window (days). */
+private data class Tf(val key: String, val label: String, val interval: String, val days: Long)
+
+// Binance-style ranges. Long ranges use daily/weekly/monthly buckets to match
+// backfilled history; short ranges use intraday buckets from the live feed.
+private val TIMEFRAMES = listOf(
+    Tf("1G", "1G", "5m", 1),
+    Tf("1H", "1H", "1h", 7),
+    Tf("1A", "1A", "1d", 30),
+    Tf("1Y", "1Y", "1d", 365),
+    Tf("5Y", "5Y", "1w", 365 * 5),
+    Tf("MAX", "MAX", "1mo", 365 * 40),
+)
 
 /** A single label/value metric shown in the detail grid. */
 private data class Metric(val label: String, val value: String)
@@ -59,7 +71,7 @@ private data class Metric(val label: String, val value: String)
 fun AssetDetailScreen(code: String, auth: AuthStore, store: PriceStore, onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
     val ip = store.prices[code]
-    var interval by remember { mutableStateOf("5m") }
+    var rangeKey by remember { mutableStateOf("1G") }
     var series by remember { mutableStateOf<List<Double>>(emptyList()) }
     var stats by remember { mutableStateOf<InstrumentStats?>(null) }
     var detail by remember { mutableStateOf<InstrumentDetail?>(null) }
@@ -67,9 +79,11 @@ fun AssetDetailScreen(code: String, auth: AuthStore, store: PriceStore, onBack: 
     var toast by remember { mutableStateOf<String?>(null) }
     var isFav by remember { mutableStateOf(store.isFavorite(code)) }
 
-    LaunchedEffect(code, interval) {
+    LaunchedEffect(code, rangeKey) {
         val api = auth.newApiClient()
-        series = runCatching { api.candles(code, interval).map { it.close } }
+        val tf = TIMEFRAMES.firstOrNull { it.key == rangeKey } ?: TIMEFRAMES[0]
+        val fromMs = System.currentTimeMillis() - tf.days * 86_400_000L
+        series = runCatching { api.candles(code, tf.interval, fromMs).map { it.close } }
             .getOrElse { store.sparklines[code].orEmpty() }
         if (series.isEmpty()) series = store.sparklines[code].orEmpty()
         stats = runCatching { api.stats(code) }.getOrNull()
@@ -121,16 +135,16 @@ fun AssetDetailScreen(code: String, auth: AuthStore, store: PriceStore, onBack: 
             }
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                TIMEFRAMES.forEach { (key, label) ->
-                    val selected = key == interval
+                TIMEFRAMES.forEach { tf ->
+                    val selected = tf.key == rangeKey
                     Box(
                         Modifier
                             .clip(RoundedCornerShape(8.dp))
                             .background(if (selected) Th.accent.copy(alpha = 0.18f) else Th.surface)
-                            .clickable { interval = key }
+                            .clickable { rangeKey = tf.key }
                             .padding(horizontal = 12.dp, vertical = 6.dp),
                     ) {
-                        Text(label, color = if (selected) Th.accent else Th.textDim, fontSize = 12.sp)
+                        Text(tf.label, color = if (selected) Th.accent else Th.textDim, fontSize = 12.sp)
                     }
                 }
             }

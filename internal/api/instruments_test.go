@@ -16,7 +16,7 @@ import (
 
 func TestInstrumentCatalogEndpoint(t *testing.T) {
 	gin.SetMode(gin.TestMode)
-	h := api.NewInstrumentHandler(nil, nil, "", nil)
+	h := api.NewInstrumentHandler(nil, nil, nil, "", nil)
 	r := gin.New()
 	r.GET("/instruments", h.Catalog)
 
@@ -45,7 +45,7 @@ func TestInstrumentPricesEndpoint(t *testing.T) {
 	bus.Publish(eventbus.TopicTickReceived, domain.Tick{Symbol: domain.SymbolXAUUSD, Price: 2350})
 	bus.Publish(eventbus.TopicTickReceived, domain.Tick{Symbol: domain.SymbolUSDTRY, Price: 34.5})
 
-	h := api.NewInstrumentHandler(engine, nil, "", nil)
+	h := api.NewInstrumentHandler(engine, nil, nil, "", nil)
 	r := gin.New()
 	r.GET("/instruments/prices", h.Prices)
 	r.GET("/instruments/:code", h.Get)

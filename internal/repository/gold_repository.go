@@ -94,7 +94,8 @@ func (r *goldRepository) Latest(ctx context.Context, symbol string) (models.Gold
 	return rec, err
 }
 
-// intervalToSeconds maps supported aggregation intervals to seconds.
+// intervalToSeconds maps supported aggregation intervals to seconds. The weekly
+// and monthly buckets keep long-range charts (5Y/MAX) at a sane candle count.
 var intervalToSeconds = map[string]int{
 	"1m":  60,
 	"5m":  300,
@@ -103,6 +104,8 @@ var intervalToSeconds = map[string]int{
 	"1h":  3600,
 	"4h":  14400,
 	"1d":  86400,
+	"1w":  604800,
+	"1mo": 2592000, // 30d epoch bucket (approximate, chart-friendly)
 }
 
 // SupportedInterval reports whether interval is valid.

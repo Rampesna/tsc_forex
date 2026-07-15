@@ -11,28 +11,31 @@ import (
 	"github.com/tsc-forex/tsc_forex/internal/calculator"
 	"github.com/tsc-forex/tsc_forex/internal/domain"
 	"github.com/tsc-forex/tsc_forex/internal/repository"
+	"github.com/tsc-forex/tsc_forex/internal/service"
 )
 
 // InstrumentHandler serves the full multi-instrument catalog (all gold products
 // + currencies): live prices, catalog metadata, and per-instrument history.
 type InstrumentHandler struct {
-	engine *calculator.Engine
-	repo   repository.PriceRepository // may be nil in minimal mode
-	meta   *marketMeta                // per-kind rich detail (external data)
-	log    *zap.Logger
+	engine  *calculator.Engine
+	repo    repository.PriceRepository // may be nil in minimal mode
+	candles *service.CandleStore       // hot path for charts/sparklines/stats
+	meta    *marketMeta                // per-kind rich detail (external data)
+	log     *zap.Logger
 }
 
 // NewInstrumentHandler builds the handler. cryptoBaseURL is the Binance price
 // endpoint (from config) used to derive the 24h ticker URL for crypto detail.
-func NewInstrumentHandler(engine *calculator.Engine, repo repository.PriceRepository, cryptoBaseURL string, log *zap.Logger) *InstrumentHandler {
+func NewInstrumentHandler(engine *calculator.Engine, repo repository.PriceRepository, candles *service.CandleStore, cryptoBaseURL string, log *zap.Logger) *InstrumentHandler {
 	if log == nil {
 		log = zap.NewNop()
 	}
 	return &InstrumentHandler{
-		engine: engine,
-		repo:   repo,
-		meta:   newMarketMeta(engine, cryptoBaseURL, log),
-		log:    log,
+		engine:  engine,
+		repo:    repo,
+		candles: candles,
+		meta:    newMarketMeta(engine, cryptoBaseURL, log),
+		log:     log,
 	}
 }
 
@@ -112,10 +115,6 @@ func (h *InstrumentHandler) Get(c *gin.Context) {
 // @Tags    instruments
 // @Router  /instruments/{code}/history [get]
 func (h *InstrumentHandler) History(c *gin.Context) {
-	if h.repo == nil {
-		c.JSON(http.StatusServiceUnavailable, ErrorResponse{Error: "history storage not configured"})
-		return
-	}
 	code := c.Param("code")
 	if _, ok := domain.CatalogByCode[code]; !ok {
 		c.JSON(http.StatusNotFound, ErrorResponse{Error: "unknown instrument"})
@@ -124,13 +123,20 @@ func (h *InstrumentHandler) History(c *gin.Context) {
 	from := parseTime(c.Query("from"))
 	to := parseTime(c.Query("to"))
 
+	// Candle charts read from the pre-aggregated candle store (memory + indexed
+	// candle table), never by aggregating raw ticks at request time.
 	if interval := c.Query("interval"); interval != "" {
-		if !repository.SupportedInterval(interval) {
-			c.JSON(http.StatusBadRequest, ErrorResponse{Error: "unsupported interval"})
+		if h.candles == nil {
+			c.JSON(http.StatusServiceUnavailable, ErrorResponse{Error: "candles not configured"})
 			return
 		}
-		candles, err := h.repo.Aggregate(c.Request.Context(), code, interval, from, to)
+		limit, _ := strconv.Atoi(c.DefaultQuery("limit", "1000"))
+		candles, err := h.candles.Candles(c.Request.Context(), code, interval, from, to, limit)
 		if err != nil {
+			if err == service.ErrUnsupportedInterval {
+				c.JSON(http.StatusBadRequest, ErrorResponse{Error: "unsupported interval"})
+				return
+			}
 			c.JSON(http.StatusServiceUnavailable, ErrorResponse{Error: "aggregation failed"})
 			return
 		}
@@ -138,6 +144,10 @@ func (h *InstrumentHandler) History(c *gin.Context) {
 		return
 	}
 
+	if h.repo == nil {
+		c.JSON(http.StatusServiceUnavailable, ErrorResponse{Error: "history storage not configured"})
+		return
+	}
 	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "1000"))
 	rows, err := h.repo.History(c.Request.Context(), code, from, to, limit)
 	if err != nil {
@@ -165,12 +175,30 @@ func (h *InstrumentHandler) Stats(c *gin.Context) {
 			last = ip.Price
 		}
 	}
+	// Fast path: today's open/high/low/close from the in-memory daily candle —
+	// no DB. "Open" here is UTC-day open of the 1d candle.
+	if h.candles != nil {
+		if st := h.candles.Stats(code); st.OK {
+			if last == 0 {
+				last = st.Close
+			}
+			var change, changePct float64
+			if st.Open > 0 {
+				change = last - st.Open
+				changePct = (change / st.Open) * 100
+			}
+			c.JSON(http.StatusOK, gin.H{
+				"code": code, "open": st.Open, "high": st.High, "low": st.Low,
+				"last": last, "change": change, "change_pct": changePct, "count": st.Count,
+			})
+			return
+		}
+	}
 	if h.repo == nil {
 		c.JSON(http.StatusOK, gin.H{"code": code, "last": last})
 		return
 	}
-	// "Open" is the day's first price in Istanbul time (local midnight), so the
-	// detail header change matches the market list (day open → latest).
+	// Fallback: rolling-window stats from the DB (Istanbul market day).
 	s, err := h.repo.Stats(c.Request.Context(), code, startOfMarketDay())
 	if err != nil {
 		c.JSON(http.StatusServiceUnavailable, ErrorResponse{Error: "stats query failed"})
@@ -222,11 +250,20 @@ func (h *InstrumentHandler) Detail(c *gin.Context) {
 // @Tags    instruments
 // @Router  /instruments/sparklines [get]
 func (h *InstrumentHandler) Sparklines(c *gin.Context) {
+	points, _ := strconv.Atoi(c.DefaultQuery("points", "10"))
+	// Served entirely from the in-memory sparkline ring — zero DB.
+	if h.candles != nil {
+		series := h.candles.SparklinesAll(points)
+		if len(series) > 0 {
+			c.JSON(http.StatusOK, gin.H{"points": series})
+			return
+		}
+	}
+	// Fallback (cold start, before the ring fills): last N from DB.
 	if h.repo == nil {
 		c.JSON(http.StatusOK, gin.H{"points": gin.H{}})
 		return
 	}
-	points, _ := strconv.Atoi(c.DefaultQuery("points", "10"))
 	series, err := h.repo.Sparklines(c.Request.Context(), points)
 	if err != nil {
 		c.JSON(http.StatusServiceUnavailable, ErrorResponse{Error: "sparkline query failed"})

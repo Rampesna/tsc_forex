@@ -6,7 +6,7 @@
 
 import SwiftUI
 
-private struct Timeframe: Hashable { let interval: String; let label: String }
+private struct Timeframe: Hashable { let key: String; let interval: String; let label: String; let days: Int }
 
 struct AssetDetailView: View {
     let code: String
@@ -18,21 +18,40 @@ struct AssetDetailView: View {
     @State private var stats: InstrumentStats?
     @State private var detail: InstrumentDetail?
     @State private var mode: ChartMode = .line
-    @State private var tf = "5m"
+    @State private var tf = "1G"
     @State private var loadingChart = false
     @State private var showAlert = false
     @State private var convAmount = "1"
 
+    // Binance-style time ranges. Long ranges use daily/weekly/monthly buckets to
+    // match backfilled history; short ranges use intraday buckets from live data.
     private let timeframes = [
-        Timeframe(interval: "1m", label: "1dk"),
-        Timeframe(interval: "5m", label: "5dk"),
-        Timeframe(interval: "15m", label: "15dk"),
-        Timeframe(interval: "1h", label: "1sa"),
-        Timeframe(interval: "1d", label: "1g"),
+        Timeframe(key: "1G", interval: "5m", label: "1G", days: 1),
+        Timeframe(key: "1H", interval: "1h", label: "1H", days: 7),
+        Timeframe(key: "1A", interval: "1d", label: "1A", days: 30),
+        Timeframe(key: "1Y", interval: "1d", label: "1Y", days: 365),
+        Timeframe(key: "5Y", interval: "1w", label: "5Y", days: 365 * 5),
+        Timeframe(key: "MAX", interval: "1mo", label: "MAX", days: 365 * 40),
     ]
 
     private var price: InstrumentPrice? { prices.prices[code] }
     private var trendUp: Bool { (price?.changePct ?? 0) >= 0 }
+
+    // Fold the live WS price into the last candle so the chart moves in real time
+    // between fetches (Binance-style) without refetching history.
+    private var displayCandles: [Candle] {
+        guard let p = price?.price, p > 0, let last = candles.last else { return candles }
+        var arr = candles
+        arr[arr.count - 1] = Candle(
+            bucket: last.bucket,
+            open: last.open,
+            high: max(last.high, p),
+            low: min(last.low, p),
+            close: p,
+            count: last.count
+        )
+        return arr
+    }
 
     var body: some View {
         ZStack {
@@ -154,10 +173,10 @@ struct AssetDetailView: View {
                 if candles.isEmpty && loadingChart {
                     SkeletonBlock(height: 300, corner: 10).shimmer()
                 } else {
-                    PriceChart(candles: candles, mode: mode, trendUp: trendUp)
+                    PriceChart(candles: displayCandles, mode: mode, trendUp: trendUp)
                         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                 }
-                SegBar(items: timeframes.map { ($0.interval, $0.label) }, selection: $tf)
+                SegBar(items: timeframes.map { ($0.key, $0.label) }, selection: $tf)
             }
         }
     }
@@ -349,7 +368,9 @@ struct AssetDetailView: View {
     private func loadChart() async {
         loadingChart = true; defer { loadingChart = false }
         let client = APIClient(token: auth.accessToken)
-        if let c = try? await client.candles(code: code, interval: tf) {
+        let frame = timeframes.first { $0.key == tf } ?? timeframes[0]
+        let from = Calendar.current.date(byAdding: .day, value: -frame.days, to: Date())
+        if let c = try? await client.candles(code: code, interval: frame.interval, from: from) {
             candles = c
         } else {
             candles = []

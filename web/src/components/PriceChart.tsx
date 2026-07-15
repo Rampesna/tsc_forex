@@ -23,30 +23,34 @@ function fmt(v: number): string {
   }).format(v);
 }
 
+type Bar = { time: UTCTimestamp; open: number; high: number; low: number; close: number };
+
 // Interactive price chart (pan / zoom / crosshair) with a live OHLC legend that
-// tracks the crosshair — the same behaviour as the native apps.
+// tracks the crosshair. The last bar updates in real time from the live WS price
+// via series.update() — the chart is NOT rebuilt on every tick (Binance-style).
 export function PriceChart({
   candles,
   type = "candles",
   height = 340,
+  livePrice,
 }: {
   candles: Candle[];
   type?: ChartType;
   height?: number;
+  livePrice?: number;
 }) {
   const ref = useRef<HTMLDivElement>(null);
+  const chartRef = useRef<IChartApi | null>(null);
+  const seriesRef = useRef<ISeriesApi<"Candlestick" | "Line" | "Area"> | null>(null);
+  const lastBarRef = useRef<Bar | null>(null);
   const [legend, setLegend] = useState<{ o: number; h: number; l: number; c: number; up: boolean } | null>(null);
 
+  // Create the chart + series once per type/height. Data is applied separately.
   useEffect(() => {
     if (!ref.current) return;
     const chart: IChartApi = createChart(ref.current, {
       height,
-      layout: {
-        background: { color: "transparent" },
-        textColor: "#9ca3af",
-        fontFamily: "inherit",
-        fontSize: 11,
-      },
+      layout: { background: { color: "transparent" }, textColor: "#9ca3af", fontFamily: "inherit", fontSize: 11 },
       grid: {
         vertLines: { color: "rgba(255,255,255,0.035)" },
         horzLines: { color: "rgba(255,255,255,0.035)" },
@@ -60,55 +64,25 @@ export function PriceChart({
       },
       autoSize: true,
     });
+    chartRef.current = chart;
 
-    // De-dupe + sort by time (lightweight-charts requires strictly ascending).
-    const seen = new Set<number>();
-    const rows = candles
-      .map((c) => ({
-        time: Math.floor(new Date(c.bucket).getTime() / 1000) as UTCTimestamp,
-        open: c.open,
-        high: c.high,
-        low: c.low,
-        close: c.close,
-      }))
-      .filter((c) => Number.isFinite(c.time))
-      .sort((a, b) => a.time - b.time)
-      .filter((c) => (seen.has(c.time) ? false : (seen.add(c.time), true)));
-
-    let series: ISeriesApi<"Candlestick" | "Line" | "Area">;
     if (type === "candles") {
-      const s = chart.addSeries(CandlestickSeries, {
-        upColor: UP,
-        downColor: DOWN,
-        borderVisible: false,
-        wickUpColor: UP,
-        wickDownColor: DOWN,
+      seriesRef.current = chart.addSeries(CandlestickSeries, {
+        upColor: UP, downColor: DOWN, borderVisible: false, wickUpColor: UP, wickDownColor: DOWN,
       });
-      s.setData(rows);
-      series = s;
     } else if (type === "line") {
-      const s = chart.addSeries(LineSeries, { color: ACCENT, lineWidth: 2 });
-      s.setData(rows.map((r) => ({ time: r.time, value: r.close })));
-      series = s;
+      seriesRef.current = chart.addSeries(LineSeries, { color: ACCENT, lineWidth: 2 });
     } else {
-      const s = chart.addSeries(AreaSeries, {
-        lineColor: ACCENT,
-        topColor: "rgba(69,192,214,0.28)",
-        bottomColor: "rgba(69,192,214,0.02)",
-        lineWidth: 2,
+      seriesRef.current = chart.addSeries(AreaSeries, {
+        lineColor: ACCENT, topColor: "rgba(69,192,214,0.28)", bottomColor: "rgba(69,192,214,0.02)", lineWidth: 2,
       });
-      s.setData(rows.map((r) => ({ time: r.time, value: r.close })));
-      series = s;
     }
 
-    // Seed the legend with the last candle.
-    const last = rows[rows.length - 1];
-    if (last) setLegend({ o: last.open, h: last.high, l: last.low, c: last.close, up: last.close >= last.open });
-
     chart.subscribeCrosshairMove((param) => {
-      const d = param.seriesData.get(series) as
+      const d = param.seriesData.get(seriesRef.current!) as
         | { open?: number; high?: number; low?: number; close?: number; value?: number }
         | undefined;
+      const last = lastBarRef.current;
       if (!d) {
         if (last) setLegend({ o: last.open, h: last.high, l: last.low, c: last.close, up: last.close >= last.open });
         return;
@@ -118,9 +92,61 @@ export function PriceChart({
       setLegend({ o, h: d.high ?? c, l: d.low ?? c, c, up: c >= o });
     });
 
-    chart.timeScale().fitContent();
-    return () => chart.remove();
-  }, [candles, type, height]);
+    return () => {
+      chart.remove();
+      chartRef.current = null;
+      seriesRef.current = null;
+    };
+  }, [type, height]);
+
+  // Apply candle data whenever the fetched series changes (range switch/refetch).
+  useEffect(() => {
+    const series = seriesRef.current;
+    if (!series) return;
+    const seen = new Set<number>();
+    const rows: Bar[] = candles
+      .map((c) => ({
+        time: Math.floor(new Date(c.bucket).getTime() / 1000) as UTCTimestamp,
+        open: c.open,
+        high: c.high,
+        low: c.low,
+        close: c.close,
+      }))
+      .filter((c) => Number.isFinite(c.time))
+      .sort((a, b) => (a.time as number) - (b.time as number))
+      .filter((c) => (seen.has(c.time as number) ? false : (seen.add(c.time as number), true)));
+
+    if (type === "candles") {
+      (series as ISeriesApi<"Candlestick">).setData(rows);
+    } else {
+      (series as ISeriesApi<"Line" | "Area">).setData(rows.map((r) => ({ time: r.time, value: r.close })));
+    }
+    const last = rows[rows.length - 1] ?? null;
+    lastBarRef.current = last;
+    if (last) setLegend({ o: last.open, h: last.high, l: last.low, c: last.close, up: last.close >= last.open });
+    chartRef.current?.timeScale().fitContent();
+  }, [candles, type]);
+
+  // Live update: fold the incoming WS price into the last bar without a refetch.
+  useEffect(() => {
+    const series = seriesRef.current;
+    const last = lastBarRef.current;
+    if (!series || !last || livePrice == null || !Number.isFinite(livePrice) || livePrice <= 0) return;
+    const bar: Bar = {
+      time: last.time,
+      open: last.open,
+      high: Math.max(last.high, livePrice),
+      low: Math.min(last.low, livePrice),
+      close: livePrice,
+    };
+    lastBarRef.current = bar;
+    if (type === "candles") {
+      (series as ISeriesApi<"Candlestick">).update(bar);
+    } else {
+      (series as ISeriesApi<"Line" | "Area">).update({ time: bar.time, value: livePrice });
+    }
+    setLegend({ o: bar.open, h: bar.high, l: bar.low, c: bar.close, up: bar.close >= bar.open });
+  }, [livePrice, type]);
 
   return (
     <div style={{ position: "relative" }}>

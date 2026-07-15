@@ -21,6 +21,9 @@ type PriceRepository interface {
 	Stats(ctx context.Context, code string, since time.Time) (models.PriceStats, error)
 	Sparklines(ctx context.Context, points int) (map[string][]float64, error)
 	DayOpen(ctx context.Context, since time.Time) (map[string]float64, error)
+	// PruneOlderThan deletes live ticks older than `before`, preserving the
+	// historical backfill (provider='backfill') that feeds long-range candles.
+	PruneOlderThan(ctx context.Context, before time.Time) (int64, error)
 }
 
 type priceRepository struct {
@@ -176,6 +179,17 @@ ORDER BY code, created_at ASC;`
 		out[rr.Code] = rr.Price
 	}
 	return out, nil
+}
+
+// PruneOlderThan deletes live ticks older than `before`. Backfilled historical
+// rows are kept so long-range chart candles can always be rebuilt.
+func (r *priceRepository) PruneOlderThan(ctx context.Context, before time.Time) (int64, error) {
+	start := time.Now()
+	res := r.db.WithContext(ctx).
+		Where("created_at < ? AND provider <> ?", before, "backfill").
+		Delete(&models.PriceTick{})
+	r.observe(start, res.Error)
+	return res.RowsAffected, res.Error
 }
 
 // Aggregate builds OHLC candles for an instrument using epoch-second bucketing.

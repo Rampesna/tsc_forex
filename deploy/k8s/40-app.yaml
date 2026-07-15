@@ -39,6 +39,16 @@ spec:
             - name: push-creds
               mountPath: /etc/push
               readOnly: true
+          # Startup can be slow after a cold DB (the day-open baseline seed
+          # scans a large price_ticks window before the HTTP server binds).
+          # startupProbe disables liveness/readiness until the app is up so a
+          # slow boot never triggers a crash loop.
+          startupProbe:
+            httpGet:
+              path: /livez
+              port: 8080
+            periodSeconds: 10
+            failureThreshold: 30
           livenessProbe:
             httpGet:
               path: /livez

@@ -10,12 +10,16 @@ import { Icon } from "../components/Icon";
 import { PriceChart, type ChartType } from "../components/PriceChart";
 import type { InstrumentDetail } from "../lib/types";
 
-const INTERVALS = [
-  { k: "1m", l: "1DK" },
-  { k: "5m", l: "5DK" },
-  { k: "15m", l: "15DK" },
-  { k: "1h", l: "1SA" },
-  { k: "1d", l: "1G" },
+// Time ranges (Binance-style). Each maps to an aggregation interval + a lookback
+// window. Long ranges use daily/weekly/monthly buckets to match backfilled
+// history; short ranges use intraday buckets from the live feed.
+const RANGES = [
+  { k: "1G", l: "1G", interval: "5m", days: 1 },
+  { k: "1H", l: "1H", interval: "1h", days: 7 },
+  { k: "1A", l: "1A", interval: "1d", days: 30 },
+  { k: "1Y", l: "1Y", interval: "1d", days: 365 },
+  { k: "5Y", l: "5Y", interval: "1w", days: 365 * 5 },
+  { k: "MAX", l: "MAX", interval: "1mo", days: 365 * 40 },
 ];
 
 const CHART_TYPES: { k: ChartType; l: string }[] = [
@@ -30,12 +34,16 @@ export function AssetDetail() {
   const qc = useQueryClient();
   const { authed } = useAuth();
   const live = useMarkets((s) => s.prices[code]);
-  const [interval, setInterval] = useState("5m");
+  const [rangeKey, setRangeKey] = useState("1G");
   const [chartType, setChartType] = useState<ChartType>("candles");
   const [alertOpen, setAlertOpen] = useState(false);
 
+  const range = RANGES.find((r) => r.k === rangeKey) ?? RANGES[0];
   const stats = useQuery({ queryKey: ["stats", code], queryFn: () => api.stats(code), refetchInterval: 15000 });
-  const candles = useQuery({ queryKey: ["candles", code, interval], queryFn: () => api.candles(code, interval) });
+  const candles = useQuery({
+    queryKey: ["candles", code, range.k],
+    queryFn: () => api.candles(code, range.interval, Date.now() - range.days * 86400000),
+  });
   const detail = useQuery({ queryKey: ["detail", code], queryFn: () => api.detail(code), refetchInterval: 30000 });
   const watch = useQuery({ queryKey: ["watchlist"], queryFn: () => api.watchlist(), enabled: authed });
   const isFav = watch.data?.codes?.includes(code) ?? false;
@@ -86,11 +94,11 @@ export function AssetDetail() {
       {/* Chart */}
       <Card style={{ padding: 14 }}>
         <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: 8, marginBottom: 10 }}>
-          <Seg options={INTERVALS.map((i) => ({ k: i.k, l: i.l }))} value={interval} onChange={setInterval} />
+          <Seg options={RANGES.map((i) => ({ k: i.k, l: i.l }))} value={rangeKey} onChange={setRangeKey} />
           <Seg options={CHART_TYPES.map((t) => ({ k: t.k, l: t.l }))} value={chartType} onChange={(v) => setChartType(v as ChartType)} />
         </div>
         {candles.data && candles.data.candles.length > 1 ? (
-          <PriceChart candles={candles.data.candles} type={chartType} />
+          <PriceChart candles={candles.data.candles} type={chartType} livePrice={live?.price} />
         ) : (
           <div style={{ height: 340, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-dim)", fontSize: 13 }}>
             {candles.isLoading ? "Grafik yükleniyor…" : "Bu aralık için henüz yeterli veri yok"}

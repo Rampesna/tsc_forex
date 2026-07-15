@@ -75,6 +75,23 @@ type PriceStats struct {
 	Count int64   `json:"count"`
 }
 
+// Candle is a pre-aggregated OHLC bar for one instrument at one resolution.
+// Charts read these directly (indexed, tiny) instead of aggregating millions of
+// raw ticks at request time — this is the hot read path for millisecond charts.
+// (code, resolution, bucket) is unique so rollovers upsert idempotently.
+type Candle struct {
+	Code       string    `gorm:"type:varchar(32);not null;uniqueIndex:uq_candle,priority:1" json:"code"`
+	Resolution string    `gorm:"type:varchar(8);not null;uniqueIndex:uq_candle,priority:2" json:"resolution"`
+	Bucket     time.Time `gorm:"not null;uniqueIndex:uq_candle,priority:3;index:idx_candle_res_bucket,priority:2" json:"bucket"`
+	Open       float64   `gorm:"not null" json:"open"`
+	High       float64   `gorm:"not null" json:"high"`
+	Low        float64   `gorm:"not null" json:"low"`
+	Close      float64   `gorm:"not null" json:"close"`
+	Count      int64     `gorm:"not null;default:0" json:"count"`
+}
+
+func (Candle) TableName() string { return "candles" }
+
 // PriceTick is the generalized history record for EVERY tracked instrument
 // (all gold products + currencies). Feeds charts, indicators and AI features.
 type PriceTick struct {

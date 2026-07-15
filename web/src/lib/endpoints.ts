@@ -37,10 +37,11 @@ export const api = {
     request<{ points: Record<string, number[]> }>(`/instruments/sparklines?points=${points}`),
   instrument: (code: string) => request<InstrumentPrice>(`/instruments/${code}`),
   stats: (code: string) => request<Stats>(`/instruments/${code}/stats`),
-  candles: (code: string, interval: string) =>
-    request<{ code: string; interval: string; candles: Candle[] }>(
-      `/instruments/${code}/history?interval=${interval}`,
-    ),
+  candles: (code: string, interval: string, fromMs?: number) => {
+    let url = `/instruments/${code}/history?interval=${interval}`;
+    if (fromMs && fromMs > 0) url += `&from=${new Date(fromMs).toISOString()}`;
+    return request<{ code: string; interval: string; candles: Candle[] }>(url);
+  },
   detail: (code: string) => request<InstrumentDetail>(`/instruments/${code}/detail`),
 
   // --- profile ---

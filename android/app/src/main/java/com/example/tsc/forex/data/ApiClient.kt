@@ -68,8 +68,14 @@ class ApiClient(
     suspend fun prices(): List<InstrumentPrice> =
         parseArray(getRaw("instruments/prices"), "prices") { InstrumentPrice.from(it) }
 
-    suspend fun candles(code: String, interval: String): List<Candle> =
-        parseArray(getRaw("instruments/$code/history?interval=$interval"), "candles") { Candle.from(it) }
+    suspend fun candles(code: String, interval: String, fromMs: Long = 0L): List<Candle> {
+        var path = "instruments/$code/history?interval=$interval"
+        if (fromMs > 0L) {
+            val iso = java.time.Instant.ofEpochMilli(fromMs).toString()
+            path += "&from=" + java.net.URLEncoder.encode(iso, "UTF-8")
+        }
+        return parseArray(getRaw(path), "candles") { Candle.from(it) }
+    }
 
     suspend fun stats(code: String): InstrumentStats =
         InstrumentStats.from(JSONObject(getRaw("instruments/$code/stats")).let { unwrap(it) })

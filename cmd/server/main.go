@@ -107,6 +107,11 @@ func run() error {
 	engine := calculator.NewEngine(bus, log)
 	engine.Attach()
 
+	// --- Candle store (hot path for charts/sparklines/stats) ---
+	// Created early so it captures instrument updates from the first tick; the DB
+	// repository is attached later once Postgres is ready.
+	candleStore := service.NewCandleStore(bus, nil, log)
+
 	// --- Broadcast (single calculation → many clients) ---
 	_ = service.NewGoldBroadcaster(bus, hub, log)
 	_ = service.NewInstrumentBroadcaster(bus, hub, log)
@@ -152,12 +157,47 @@ func run() error {
 		goldRepo = repository.NewGoldRepository(db, m)
 		priceRepo = repository.NewPriceRepository(db, m)
 		instrRepo = priceRepo
-		// Seed day-open baselines from today's stored prices so change % is
-		// correct immediately after a restart (not reset to the first live tick).
-		if opens, derr := priceRepo.DayOpen(context.Background(), engine.DayStart()); derr == nil && len(opens) > 0 {
+		// Attach the candle DB and bootstrap chart history from existing ticks.
+		candleRepo := repository.NewCandleRepository(db, m)
+		candleStore.SetRepo(candleRepo)
+		candleStore.Bootstrap(context.Background())
+		// Seed day-open baselines from the compact candles table (fast: one
+		// indexed row per instrument) so change % is correct right after a
+		// restart, without a multi-second scan of a day of raw ticks.
+		if opens := candleStore.SeedDayOpens(context.Background(), engine.DayStart()); len(opens) > 0 {
 			engine.SeedDayOpen(opens, engine.DayKey())
 			log.Info("seeded day-open baselines", zap.Int("instruments", len(opens)))
 		}
+		// Retention: keep price_ticks bounded (72h of live ticks) so any residual
+		// tick queries stay fast. Historical backfill rows are preserved.
+		go func(repo repository.PriceRepository) {
+			// Delay the first prune so the one-time candle bootstrap (which
+			// aggregates existing ticks into candles) finishes first — otherwise
+			// we could delete live ticks before their history is captured.
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(30 * time.Minute):
+			}
+			t := time.NewTicker(6 * time.Hour)
+			defer t.Stop()
+			prune := func() {
+				cctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
+				defer cancel()
+				if n, err := repo.PruneOlderThan(cctx, time.Now().Add(-72*time.Hour)); err == nil && n > 0 {
+					log.Info("pruned old price_ticks", zap.Int64("rows", n))
+				}
+			}
+			prune()
+			for {
+				select {
+				case <-ctx.Done():
+					return
+				case <-t.C:
+					prune()
+				}
+			}
+		}(priceRepo)
 		userRepo := repository.NewUserRepository(db, m)
 		refreshRepo := repository.NewRefreshTokenRepository(db, m)
 		watchRepo := repository.NewWatchlistRepository(db, m)
@@ -230,6 +270,10 @@ func run() error {
 		log.Info("postgres connected", zap.String("host", cfg.Database.Host))
 	}
 
+	// Candle flush + retention loops (no-op without a DB, but the in-memory
+	// aggregation for live charts/sparklines/stats runs regardless).
+	candleStore.Start(ctx)
+
 	// --- Metrics updater ---
 	go metricsUpdater(ctx, m, hub, pm, calc)
 
@@ -267,7 +311,7 @@ func run() error {
 		WS:         ws.NewHandler(hub, log, wsOpts...),
 		Metrics:    m,
 		Gold:       api.NewGoldHandler(calc, redisCache, goldRepo, log),
-		Instrument: api.NewInstrumentHandler(engine, instrRepo, cfg.Provider.REST.CryptoBaseURL, log),
+		Instrument: api.NewInstrumentHandler(engine, instrRepo, candleStore, cfg.Provider.REST.CryptoBaseURL, log),
 		System: api.NewSystemHandler(api.SystemDeps{
 			Provider:  pm,
 			Calc:      calc,

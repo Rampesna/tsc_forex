@@ -55,6 +55,7 @@ func Migrate(db *gorm.DB) error {
 		&models.GoldPrice{},
 		&models.User{},
 		&models.PriceTick{},
+		&models.Candle{},
 		&models.WatchlistItem{},
 		&models.PriceAlert{},
 		&models.Notification{},
@@ -99,6 +100,9 @@ func addProductionIndexes(db *gorm.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_price_ticks_code_created ON price_ticks (code, created_at DESC)`,
 		`CREATE INDEX IF NOT EXISTS idx_gold_prices_created_brin ON gold_prices USING BRIN (created_at)`,
 		`CREATE INDEX IF NOT EXISTS idx_gold_prices_symbol_created ON gold_prices (symbol, created_at DESC)`,
+
+		// Pre-aggregated candles: charts read by (code, resolution, bucket range).
+		`CREATE INDEX IF NOT EXISTS idx_candles_code_res_bucket ON candles (code, resolution, bucket DESC)`,
 
 		// Per-user, newest-first reads.
 		`CREATE INDEX IF NOT EXISTS idx_notifications_user_created ON notifications (user_id, created_at DESC)`,

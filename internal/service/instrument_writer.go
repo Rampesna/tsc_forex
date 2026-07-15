@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"sync"
+	"time"
 
 	"go.uber.org/zap"
 
@@ -11,9 +12,15 @@ import (
 	"github.com/tsc-forex/tsc_forex/pkg/eventbus"
 )
 
-// InstrumentWriter persists every instrument update asynchronously so the full
-// price history of all gold products and currencies is available for charting
-// and future AI analysis. Uses a worker pool to protect the hot path.
+// tickThrottle is the minimum interval between persisted raw ticks per code.
+// Charts/history now read from pre-aggregated candles, so raw ticks only need to
+// capture recent fine detail — persisting at most one row per code per interval
+// cuts write volume by ~10-50x on a volatile market without losing candles
+// (candles are built from ALL updates in the CandleStore, not from these rows).
+const tickThrottle = 3 * time.Second
+
+// InstrumentWriter persists throttled instrument updates asynchronously for
+// recent fine-grained history. Uses a worker pool to protect the hot path.
 type InstrumentWriter struct {
 	repo    repository.PriceRepository
 	log     *zap.Logger
@@ -21,8 +28,9 @@ type InstrumentWriter struct {
 	workers int
 	wg      sync.WaitGroup
 
-	mu      sync.Mutex
-	dropped int64
+	mu        sync.Mutex
+	dropped   int64
+	lastSaved map[string]time.Time
 }
 
 // NewInstrumentWriter subscribes to instrument updates and buffers them.
@@ -37,10 +45,11 @@ func NewInstrumentWriter(bus *eventbus.Bus, repo repository.PriceRepository, wor
 		queueSize = 8192
 	}
 	w := &InstrumentWriter{
-		repo:    repo,
-		log:     log,
-		queue:   make(chan domain.InstrumentPrice, queueSize),
-		workers: workers,
+		repo:      repo,
+		log:       log,
+		queue:     make(chan domain.InstrumentPrice, queueSize),
+		workers:   workers,
+		lastSaved: make(map[string]time.Time, 256),
 	}
 	bus.Subscribe(eventbus.TopicInstrumentUpdated, w.onUpdate)
 	return w
@@ -51,6 +60,17 @@ func (w *InstrumentWriter) onUpdate(ev eventbus.Event) {
 	if !ok {
 		return
 	}
+	// Per-code throttle: drop updates that arrive within tickThrottle of the last
+	// persisted row for the same instrument.
+	now := time.Now()
+	w.mu.Lock()
+	if last, seen := w.lastSaved[ip.Code]; seen && now.Sub(last) < tickThrottle {
+		w.mu.Unlock()
+		return
+	}
+	w.lastSaved[ip.Code] = now
+	w.mu.Unlock()
+
 	select {
 	case w.queue <- ip:
 	default:
