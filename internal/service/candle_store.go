@@ -264,9 +264,24 @@ func (s *CandleStore) Bootstrap(ctx context.Context) {
 		return
 	}
 	go func() {
+		// Single-flight across pods: only the lock holder runs the heavy scans.
+		locked, release, err := s.repo.TryLockBootstrap(ctx)
+		if err != nil {
+			s.log.Warn("candle bootstrap lock failed", zap.Error(err))
+			return
+		}
+		if !locked {
+			s.log.Info("candle bootstrap skipped (another pod holds the lock)")
+			return
+		}
+		defer release()
+
 		now := time.Now().UTC()
 		for _, br := range baseResolutions {
-			has, err := s.repo.HasAny(ctx, br.Name)
+			// Look for real history (older than 3 bar-widths ago) so the live
+			// forming candle just flushed to the DB doesn't skip the bootstrap.
+			cutoff := now.Add(-3 * time.Duration(br.Secs) * time.Second)
+			has, err := s.repo.HasHistoryBefore(ctx, br.Name, cutoff)
 			if err != nil {
 				s.log.Warn("candle bootstrap check failed", zap.String("res", br.Name), zap.Error(err))
 				continue

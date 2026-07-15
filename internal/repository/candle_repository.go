@@ -30,8 +30,14 @@ type CandleRepository interface {
 	// over [from,to]. Idempotent (does not overwrite live candles). Used once to
 	// bootstrap chart history (including the historical backfill rows).
 	SeedFromTicks(ctx context.Context, resolution string, secs int, from, to time.Time) (int64, error)
-	// HasAny reports whether any candle exists for a resolution (skip bootstrap).
-	HasAny(ctx context.Context, resolution string) (bool, error)
+	// HasHistoryBefore reports whether any candle older than `before` exists for a
+	// resolution. Used to decide whether to bootstrap history from ticks WITHOUT
+	// being fooled by the just-flushed current (forming) candle.
+	HasHistoryBefore(ctx context.Context, resolution string, before time.Time) (bool, error)
+	// TryLockBootstrap acquires a cluster-wide advisory lock so only ONE pod runs
+	// the heavy tick→candle bootstrap (5 pods hammering a weak DB at once starves
+	// it). Returns locked=false if another pod holds it; call release when done.
+	TryLockBootstrap(ctx context.Context) (locked bool, release func(), err error)
 	// Prune deletes candles for a resolution older than `before` (retention).
 	Prune(ctx context.Context, resolution string, before time.Time) (int64, error)
 }
@@ -154,11 +160,39 @@ ON CONFLICT (code, resolution, bucket) DO NOTHING;`
 	return res.RowsAffected, res.Error
 }
 
-func (r *candleRepository) HasAny(ctx context.Context, resolution string) (bool, error) {
+func (r *candleRepository) HasHistoryBefore(ctx context.Context, resolution string, before time.Time) (bool, error) {
 	var n int64
 	err := r.db.WithContext(ctx).Model(&models.Candle{}).
-		Where("resolution = ?", resolution).Limit(1).Count(&n).Error
+		Where("resolution = ? AND bucket < ?", resolution, before).Limit(1).Count(&n).Error
 	return n > 0, err
+}
+
+// bootstrapLockKey is an arbitrary, app-unique advisory-lock key.
+const bootstrapLockKey int64 = 917326451
+
+func (r *candleRepository) TryLockBootstrap(ctx context.Context) (bool, func(), error) {
+	sqlDB, err := r.db.DB()
+	if err != nil {
+		return false, nil, err
+	}
+	conn, err := sqlDB.Conn(ctx)
+	if err != nil {
+		return false, nil, err
+	}
+	var ok bool
+	if err := conn.QueryRowContext(ctx, "SELECT pg_try_advisory_lock($1)", bootstrapLockKey).Scan(&ok); err != nil {
+		_ = conn.Close()
+		return false, nil, err
+	}
+	if !ok {
+		_ = conn.Close()
+		return false, nil, nil
+	}
+	release := func() {
+		_, _ = conn.ExecContext(context.Background(), "SELECT pg_advisory_unlock($1)", bootstrapLockKey)
+		_ = conn.Close()
+	}
+	return true, release, nil
 }
 
 func (r *candleRepository) Prune(ctx context.Context, resolution string, before time.Time) (int64, error) {

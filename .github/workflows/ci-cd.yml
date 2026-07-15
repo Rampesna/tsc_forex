@@ -130,7 +130,7 @@ jobs:
           kubectl -n \$NS set image deployment/tsc-forex-app app="$IMAGE_REF"
           kubectl -n \$NS set image deployment/tsc-forex-web web="$WEB_IMAGE_REF"
           kubectl -n \$NS patch serviceaccount default -p '{"imagePullSecrets":[{"name":"ghcr-pull"}]}' || true
-          kubectl -n \$NS rollout status deployment/tsc-forex-app --timeout=180s
+          kubectl -n \$NS rollout status deployment/tsc-forex-app --timeout=420s
           kubectl -n \$NS rollout status deployment/tsc-forex-web --timeout=180s
 
           # Prune leftover images/build cache so nothing accumulates on the host.
