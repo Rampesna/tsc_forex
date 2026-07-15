@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/endpoints";
@@ -8,7 +8,24 @@ import { compact, dateShort, price as priceFmt, signed, tl, usd, usdCompact } fr
 import { Button, Card, ChangePill } from "../components/common";
 import { Icon } from "../components/Icon";
 import { PriceChart, type ChartType } from "../components/PriceChart";
-import type { InstrumentDetail } from "../lib/types";
+import type { Candle, InstrumentDetail } from "../lib/types";
+
+// Older-history page size for infinite back-scroll. Each page is an indexed
+// range read on the compact candles table, so paging is cheap.
+const PAGE = 500;
+
+function mergeCandles(older: Candle[], current: Candle[]): Candle[] {
+  const seen = new Set<number>();
+  const out: Candle[] = [];
+  for (const c of [...older, ...current]) {
+    const t = new Date(c.bucket).getTime();
+    if (seen.has(t)) continue;
+    seen.add(t);
+    out.push(c);
+  }
+  out.sort((a, b) => new Date(a.bucket).getTime() - new Date(b.bucket).getTime());
+  return out;
+}
 
 // Time ranges (Binance-style). Each maps to an aggregation interval + a lookback
 // window. Long ranges use daily/weekly/monthly buckets to match backfilled
@@ -40,10 +57,56 @@ export function AssetDetail() {
 
   const range = RANGES.find((r) => r.k === rangeKey) ?? RANGES[0];
   const stats = useQuery({ queryKey: ["stats", code], queryFn: () => api.stats(code), refetchInterval: 15000 });
-  const candles = useQuery({
-    queryKey: ["candles", code, range.k],
-    queryFn: () => api.candles(code, range.interval, Date.now() - range.days * 86400000),
-  });
+
+  // Paginated candles: initial window per range, then lazy-load older pages as
+  // the user pans left. State (not react-query) so we can prepend pages.
+  const [rows, setRows] = useState<Candle[]>([]);
+  const [loadingInit, setLoadingInit] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const rowsRef = useRef<Candle[]>([]);
+  rowsRef.current = rows;
+  const hasMoreRef = useRef(true);
+  const loadingMoreRef = useRef(false);
+
+  useEffect(() => {
+    let cancelled = false;
+    hasMoreRef.current = true;
+    loadingMoreRef.current = false;
+    setLoadingInit(true);
+    api
+      .candles(code, range.interval, { fromMs: Date.now() - range.days * 86400000, limit: 1000 })
+      .then((r) => { if (!cancelled) setRows(mergeCandles([], r.candles ?? [])); })
+      .catch(() => { if (!cancelled) setRows([]); })
+      .finally(() => { if (!cancelled) setLoadingInit(false); });
+    return () => { cancelled = true; };
+  }, [code, range.k, range.interval, range.days]);
+
+  const loadOlder = useCallback(async () => {
+    if (loadingMoreRef.current || !hasMoreRef.current) return;
+    const oldest = rowsRef.current[0]?.bucket;
+    if (!oldest) return;
+    loadingMoreRef.current = true;
+    setLoadingMore(true);
+    try {
+      const r = await api.candles(code, range.interval, {
+        toMs: new Date(oldest).getTime() - 1,
+        limit: PAGE,
+      });
+      const older = r.candles ?? [];
+      if (older.length === 0) {
+        hasMoreRef.current = false;
+      } else {
+        setRows((prev) => mergeCandles(older, prev));
+        if (older.length < PAGE) hasMoreRef.current = false;
+      }
+    } catch {
+      // keep hasMore so a later pan retries
+    } finally {
+      loadingMoreRef.current = false;
+      setLoadingMore(false);
+    }
+  }, [code, range.interval]);
+
   const detail = useQuery({ queryKey: ["detail", code], queryFn: () => api.detail(code), refetchInterval: 30000 });
   const watch = useQuery({ queryKey: ["watchlist"], queryFn: () => api.watchlist(), enabled: authed });
   const isFav = watch.data?.codes?.includes(code) ?? false;
@@ -97,11 +160,24 @@ export function AssetDetail() {
           <Seg options={RANGES.map((i) => ({ k: i.k, l: i.l }))} value={rangeKey} onChange={setRangeKey} />
           <Seg options={CHART_TYPES.map((t) => ({ k: t.k, l: t.l }))} value={chartType} onChange={(v) => setChartType(v as ChartType)} />
         </div>
-        {candles.data && candles.data.candles.length > 1 ? (
-          <PriceChart candles={candles.data.candles} type={chartType} livePrice={live?.price} />
+        {rows.length > 1 ? (
+          <div style={{ position: "relative" }}>
+            {loadingMore && (
+              <div style={{ position: "absolute", top: 8, right: 8, zIndex: 4, fontSize: 11, color: "var(--text-dim)", background: "rgba(18,19,21,0.7)", border: "1px solid var(--stroke)", borderRadius: 8, padding: "3px 8px" }}>
+                Geçmiş yükleniyor…
+              </div>
+            )}
+            <PriceChart
+              candles={rows}
+              type={chartType}
+              livePrice={live?.price}
+              onReachStart={loadOlder}
+              fitKey={range.k}
+            />
+          </div>
         ) : (
           <div style={{ height: 340, display: "flex", alignItems: "center", justifyContent: "center", color: "var(--text-dim)", fontSize: 13 }}>
-            {candles.isLoading ? "Grafik yükleniyor…" : "Bu aralık için henüz yeterli veri yok"}
+            {loadingInit ? "Grafik yükleniyor…" : "Bu aralık için henüz yeterli veri yok"}
           </div>
         )}
       </Card>

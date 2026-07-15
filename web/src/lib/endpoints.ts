@@ -37,9 +37,11 @@ export const api = {
     request<{ points: Record<string, number[]> }>(`/instruments/sparklines?points=${points}`),
   instrument: (code: string) => request<InstrumentPrice>(`/instruments/${code}`),
   stats: (code: string) => request<Stats>(`/instruments/${code}/stats`),
-  candles: (code: string, interval: string, fromMs?: number) => {
+  candles: (code: string, interval: string, opts?: { fromMs?: number; toMs?: number; limit?: number }) => {
     let url = `/instruments/${code}/history?interval=${interval}`;
-    if (fromMs && fromMs > 0) url += `&from=${new Date(fromMs).toISOString()}`;
+    if (opts?.fromMs && opts.fromMs > 0) url += `&from=${new Date(opts.fromMs).toISOString()}`;
+    if (opts?.toMs && opts.toMs > 0) url += `&to=${new Date(opts.toMs).toISOString()}`;
+    if (opts?.limit && opts.limit > 0) url += `&limit=${opts.limit}`;
     return request<{ code: string; interval: string; candles: Candle[] }>(url);
   },
   detail: (code: string) => request<InstrumentDetail>(`/instruments/${code}/detail`),

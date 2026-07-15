@@ -20,6 +20,10 @@ struct AssetDetailView: View {
     @State private var mode: ChartMode = .line
     @State private var tf = "1G"
     @State private var loadingChart = false
+    @State private var loadingOlder = false
+    @State private var hasMoreHistory = true
+    @State private var chartReset = 0
+    private let pageSize = 500
     @State private var showAlert = false
     @State private var convAmount = "1"
 
@@ -173,8 +177,19 @@ struct AssetDetailView: View {
                 if candles.isEmpty && loadingChart {
                     SkeletonBlock(height: 300, corner: 10).shimmer()
                 } else {
-                    PriceChart(candles: displayCandles, mode: mode, trendUp: trendUp)
+                    PriceChart(candles: displayCandles, mode: mode, trendUp: trendUp,
+                               onReachStart: { Task { await loadOlder() } },
+                               resetToken: chartReset)
                         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+                        .overlay(alignment: .topLeading) {
+                            if loadingOlder {
+                                Text("Geçmiş yükleniyor…")
+                                    .font(.system(size: 10)).foregroundStyle(Theme.textDim)
+                                    .padding(.horizontal, 8).padding(.vertical, 3)
+                                    .background(Theme.bgElevated.opacity(0.85), in: Capsule())
+                                    .padding(8)
+                            }
+                        }
                 }
                 SegBar(items: timeframes.map { ($0.key, $0.label) }, selection: $tf)
             }
@@ -367,6 +382,7 @@ struct AssetDetailView: View {
 
     private func loadChart() async {
         loadingChart = true; defer { loadingChart = false }
+        hasMoreHistory = true
         let client = APIClient(token: auth.accessToken)
         let frame = timeframes.first { $0.key == tf } ?? timeframes[0]
         let from = Calendar.current.date(byAdding: .day, value: -frame.days, to: Date())
@@ -375,6 +391,30 @@ struct AssetDetailView: View {
         } else {
             candles = []
         }
+        // Re-center the visible window on the freshly loaded interval.
+        chartReset += 1
+    }
+
+    // Lazy-load an older page when the user pans to the start of the chart. Each
+    // page is an indexed range read on the compact candles table (no perf hit),
+    // and results are prepended without disturbing the scroll position.
+    private func loadOlder() async {
+        guard !loadingOlder, hasMoreHistory, let oldest = candles.first?.bucket else { return }
+        loadingOlder = true; defer { loadingOlder = false }
+        let client = APIClient(token: auth.accessToken)
+        let frame = timeframes.first { $0.key == tf } ?? timeframes[0]
+        let to = oldest.addingTimeInterval(-1)
+        guard let older = try? await client.candles(code: code, interval: frame.interval, to: to, limit: pageSize),
+              !older.isEmpty else {
+            hasMoreHistory = false
+            return
+        }
+        // Merge older + current, de-duped by bucket, sorted ascending.
+        var byBucket: [Date: Candle] = [:]
+        for c in older { byBucket[c.bucket] = c }
+        for c in candles { byBucket[c.bucket] = c }
+        candles = byBucket.values.sorted { $0.bucket < $1.bucket }
+        if older.count < pageSize { hasMoreHistory = false }
     }
 
     private func loadStats() async {

@@ -17,12 +17,18 @@ struct PriceChart: View {
     let candles: [Candle]
     let mode: ChartMode
     let trendUp: Bool
+    // Called when the user pans near the oldest bar so the parent can lazy-load
+    // an older page. resetToken changes only on timeframe switch (re-centers the
+    // window); it does NOT change when older pages are prepended.
+    var onReachStart: () -> Void = {}
+    var resetToken: Int = 0
 
     var body: some View {
         if candles.count < 2 {
             emptyState
         } else {
-            InteractiveChart(candles: candles, mode: mode, trendUp: trendUp)
+            InteractiveChart(candles: candles, mode: mode, trendUp: trendUp,
+                             onReachStart: onReachStart, resetToken: resetToken)
         }
     }
 
@@ -46,6 +52,8 @@ private struct InteractiveChart: View {
     let candles: [Candle]
     let mode: ChartMode
     let trendUp: Bool
+    var onReachStart: () -> Void = {}
+    var resetToken: Int = 0
 
     // Visible window (seconds). Smaller = more zoomed in.
     @State private var visibleLen: TimeInterval = 0
@@ -90,7 +98,9 @@ private struct InteractiveChart: View {
             hint
         }
         .onAppear(perform: initWindow)
-        .onChange(of: candles.count) { _, _ in initWindow() }
+        // Re-center only on timeframe switch — NOT when older pages are prepended
+        // (that must preserve the user's scroll position).
+        .onChange(of: resetToken) { _, _ in initWindow() }
         .onChange(of: mode) { _, _ in selectedDate = nil }
     }
 
@@ -241,7 +251,13 @@ private struct InteractiveChart: View {
             }
         }
         .simultaneousGesture(zoomGesture)
-        .onChange(of: scrollX) { _, _ in if selectedDate != nil { selectedDate = nil } }
+        .onChange(of: scrollX) { _, newX in
+            if selectedDate != nil { selectedDate = nil }
+            // Near the oldest loaded bar → ask the parent for an older page.
+            if let first = candles.first?.bucket, newX <= first.addingTimeInterval(step * 3) {
+                onReachStart()
+            }
+        }
     }
 
     // MARK: Activity (tick count) pane — Binance-style volume analogue

@@ -33,16 +33,23 @@ export function PriceChart({
   type = "candles",
   height = 340,
   livePrice,
+  onReachStart,
+  fitKey,
 }: {
   candles: Candle[];
   type?: ChartType;
   height?: number;
   livePrice?: number;
+  onReachStart?: () => void;
+  fitKey?: string | number;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<"Candlestick" | "Line" | "Area"> | null>(null);
   const lastBarRef = useRef<Bar | null>(null);
+  const onReachStartRef = useRef<(() => void) | undefined>(onReachStart);
+  onReachStartRef.current = onReachStart;
+  const fitKeyRef = useRef<string | number | undefined>(undefined);
   const [legend, setLegend] = useState<{ o: number; h: number; l: number; c: number; up: boolean } | null>(null);
 
   // Create the chart + series once per type/height. Data is applied separately.
@@ -92,6 +99,12 @@ export function PriceChart({
       setLegend({ o, h: d.high ?? c, l: d.low ?? c, c, up: c >= o });
     });
 
+    // Lazy-load older history when the user pans near the left edge. The parent
+    // guards against duplicate/at-end fetches, so firing generously is safe.
+    chart.timeScale().subscribeVisibleLogicalRangeChange((range) => {
+      if (range && range.from < 10) onReachStartRef.current?.();
+    });
+
     return () => {
       chart.remove();
       chartRef.current = null;
@@ -124,8 +137,13 @@ export function PriceChart({
     const last = rows[rows.length - 1] ?? null;
     lastBarRef.current = last;
     if (last) setLegend({ o: last.open, h: last.high, l: last.low, c: last.close, up: last.close >= last.open });
-    chartRef.current?.timeScale().fitContent();
-  }, [candles, type]);
+    // Only reset the viewport when the range/interval changes (fitKey). Appending
+    // older pages must NOT refit, or the user's scroll position would jump.
+    if (fitKey !== fitKeyRef.current) {
+      fitKeyRef.current = fitKey;
+      chartRef.current?.timeScale().fitContent();
+    }
+  }, [candles, type, fitKey]);
 
   // Live update: fold the incoming WS price into the last bar without a refetch.
   useEffect(() => {
