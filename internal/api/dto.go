@@ -66,6 +66,8 @@ type InstrumentResponse struct {
 	Ask         float64   `json:"ask"`
 	Change      float64   `json:"change"`
 	ChangePct   float64   `json:"change_pct"`
+	Currency    string    `json:"currency,omitempty"`
+	PriceTRY    float64   `json:"price_try,omitempty"`
 	Provider    string    `json:"provider,omitempty"`
 	Timestamp   time.Time `json:"timestamp"`
 }

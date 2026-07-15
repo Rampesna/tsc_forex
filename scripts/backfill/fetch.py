@@ -11,16 +11,17 @@ Every fetcher returns a dict {date_iso: close_float} for daily bars.
 
 import csv
 import io
+import random
 import time
 import datetime as dt
 from typing import Dict
 
 import requests
 
-_UA = (
-    "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 "
-    "(KHTML, like Gecko) Chrome/124.0 Safari/537.36"
-)
+# Yahoo's edge 429s the full "…Chrome/124.0 Safari/537.36" UA but happily serves
+# this short WebKit UA (the same one the live Go engine uses). This UA — not any
+# rate limit — is what made the earlier gold/stock backfills return 0 points.
+_UA = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36"
 _SESSION = requests.Session()
 _SESSION.headers.update({"User-Agent": _UA, "Accept": "application/json,text/csv,*/*"})
 
@@ -28,7 +29,9 @@ _SESSION.headers.update({"User-Agent": _UA, "Accept": "application/json,text/csv
 REQUEST_DELAY = 0.6
 
 # Global pacers: free feeds rate-limit bursts, so space requests and back off.
-_YAHOO_MIN_INTERVAL = 2.5
+# The Yahoo egress here is SHARED with the live polling engine (it hits the same
+# chart API every ~2s), so we stay gentle and very patient on 429s.
+_YAHOO_MIN_INTERVAL = 3.5
 _FRANK_MIN_INTERVAL = 0.8
 _last_yahoo_at = 0.0
 _last_frank_at = 0.0
@@ -70,16 +73,20 @@ def yahoo_daily(symbol: str, start: dt.date, end: dt.date,
         "events": "div,splits",
         "includeAdjustedClose": "true",
     }
+    # The egress IP is shared with the 5-replica live engine hammering Yahoo
+    # ~12 req/s, so the IP hovers near Yahoo's 429 ceiling. Rather than long
+    # sleeps (which miss the brief 200 gaps), probe FREQUENTLY with a short,
+    # jittered backoff over many attempts until a request slips through.
     delay = 3.0
-    for attempt in range(9):
+    for attempt in range(60):
         host = "query1" if attempt % 2 == 0 else "query2"
         u = f"https://{host}.finance.yahoo.com/v8/finance/chart/{symbol}"
         try:
             _pace("yahoo")
             r = _SESSION.get(u, params=params, timeout=30)
             if r.status_code == 429:
-                time.sleep(delay)
-                delay = min(delay * 1.7, 45)
+                time.sleep(delay + random.uniform(0, 2.0))
+                delay = min(delay * 1.3, 15)
                 continue
             if r.status_code != 200:
                 time.sleep(REQUEST_DELAY)
@@ -104,6 +111,72 @@ def yahoo_daily(symbol: str, start: dt.date, end: dt.date,
                     continue
                 d = dt.datetime.fromtimestamp(t, tz=dt.timezone.utc).date().isoformat()
                 out[d] = float(c)
+            return out
+        except Exception:
+            time.sleep(delay)
+            delay = min(delay * 2, 20)
+    return {}
+
+
+def yahoo_ohlc(symbol: str, start: dt.date, end: dt.date,
+               adjusted: bool = False) -> Dict[str, tuple]:
+    """Daily OHLC from Yahoo chart API. Returns {date_iso: (open,high,low,close)}.
+
+    When `adjusted`, the close is the split/div-adjusted close and O/H/L are
+    scaled by the same adjClose/close factor so the bar stays internally
+    consistent. Uses the same pacing + 429 backoff as yahoo_daily.
+    """
+    params = {
+        "period1": _epoch(start),
+        "period2": _epoch(end + dt.timedelta(days=1)),
+        "interval": "1d",
+        "events": "div,splits",
+        "includeAdjustedClose": "true",
+    }
+    delay = 3.0
+    for attempt in range(60):
+        host = "query1" if attempt % 2 == 0 else "query2"
+        u = f"https://{host}.finance.yahoo.com/v8/finance/chart/{symbol}"
+        try:
+            _pace("yahoo")
+            r = _SESSION.get(u, params=params, timeout=30)
+            if r.status_code == 429:
+                time.sleep(delay + random.uniform(0, 2.0))
+                delay = min(delay * 1.3, 15)
+                continue
+            if r.status_code != 200:
+                time.sleep(REQUEST_DELAY)
+                continue
+            data = r.json()
+            res = (data.get("chart") or {}).get("result") or []
+            if not res:
+                return {}
+            node = res[0]
+            ts = node.get("timestamp") or []
+            quote = (node.get("indicators", {}).get("quote") or [{}])[0]
+            opens = quote.get("open") or []
+            highs = quote.get("high") or []
+            lows = quote.get("low") or []
+            closes = quote.get("close") or []
+            adj = None
+            if adjusted:
+                adjnode = node.get("indicators", {}).get("adjclose") or []
+                if adjnode:
+                    adj = adjnode[0].get("adjclose")
+            out: Dict[str, tuple] = {}
+            for i, t in enumerate(ts):
+                o = opens[i] if i < len(opens) else None
+                h = highs[i] if i < len(highs) else None
+                lo = lows[i] if i < len(lows) else None
+                c = closes[i] if i < len(closes) else None
+                if c is None or o is None or h is None or lo is None:
+                    continue
+                factor = 1.0
+                if adjusted and adj and i < len(adj) and adj[i] and c:
+                    factor = adj[i] / c
+                d = dt.datetime.fromtimestamp(t, tz=dt.timezone.utc).date().isoformat()
+                out[d] = (float(o) * factor, float(h) * factor,
+                          float(lo) * factor, float(c) * factor)
             return out
         except Exception:
             time.sleep(delay)
