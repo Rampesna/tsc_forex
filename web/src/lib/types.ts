@@ -3,6 +3,7 @@ export interface CatalogItem {
   display_name: string;
   kind: string;
   unit: string;
+  currency?: string;
 }
 
 export interface InstrumentPrice {
@@ -14,6 +15,8 @@ export interface InstrumentPrice {
   ask: number;
   change: number;
   change_pct: number;
+  currency?: string; // native currency of `price`: "TRY" (default) or "USD"
+  price_try?: number; // TRY equivalent (== price for TRY instruments)
   provider?: string;
   timestamp?: string;
 }
@@ -69,6 +72,7 @@ export interface InstrumentDetail {
   dominance_pct?: number;
 
   // stock
+  currency?: string; // "TRY" (BIST) or "USD" (global)
   day_high?: number;
   day_low?: number;
   week52_high?: number;
@@ -151,6 +155,8 @@ export interface InstrumentUpdatePayload {
   ask: number;
   change: number;
   change_pct: number;
+  currency?: string;
+  price_try?: number;
   provider?: string;
 }
 

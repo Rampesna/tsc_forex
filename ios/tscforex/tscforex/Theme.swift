@@ -83,9 +83,14 @@ enum Fmt {
         grouped(v, digits: v >= 1 ? 2 : 4)
     }
 
-    // Turkish Lira formatted value (all instrument prices are quoted in TRY).
+    // Turkish Lira formatted value.
     static func tl(_ v: Double) -> String {
         "₺" + compactPrice(v)
+    }
+
+    // Native-currency value: "$" for USD-quoted instruments (global equities), "₺" otherwise.
+    static func money(_ v: Double, currency: String?) -> String {
+        (currency ?? "TRY") == "USD" ? usd(v) : tl(v)
     }
 
     static func signedPct(_ v: Double) -> String {

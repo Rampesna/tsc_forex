@@ -174,6 +174,16 @@ def build_all(kinds: List[str], codes_filter, start: dt.date, end: dt.date, exot
             log(f"  {code}: {len(s)} pts")
             time.sleep(F.REQUEST_DELAY)
 
+        # --- Global stocks (native USD, adjusted close; stored verbatim in USD) ---
+        for code, ysym in C.GLOBAL_STOCKS:
+            if not want(code):
+                continue
+            s = F.yahoo_daily(ysym, start, end, adjusted=True)
+            if s:
+                result[code] = ("stock", s)
+            log(f"  {code} ({ysym}): {len(s)} pts")
+            time.sleep(F.REQUEST_DELAY)
+
     return result
 
 

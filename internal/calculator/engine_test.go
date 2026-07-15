@@ -36,7 +36,7 @@ func TestEngineComputesCatalog(t *testing.T) {
 			Symbol: c.Symbol, Price: 1000 + float64(i), Timestamp: now, Provider: "test",
 		})
 	}
-	for i, s := range domain.Stocks {
+	for i, s := range domain.AllStocks() {
 		bus.Publish(eventbus.TopicTickReceived, domain.Tick{
 			Symbol: s.Symbol, Price: 50 + float64(i), Timestamp: now, Provider: "test",
 		})

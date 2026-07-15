@@ -194,7 +194,22 @@ func (m *marketMeta) fillCrypto(ctx context.Context, in domain.Instrument, data 
 }
 
 func (m *marketMeta) fillStock(ctx context.Context, in domain.Instrument, data gin.H) {
-	data["price_try"] = m.leg(in.Code)
+	// Native quote is USD for global equities, TRY for BIST. Expose both so the
+	// client can show "$X" with a "≈ ₺Y" sub-line.
+	native := m.leg(in.Code)
+	ccy := in.Currency
+	if ccy == "" {
+		ccy = "TRY"
+	}
+	data["currency"] = ccy
+	if ccy == "USD" {
+		data["price_usd"] = native
+		if usdtry := m.leg("USDTRY"); usdtry > 0 {
+			data["price_try"] = native * usdtry
+		}
+	} else {
+		data["price_try"] = native
+	}
 	var resp struct {
 		Chart struct {
 			Result []struct {
@@ -213,7 +228,13 @@ func (m *marketMeta) fillStock(ctx context.Context, in domain.Instrument, data g
 			} `json:"result"`
 		} `json:"chart"`
 	}
-	reqURL := m.yahooChartURL + in.Code + ".IS?interval=1d&range=5d"
+	// Resolve the Yahoo ticker from the catalog (BIST → "<code>.IS", global →
+	// plain ticker) instead of hardcoding the ".IS" suffix.
+	yahooSym := in.Code + ".IS"
+	if def, ok := domain.StockByCode[in.Code]; ok && def.YahooSymbol != "" {
+		yahooSym = def.YahooSymbol
+	}
+	reqURL := m.yahooChartURL + yahooSym + "?interval=1d&range=5d"
 	if err := m.getJSON(ctx, reqURL, yahooMetaUA, &resp); err == nil && len(resp.Chart.Result) > 0 {
 		meta := resp.Chart.Result[0].Meta
 		data["day_high"] = meta.RegularMarketDayHigh

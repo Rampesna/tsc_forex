@@ -444,22 +444,32 @@ func (p *Provider) fetchCryptoYahoo(ctx context.Context, usdtry float64) map[str
 	return out
 }
 
-// fetchStocks pulls BIST equity prices (native TRY) from Yahoo concurrently.
+// stockFetchConcurrency bounds simultaneous Yahoo calls for equities. The egress
+// IP is shared with the 2s FX/gold poll, so we cap the burst to stay well under
+// Yahoo's 429 ceiling even with the full BIST + global universe (~68 symbols).
+const stockFetchConcurrency = 8
+
+// fetchStocks pulls equity prices from Yahoo — BIST natively in TRY, global
+// names in USD — using a bounded worker pool so the burst stays gentle.
 // Best-effort: returns whatever resolved, ignoring individual failures.
 func (p *Provider) fetchStocks(ctx context.Context) map[string]float64 {
-	if len(domain.Stocks) == 0 {
+	all := domain.AllStocks()
+	if len(all) == 0 {
 		return nil
 	}
 	type res struct {
 		sym   string
 		price float64
 	}
-	results := make(chan res, len(domain.Stocks))
+	results := make(chan res, len(all))
+	sem := make(chan struct{}, stockFetchConcurrency)
 	var wg sync.WaitGroup
-	for _, s := range domain.Stocks {
+	for _, s := range all {
 		wg.Add(1)
 		go func(sym, yahooSym string) {
 			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
 			price, err := p.fetchSymbol(ctx, yahooSym)
 			if err == nil && price > 0 {
 				results <- res{sym: sym, price: price}
@@ -468,7 +478,7 @@ func (p *Provider) fetchStocks(ctx context.Context) map[string]float64 {
 	}
 	go func() { wg.Wait(); close(results) }()
 
-	out := make(map[string]float64, len(domain.Stocks))
+	out := make(map[string]float64, len(all))
 	for r := range results {
 		out[r.sym] = r.price
 	}

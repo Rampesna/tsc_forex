@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMarkets } from "../store/markets";
-import { tl } from "../lib/format";
+import { money, tl } from "../lib/format";
 import { ChangePill, AssetBadge } from "../components/common";
 import { Icon } from "../components/Icon";
 import { Sparkline } from "../components/Sparkline";
@@ -189,7 +189,10 @@ export function Markets() {
               <Sparkline data={spark[p.code] ?? []} />
             </div>
             <div style={{ width: 140, textAlign: "right" }}>
-              <div className="mono" style={{ fontSize: 14.5, fontWeight: 650 }}>{tl(p.price)}</div>
+              <div className="mono" style={{ fontSize: 14.5, fontWeight: 650 }}>{money(p.price, p.currency)}</div>
+              {p.currency === "USD" && (p.price_try ?? 0) > 0 && (
+                <div className="mono" style={{ fontSize: 10.5, color: "var(--text-faint)", marginTop: 1 }}>≈ {tl(p.price_try as number)}</div>
+              )}
               <div style={{ marginTop: 2, display: "flex", justifyContent: "flex-end" }}>
                 <ChangePill pct={p.change_pct} small />
               </div>

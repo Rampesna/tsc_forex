@@ -22,13 +22,15 @@ struct PriceChart: View {
     // window); it does NOT change when older pages are prepended.
     var onReachStart: () -> Void = {}
     var resetToken: Int = 0
+    var currency: String? = nil
 
     var body: some View {
         if candles.count < 2 {
             emptyState
         } else {
             InteractiveChart(candles: candles, mode: mode, trendUp: trendUp,
-                             onReachStart: onReachStart, resetToken: resetToken)
+                             onReachStart: onReachStart, resetToken: resetToken,
+                             currency: currency)
         }
     }
 
@@ -54,6 +56,7 @@ private struct InteractiveChart: View {
     let trendUp: Bool
     var onReachStart: () -> Void = {}
     var resetToken: Int = 0
+    var currency: String? = nil
 
     // Visible window (seconds). Smaller = more zoomed in.
     @State private var visibleLen: TimeInterval = 0
@@ -115,7 +118,7 @@ private struct InteractiveChart: View {
                     legendDot(lineColor, "Fiyat")
                     legendDot(Theme.accent.opacity(0.9), "MA7")
                     Spacer(minLength: 0)
-                    Text(Fmt.tl(last.close))
+                    Text(Fmt.money(last.close, currency: currency))
                         .font(Theme.number(13, weight: .bold)).foregroundStyle(Theme.text)
                 }
             }

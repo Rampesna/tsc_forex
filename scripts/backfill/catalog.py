@@ -78,6 +78,25 @@ STOCKS = [
     "TOASO", "SASA",
 ]
 
+# --- Global stocks (50) : code == symbol, native USD, plain Yahoo ticker ---
+# Mirror of domain.GlobalStocks. Stored/charted in USD (matches the live engine),
+# with a TRY equivalent derived at display time.  (code, yahoo_symbol)
+GLOBAL_STOCKS = [
+    ("NVDA", "NVDA"), ("AAPL", "AAPL"), ("MSFT", "MSFT"), ("GOOGL", "GOOGL"),
+    ("AMZN", "AMZN"), ("META", "META"), ("AVGO", "AVGO"), ("TSLA", "TSLA"),
+    ("BRKB", "BRK-B"), ("TSM", "TSM"), ("LLY", "LLY"), ("WMT", "WMT"),
+    ("JPM", "JPM"), ("V", "V"), ("MA", "MA"), ("ORCL", "ORCL"),
+    ("NVO", "NVO"), ("XOM", "XOM"), ("UNH", "UNH"), ("COST", "COST"),
+    ("HD", "HD"), ("PG", "PG"), ("JNJ", "JNJ"), ("NFLX", "NFLX"),
+    ("BAC", "BAC"), ("ABBV", "ABBV"), ("KO", "KO"), ("SAP", "SAP"),
+    ("CRM", "CRM"), ("CVX", "CVX"), ("TMUS", "TMUS"), ("WFC", "WFC"),
+    ("ASML", "ASML"), ("BABA", "BABA"), ("MRK", "MRK"), ("AMD", "AMD"),
+    ("PEP", "PEP"), ("LIN", "LIN"), ("ADBE", "ADBE"), ("TM", "TM"),
+    ("AZN", "AZN"), ("NVS", "NVS"), ("MCD", "MCD"), ("SHEL", "SHEL"),
+    ("ABT", "ABT"), ("TMO", "TMO"), ("GE", "GE"), ("CSCO", "CSCO"),
+    ("INTC", "INTC"), ("DIS", "DIS"),
+]
+
 # Bid/ask spread fractions used by the engine (ComputeInstrumentPrice).
 SPREAD_GOLD = 0.001    # ~10 bps
 SPREAD_OTHER = 0.0005  # ~5 bps

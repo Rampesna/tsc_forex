@@ -28,15 +28,16 @@ const (
 	Fineness14K = 0.585
 )
 
-// Instrument describes a computed, user-facing tradable value in TRY.
+// Instrument describes a computed, user-facing tradable value.
 type Instrument struct {
 	Code        string         // stable id, e.g. "GRAM_GOLD", "USDTRY", "CEYREK_GOLD"
 	DisplayName string         // human name (TR)
-	Kind        InstrumentKind // currency | gold
+	Kind        InstrumentKind // currency | gold | crypto | stock
 	Base        string         // provider base symbol for currency (e.g. USDTRY); "" for derived gold
 	GramWeight  float64        // gold: pure gram weight of the product
 	Fineness    float64        // gold: millesimal fineness
-	Unit        string         // display unit
+	Unit        string         // display unit symbol (₺ or $)
+	Currency    string         // native quote currency: "TRY" (default) or "USD" (global equities)
 }
 
 // CurrencyDef defines a world fiat currency quoted against TRY. The provider
@@ -87,35 +88,112 @@ var CryptoByCode = func() map[string]CryptoDef {
 	return m
 }()
 
-// StockDef defines a Borsa İstanbul (BIST) equity, quoted natively in TRY.
-// Code == Base == Symbol (e.g. "THYAO"); YahooSymbol appends the ".IS" suffix.
+// StockDef defines an equity. BIST names are quoted natively in TRY (YahooSymbol
+// ends in ".IS"); global names are quoted in USD (plain Yahoo ticker). Code ==
+// Base == Symbol. Currency is "TRY" or "USD".
 type StockDef struct {
-	Symbol      string // BIST ticker, e.g. "THYAO" (instrument code + base)
+	Symbol      string // instrument code + base (e.g. "THYAO", "AAPL")
 	DisplayName string
-	YahooSymbol string // Yahoo Finance ticker, e.g. "THYAO.IS"
+	YahooSymbol string // Yahoo Finance ticker (e.g. "THYAO.IS", "AAPL")
+	Currency    string // "TRY" (BIST) or "USD" (global)
 }
 
 // Stocks are liquid BIST-30 names tracked in TRY.
 var Stocks = []StockDef{
-	{"THYAO", "Türk Hava Yolları", "THYAO.IS"},
-	{"GARAN", "Garanti BBVA", "GARAN.IS"},
-	{"AKBNK", "Akbank", "AKBNK.IS"},
-	{"ISCTR", "İş Bankası (C)", "ISCTR.IS"},
-	{"YKBNK", "Yapı Kredi", "YKBNK.IS"},
-	{"SISE", "Şişecam", "SISE.IS"},
-	{"EREGL", "Ereğli Demir Çelik", "EREGL.IS"},
-	{"KCHOL", "Koç Holding", "KCHOL.IS"},
-	{"SAHOL", "Sabancı Holding", "SAHOL.IS"},
-	{"ASELS", "Aselsan", "ASELS.IS"},
-	{"BIMAS", "BİM Mağazalar", "BIMAS.IS"},
-	{"TUPRS", "Tüpraş", "TUPRS.IS"},
-	{"FROTO", "Ford Otosan", "FROTO.IS"},
-	{"TCELL", "Turkcell", "TCELL.IS"},
-	{"PGSUS", "Pegasus", "PGSUS.IS"},
-	{"TTKOM", "Türk Telekom", "TTKOM.IS"},
-	{"TOASO", "Tofaş", "TOASO.IS"},
-	{"SASA", "Sasa Polyester", "SASA.IS"},
+	{"THYAO", "Türk Hava Yolları", "THYAO.IS", "TRY"},
+	{"GARAN", "Garanti BBVA", "GARAN.IS", "TRY"},
+	{"AKBNK", "Akbank", "AKBNK.IS", "TRY"},
+	{"ISCTR", "İş Bankası (C)", "ISCTR.IS", "TRY"},
+	{"YKBNK", "Yapı Kredi", "YKBNK.IS", "TRY"},
+	{"SISE", "Şişecam", "SISE.IS", "TRY"},
+	{"EREGL", "Ereğli Demir Çelik", "EREGL.IS", "TRY"},
+	{"KCHOL", "Koç Holding", "KCHOL.IS", "TRY"},
+	{"SAHOL", "Sabancı Holding", "SAHOL.IS", "TRY"},
+	{"ASELS", "Aselsan", "ASELS.IS", "TRY"},
+	{"BIMAS", "BİM Mağazalar", "BIMAS.IS", "TRY"},
+	{"TUPRS", "Tüpraş", "TUPRS.IS", "TRY"},
+	{"FROTO", "Ford Otosan", "FROTO.IS", "TRY"},
+	{"TCELL", "Turkcell", "TCELL.IS", "TRY"},
+	{"PGSUS", "Pegasus", "PGSUS.IS", "TRY"},
+	{"TTKOM", "Türk Telekom", "TTKOM.IS", "TRY"},
+	{"TOASO", "Tofaş", "TOASO.IS", "TRY"},
+	{"SASA", "Sasa Polyester", "SASA.IS", "TRY"},
 }
+
+// GlobalStocks are the world's largest USD-listed companies (US primaries and
+// ADRs) by market cap. Priced natively in USD; a TRY equivalent is derived from
+// live USD/TRY for display. Codes avoid punctuation (e.g. BRKB → "BRK-B").
+var GlobalStocks = []StockDef{
+	{"NVDA", "Nvidia", "NVDA", "USD"},
+	{"AAPL", "Apple", "AAPL", "USD"},
+	{"MSFT", "Microsoft", "MSFT", "USD"},
+	{"GOOGL", "Alphabet (Google)", "GOOGL", "USD"},
+	{"AMZN", "Amazon", "AMZN", "USD"},
+	{"META", "Meta Platforms", "META", "USD"},
+	{"AVGO", "Broadcom", "AVGO", "USD"},
+	{"TSLA", "Tesla", "TSLA", "USD"},
+	{"BRKB", "Berkshire Hathaway", "BRK-B", "USD"},
+	{"TSM", "TSMC", "TSM", "USD"},
+	{"LLY", "Eli Lilly", "LLY", "USD"},
+	{"WMT", "Walmart", "WMT", "USD"},
+	{"JPM", "JPMorgan Chase", "JPM", "USD"},
+	{"V", "Visa", "V", "USD"},
+	{"MA", "Mastercard", "MA", "USD"},
+	{"ORCL", "Oracle", "ORCL", "USD"},
+	{"NVO", "Novo Nordisk", "NVO", "USD"},
+	{"XOM", "Exxon Mobil", "XOM", "USD"},
+	{"UNH", "UnitedHealth", "UNH", "USD"},
+	{"COST", "Costco", "COST", "USD"},
+	{"HD", "Home Depot", "HD", "USD"},
+	{"PG", "Procter & Gamble", "PG", "USD"},
+	{"JNJ", "Johnson & Johnson", "JNJ", "USD"},
+	{"NFLX", "Netflix", "NFLX", "USD"},
+	{"BAC", "Bank of America", "BAC", "USD"},
+	{"ABBV", "AbbVie", "ABBV", "USD"},
+	{"KO", "Coca-Cola", "KO", "USD"},
+	{"SAP", "SAP", "SAP", "USD"},
+	{"CRM", "Salesforce", "CRM", "USD"},
+	{"CVX", "Chevron", "CVX", "USD"},
+	{"TMUS", "T-Mobile US", "TMUS", "USD"},
+	{"WFC", "Wells Fargo", "WFC", "USD"},
+	{"ASML", "ASML", "ASML", "USD"},
+	{"BABA", "Alibaba", "BABA", "USD"},
+	{"MRK", "Merck", "MRK", "USD"},
+	{"AMD", "AMD", "AMD", "USD"},
+	{"PEP", "PepsiCo", "PEP", "USD"},
+	{"LIN", "Linde", "LIN", "USD"},
+	{"ADBE", "Adobe", "ADBE", "USD"},
+	{"TM", "Toyota", "TM", "USD"},
+	{"AZN", "AstraZeneca", "AZN", "USD"},
+	{"NVS", "Novartis", "NVS", "USD"},
+	{"MCD", "McDonald's", "MCD", "USD"},
+	{"SHEL", "Shell", "SHEL", "USD"},
+	{"ABT", "Abbott", "ABT", "USD"},
+	{"TMO", "Thermo Fisher", "TMO", "USD"},
+	{"GE", "GE Aerospace", "GE", "USD"},
+	{"CSCO", "Cisco", "CSCO", "USD"},
+	{"INTC", "Intel", "INTC", "USD"},
+	{"DIS", "Walt Disney", "DIS", "USD"},
+}
+
+// AllStocks returns BIST + global equities in one slice.
+func AllStocks() []StockDef {
+	out := make([]StockDef, 0, len(Stocks)+len(GlobalStocks))
+	out = append(out, Stocks...)
+	out = append(out, GlobalStocks...)
+	return out
+}
+
+// StockByCode indexes every equity (BIST + global) by its instrument code, so
+// callers can resolve the Yahoo ticker and quote currency.
+var StockByCode = func() map[string]StockDef {
+	all := AllStocks()
+	m := make(map[string]StockDef, len(all))
+	for _, s := range all {
+		m[s.Symbol] = s
+	}
+	return m
+}()
 
 // Currencies is the full set of world currencies the platform tracks against
 // TRY. USD/EUR/GBP/JPY lead (most traded in TR); the rest give global coverage.
@@ -176,13 +254,22 @@ var Catalog = func() []Instrument {
 			Unit:        "₺",
 		})
 	}
-	for _, s := range Stocks {
+	for _, s := range AllStocks() {
+		unit := "₺"
+		ccy := s.Currency
+		if ccy == "" {
+			ccy = "TRY"
+		}
+		if ccy == "USD" {
+			unit = "$"
+		}
 		out = append(out, Instrument{
 			Code:        s.Symbol,
 			DisplayName: s.DisplayName,
 			Kind:        KindStock,
 			Base:        s.Symbol,
-			Unit:        "₺",
+			Unit:        unit,
+			Currency:    ccy,
 		})
 	}
 	return out
@@ -203,14 +290,17 @@ func IsCurrencySymbol(sym string) bool { return currencySymbolSet[sym] }
 // directTRYSymbolSet indexes every symbol whose provider tick is already a TRY
 // value read straight from the map: currencies, crypto and BIST equities.
 var directTRYSymbolSet = func() map[string]bool {
-	m := make(map[string]bool, len(Currencies)+len(Cryptos)+len(Stocks))
+	all := AllStocks()
+	m := make(map[string]bool, len(Currencies)+len(Cryptos)+len(all))
 	for _, c := range Currencies {
 		m[c.ISO+"TRY"] = true
 	}
 	for _, c := range Cryptos {
 		m[c.Symbol] = true
 	}
-	for _, s := range Stocks {
+	// Equities (BIST in TRY, global in USD) are stored verbatim by the engine;
+	// the native quote currency is carried on the instrument for display.
+	for _, s := range all {
 		m[s.Symbol] = true
 	}
 	return m
@@ -229,10 +319,11 @@ func CryptoSymbols() []string {
 	return out
 }
 
-// StockSymbols returns every tracked BIST symbol (== instrument code).
+// StockSymbols returns every tracked equity symbol (BIST + global).
 func StockSymbols() []string {
-	out := make([]string, 0, len(Stocks))
-	for _, s := range Stocks {
+	all := AllStocks()
+	out := make([]string, 0, len(all))
+	for _, s := range all {
 		out = append(out, s.Symbol)
 	}
 	return out
@@ -267,11 +358,13 @@ type InstrumentPrice struct {
 	Code        string    `json:"code"`
 	DisplayName string    `json:"display_name"`
 	Kind        string    `json:"kind"`
-	Price       float64   `json:"price"`
+	Price       float64   `json:"price"` // native quote (TRY, or USD for global equities)
 	Bid         float64   `json:"bid"`
 	Ask         float64   `json:"ask"`
-	Change      float64   `json:"change"`         // absolute change vs previous
-	ChangePct   float64   `json:"change_pct"`     // percent change vs previous
+	Change      float64   `json:"change"`     // absolute change vs day open (native currency)
+	ChangePct   float64   `json:"change_pct"` // percent change vs day open
+	Currency    string    `json:"currency"`   // native currency of Price: "TRY" or "USD"
+	PriceTRY    float64   `json:"price_try"`  // TRY equivalent (== Price for TRY; Price×USDTRY for USD)
 	Provider    string    `json:"provider"`
 	Timestamp   time.Time `json:"timestamp"`
 }

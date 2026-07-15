@@ -119,9 +119,14 @@ struct AssetDetailView: View {
             if let p = price {
                 FlashText(value: p.price,
                           font: Theme.number(38, weight: .bold),
-                          format: { Fmt.tl($0) })
+                          format: { Fmt.money($0, currency: p.currency) })
+                if p.isUSD {
+                    Text("≈ \(Fmt.tl(p.tryValue))")
+                        .font(Theme.number(14, weight: .medium))
+                        .foregroundStyle(Theme.textDim)
+                }
                 HStack(spacing: 8) {
-                    Text("\(Fmt.signed(p.change)) ₺  \(Fmt.signedPct(p.changePct))")
+                    Text("\(Fmt.signed(p.change)) \(p.isUSD ? "$" : "₺")  \(Fmt.signedPct(p.changePct))")
                         .font(Theme.number(15, weight: .semibold))
                         .foregroundStyle(Theme.trend(p.changePct))
                 }
@@ -159,7 +164,7 @@ struct AssetDetailView: View {
 
     private func statVal(_ v: Double?) -> String {
         guard let v, v > 0 else { return "—" }
-        return Fmt.tl(v)
+        return Fmt.money(v, currency: price?.currency)
     }
 
     // MARK: Chart
@@ -179,7 +184,7 @@ struct AssetDetailView: View {
                 } else {
                     PriceChart(candles: displayCandles, mode: mode, trendUp: trendUp,
                                onReachStart: { Task { await loadOlder() } },
-                               resetToken: chartReset)
+                               resetToken: chartReset, currency: price?.currency)
                         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                         .overlay(alignment: .topLeading) {
                             if loadingOlder {
@@ -285,11 +290,13 @@ struct AssetDetailView: View {
 
     private func stockStats(_ d: InstrumentDetail) -> [Metric] {
         var m: [Metric] = []
-        if let v = d.dayHigh, v > 0 { m.append(Metric("Gün Yüksek", Fmt.tl(v), tint: Theme.up)) }
-        if let v = d.dayLow, v > 0 { m.append(Metric("Gün Düşük", Fmt.tl(v), tint: Theme.down)) }
-        if let v = d.week52High, v > 0 { m.append(Metric("52H Yüksek", Fmt.tl(v))) }
-        if let v = d.week52Low, v > 0 { m.append(Metric("52H Düşük", Fmt.tl(v))) }
-        if let v = d.prevClose, v > 0 { m.append(Metric("Önceki Kapanış", Fmt.tl(v))) }
+        let c = d.currency
+        if c == "USD", let v = d.priceTry, v > 0 { m.append(Metric("Fiyat (₺)", Fmt.tl(v))) }
+        if let v = d.dayHigh, v > 0 { m.append(Metric("Gün Yüksek", Fmt.money(v, currency: c), tint: Theme.up)) }
+        if let v = d.dayLow, v > 0 { m.append(Metric("Gün Düşük", Fmt.money(v, currency: c), tint: Theme.down)) }
+        if let v = d.week52High, v > 0 { m.append(Metric("52H Yüksek", Fmt.money(v, currency: c))) }
+        if let v = d.week52Low, v > 0 { m.append(Metric("52H Düşük", Fmt.money(v, currency: c))) }
+        if let v = d.prevClose, v > 0 { m.append(Metric("Önceki Kapanış", Fmt.money(v, currency: c))) }
         if let v = d.volume, v > 0 { m.append(Metric("Hacim (Lot)", Fmt.compactNum(v))) }
         return m
     }

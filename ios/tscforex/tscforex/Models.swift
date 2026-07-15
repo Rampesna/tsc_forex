@@ -43,6 +43,8 @@ struct InstrumentPrice: Codable, Identifiable, Equatable {
     let ask: Double
     let change: Double
     let changePct: Double
+    let currency: String?   // native currency of `price`: "TRY" (default) or "USD"
+    let priceTRY: Double?    // TRY equivalent (== price for TRY instruments)
     let provider: String?
     let timestamp: Date?
 
@@ -51,8 +53,15 @@ struct InstrumentPrice: Codable, Identifiable, Equatable {
         case displayName = "display_name"
         case kind, price, bid, ask, change
         case changePct = "change_pct"
+        case currency
+        case priceTRY = "price_try"
         case provider, timestamp
     }
+
+    // True when the instrument is quoted in USD (global equities).
+    var isUSD: Bool { (currency ?? "TRY") == "USD" }
+    // TRY equivalent for the sub-line; falls back to price for TRY instruments.
+    var tryValue: Double { priceTRY ?? price }
 }
 
 struct PricesResponse: Codable {
@@ -149,6 +158,7 @@ struct InstrumentDetail: Codable {
     var atlDate: String?
 
     // Stock — Yahoo meta
+    var currency: String?   // "TRY" (BIST) or "USD" (global)
     var dayHigh: Double?
     var dayLow: Double?
     var week52High: Double?
@@ -172,7 +182,7 @@ struct InstrumentDetail: Codable {
     var iso: String?
 
     enum CodingKeys: String, CodingKey {
-        case code, kind, trades, rank, volume, exchange, inverse, iso, fineness
+        case code, kind, trades, rank, volume, exchange, inverse, iso, fineness, currency
         case priceTry = "price_try"
         case priceUsd = "price_usd"
         case high24h, low24h, open24h

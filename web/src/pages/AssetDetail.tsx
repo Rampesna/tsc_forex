@@ -4,7 +4,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/endpoints";
 import { useAuth } from "../auth/AuthContext";
 import { useMarkets } from "../store/markets";
-import { compact, dateShort, price as priceFmt, signed, tl, usd, usdCompact } from "../lib/format";
+import { compact, dateShort, money, price as priceFmt, signed, tl, usd, usdCompact } from "../lib/format";
 import { Button, Card, ChangePill } from "../components/common";
 import { Icon } from "../components/Icon";
 import { PriceChart, type ChartType } from "../components/PriceChart";
@@ -133,12 +133,15 @@ export function AssetDetail() {
         <div>
           <h2 style={{ margin: "0 0 6px", fontSize: 20, fontWeight: 600, letterSpacing: "-0.02em" }}>{name}</h2>
           <div style={{ display: "flex", alignItems: "baseline", gap: 12 }}>
-            <span className="mono" style={{ fontSize: 28, fontWeight: 700 }}>{tl(p)}</span>
+            <span className="mono" style={{ fontSize: 28, fontWeight: 700 }}>{money(p, live?.currency)}</span>
             <ChangePill pct={changePct} />
             <span className="mono" style={{ color: change >= 0 ? "var(--up)" : "var(--down)", fontSize: 13.5 }}>
               {signed(change)}
             </span>
           </div>
+          {live?.currency === "USD" && (live?.price_try ?? 0) > 0 && (
+            <div className="mono" style={{ fontSize: 13, color: "var(--text-dim)", marginTop: 4 }}>≈ {tl(live!.price_try as number)}</div>
+          )}
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           <button
@@ -202,7 +205,7 @@ function DetailSections({
 }: {
   d?: InstrumentDetail;
   loading: boolean;
-  live: { bid?: number; ask?: number };
+  live: { bid?: number; ask?: number; currency?: string };
   stats?: { open: number; high: number; low: number };
 }) {
   if (loading && !d) {
@@ -215,12 +218,14 @@ function DetailSections({
   const sections: { title: string; metrics: Metric[] }[] = [];
 
   // 24h / session box shared by all kinds (from live stats where available).
+  // Stats/candles are in the instrument's native currency (USD for global equities).
+  const c = live.currency;
   const session: Metric[] = [];
-  if (stats?.open) session.push({ label: "Gün açılış", value: tl(stats.open) });
-  if (stats?.high) session.push({ label: "Gün yüksek", value: tl(stats.high) });
-  if (stats?.low) session.push({ label: "Gün düşük", value: tl(stats.low) });
-  if (live.bid) session.push({ label: "Alış", value: tl(live.bid) });
-  if (live.ask) session.push({ label: "Satış", value: tl(live.ask) });
+  if (stats?.open) session.push({ label: "Gün açılış", value: money(stats.open, c) });
+  if (stats?.high) session.push({ label: "Gün yüksek", value: money(stats.high, c) });
+  if (stats?.low) session.push({ label: "Gün düşük", value: money(stats.low, c) });
+  if (live.bid) session.push({ label: "Alış", value: money(live.bid, c) });
+  if (live.ask) session.push({ label: "Satış", value: money(live.ask, c) });
   if (session.length) sections.push({ title: "Seans", metrics: session });
 
   if (d.kind === "crypto") sections.push({ title: "Kripto piyasası", metrics: cryptoMetrics(d) });
@@ -259,11 +264,13 @@ function cryptoMetrics(d: InstrumentDetail): Metric[] {
 
 function stockMetrics(d: InstrumentDetail): Metric[] {
   const m: Metric[] = [];
-  if (d.day_high) m.push({ label: "Gün yüksek", value: tl(d.day_high) });
-  if (d.day_low) m.push({ label: "Gün düşük", value: tl(d.day_low) });
-  if (d.week52_high) m.push({ label: "52h yüksek", value: tl(d.week52_high) });
-  if (d.week52_low) m.push({ label: "52h düşük", value: tl(d.week52_low) });
-  if (d.prev_close) m.push({ label: "Önceki kapanış", value: tl(d.prev_close) });
+  const c = d.currency;
+  if (c === "USD" && d.price_try) m.push({ label: "Fiyat (₺)", value: tl(d.price_try) });
+  if (d.day_high) m.push({ label: "Gün yüksek", value: money(d.day_high, c) });
+  if (d.day_low) m.push({ label: "Gün düşük", value: money(d.day_low, c) });
+  if (d.week52_high) m.push({ label: "52h yüksek", value: money(d.week52_high, c) });
+  if (d.week52_low) m.push({ label: "52h düşük", value: money(d.week52_low, c) });
+  if (d.prev_close) m.push({ label: "Önceki kapanış", value: money(d.prev_close, c) });
   if (d.volume) m.push({ label: "Hacim", value: compact(d.volume) });
   if (d.exchange) m.push({ label: "Borsa", value: d.exchange });
   return m;

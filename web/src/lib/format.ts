@@ -17,6 +17,11 @@ export function tl(v: number): string {
   return "₺" + price(v);
 }
 
+// Native-currency price: "$" for USD-quoted instruments (global equities), "₺" otherwise.
+export function money(v: number, currency?: string): string {
+  return currency === "USD" ? usd(v) : tl(v);
+}
+
 export function signedPct(v: number): string {
   const s = v.toFixed(2);
   return (v >= 0 ? "+" : "") + s + "%";

@@ -40,6 +40,8 @@ func (b *InstrumentBroadcaster) onUpdate(ev eventbus.Event) {
 		Ask:         ip.Ask,
 		Change:      ip.Change,
 		ChangePct:   ip.ChangePct,
+		Currency:    ip.Currency,
+		PriceTRY:    ip.PriceTRY,
 		Provider:    ip.Provider,
 	})
 	if err != nil {

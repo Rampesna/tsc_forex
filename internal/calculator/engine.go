@@ -205,6 +205,16 @@ func (e *Engine) onTick(t domain.Tick) {
 			change = price - open
 			changePct = (change / open) * 100
 		}
+		// Native currency + TRY equivalent. Global equities are quoted in USD;
+		// everything else is already TRY. The TRY figure powers the "≈ ₺X" sub-line.
+		ccy := in.Currency
+		if ccy == "" {
+			ccy = "TRY"
+		}
+		priceTRY := price
+		if ccy == "USD" && usd > 0 {
+			priceTRY = price * usd
+		}
 		ip := domain.InstrumentPrice{
 			Code:        in.Code,
 			DisplayName: in.DisplayName,
@@ -214,6 +224,8 @@ func (e *Engine) onTick(t domain.Tick) {
 			Ask:         ask,
 			Change:      change,
 			ChangePct:   changePct,
+			Currency:    ccy,
+			PriceTRY:    priceTRY,
 			Provider:    provider,
 			Timestamp:   now.UTC(),
 		}

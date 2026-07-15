@@ -264,13 +264,17 @@ struct MarketRow: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             Sparkline(points: Array(spark.suffix(12)), color: Theme.trend(price.changePct))
                 .frame(width: 44, height: 24)
-            VStack(alignment: .trailing, spacing: 4) {
+            VStack(alignment: .trailing, spacing: 2) {
                 FlashText(value: price.price,
                           font: Theme.number(15, weight: .bold),
-                          format: { Fmt.tl($0) })
+                          format: { Fmt.money($0, currency: price.currency) })
+                if price.isUSD {
+                    Text("≈ \(Fmt.tl(price.tryValue))")
+                        .font(.system(size: 10)).foregroundStyle(Theme.textFaint).lineLimit(1)
+                }
                 ChangePill(pct: price.changePct)
             }
-            .frame(width: 96, alignment: .trailing)
+            .frame(width: 104, alignment: .trailing)
         }
         .padding(.horizontal, 16)
         .frame(height: 62)
