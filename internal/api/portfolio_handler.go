@@ -183,7 +183,7 @@ func (h *PortfolioHandler) CreateTransaction(c *gin.Context) {
 	}
 	var request portfolioTransactionRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "geçersiz işlem"})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "işlem bilgileri geçersiz"})
 		return
 	}
 	transaction, created, err := h.service.CreateTransaction(
@@ -215,7 +215,7 @@ func (h *PortfolioHandler) UpdateTransaction(c *gin.Context) {
 	}
 	var request portfolioTransactionRequest
 	if err := c.ShouldBindJSON(&request); err != nil {
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "geçersiz işlem"})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "işlem bilgileri geçersiz"})
 		return
 	}
 	transaction, err := h.service.UpdateTransaction(
@@ -339,9 +339,9 @@ func writePortfolioError(c *gin.Context, err error) {
 		c.JSON(http.StatusConflict, ErrorResponse{Error: "işlem bakiyeyi negatife düşürüyor"})
 	case errors.Is(err, service.ErrInvalidPortfolio),
 		errors.Is(err, service.ErrInvalidTransaction):
-		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "işlem bilgileri geçersiz"})
 	case errors.Is(err, service.ErrLivePriceUnavailable):
-		c.JSON(http.StatusServiceUnavailable, ErrorResponse{Error: err.Error()})
+		c.JSON(http.StatusServiceUnavailable, ErrorResponse{Error: "canlı fiyat şu anda alınamıyor"})
 	default:
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "portföy işlemi başarısız"})
 	}

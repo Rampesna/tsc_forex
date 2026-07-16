@@ -556,7 +556,7 @@ func (r *gamificationRepository) StudyGroups(
 	userID uuid.UUID,
 ) ([]StudyGroupOverview, error) {
 	start := time.Now()
-	var rows []StudyGroupOverview
+	rows := make([]StudyGroupOverview, 0)
 	err := r.db.WithContext(ctx).
 		Table("study_groups AS g").
 		Select("g.*, COUNT(all_members.id) AS member_count").

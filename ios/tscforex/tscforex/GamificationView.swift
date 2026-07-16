@@ -28,12 +28,16 @@ struct GamificationView: View {
                 if let p = profile {
                     heroCard(p)
                     statsRow(p)
-                    GamificationExperienceHub(
-                        experience: $experience,
-                        token: auth.accessToken,
-                        onProfile: { profile = $0 },
-                        onToast: showToast
-                    )
+                    if experience != nil {
+                        GamificationExperienceHub(
+                            experience: $experience,
+                            token: auth.accessToken,
+                            onProfile: { profile = $0 },
+                            onToast: showToast
+                        )
+                    } else if !loading {
+                        experienceErrorCard
+                    }
                     questsCard(p)
                     badgesCard(p)
                     leaderboardCard()
@@ -270,6 +274,24 @@ struct GamificationView: View {
             }
             .frame(maxWidth: .infinity)
             .padding(.vertical, 12)
+        }
+    }
+
+    private var experienceErrorCard: some View {
+        Card {
+            HStack(spacing: 12) {
+                Image(systemName: "arrow.triangle.2.circlepath")
+                    .font(.system(size: 22)).foregroundStyle(Theme.accent)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Gelişim alanları yüklenemedi")
+                        .font(.system(size: 14, weight: .bold)).foregroundStyle(Theme.text)
+                    Text("Günlük plan, dersler ve sezon için tekrar deneyebilirsin.")
+                        .font(.system(size: 11)).foregroundStyle(Theme.textDim)
+                }
+                Spacer()
+                Button("Yenile") { Task { await load() } }
+                    .font(.system(size: 12, weight: .bold))
+            }
         }
     }
 

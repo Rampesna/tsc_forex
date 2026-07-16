@@ -301,9 +301,10 @@ final class PortfolioStore: ObservableObject {
         return try await APIClient(token: token).portfolioPosition(id: id, code: code)
     }
 
+    @discardableResult
     func save(body: PortfolioTransactionBody, transactionId: String? = nil,
-              prices: [String: InstrumentPrice]) async {
-        guard let token, let id = overview?.portfolio.id else { return }
+              prices: [String: InstrumentPrice]) async -> Bool {
+        guard let token, let id = overview?.portfolio.id else { return false }
         errorMessage = nil
         do {
             let client = APIClient(token: token)
@@ -315,16 +316,20 @@ final class PortfolioStore: ObservableObject {
                 _ = try await client.createPortfolioTransaction(portfolioId: id, body: body)
             }
             await sync(token: token, prices: prices)
+            return true
         } catch let error as APIError {
             if transactionId == nil, case .network = error {
                 outbox.append(PortfolioOutboxItem(id: UUID(), portfolioId: id, body: body))
                 persistOutbox()
                 errorMessage = "İşlem çevrimdışı kuyruğa alındı."
+                return true
             } else {
                 errorMessage = error.localizedDescription
+                return false
             }
         } catch {
             errorMessage = error.localizedDescription
+            return false
         }
     }
 

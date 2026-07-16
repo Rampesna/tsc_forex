@@ -557,6 +557,23 @@ struct GamificationExperience: Codable {
         case studyGroups = "study_groups"
         case weeklySummary = "weekly_summary"
     }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        ruleVersion = try container.decode(String.self, forKey: .ruleVersion)
+        dailyPlan = try container.decodeIfPresent(DailyPlan.self, forKey: .dailyPlan)
+        lessons = try container.decodeIfPresent([LessonStatus].self, forKey: .lessons) ?? []
+        disciplineQuests = try container.decodeIfPresent(
+            [DisciplineQuest].self, forKey: .disciplineQuests
+        ) ?? []
+        season = try container.decode(SeasonView.self, forKey: .season)
+        paperTrades = try container.decodeIfPresent([PaperTrade].self, forKey: .paperTrades) ?? []
+        privacy = try container.decode(GamificationPrivacy.self, forKey: .privacy)
+        studyGroups = try container.decodeIfPresent(
+            [StudyGroupOverview].self, forKey: .studyGroups
+        ) ?? []
+        weeklySummary = try container.decode(WeeklyLearningSummary.self, forKey: .weeklySummary)
+    }
 }
 
 struct QuizAttemptResult: Codable {

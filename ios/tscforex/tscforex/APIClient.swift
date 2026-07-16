@@ -13,7 +13,8 @@ enum APIError: Error, LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .http(let code, let msg): return "Sunucu hatası (\(code)): \(msg)"
+        case .http(let code, let msg):
+            return msg.isEmpty ? "Sunucu isteği tamamlanamadı (\(code))" : msg
         case .decoding: return "Yanıt çözümlenemedi"
         case .invalidResponse: return "Geçersiz yanıt"
         case .network(let code, let host):
@@ -50,6 +51,15 @@ struct APIClient {
 
     private func makeDecoder() -> JSONDecoder { JSONDecoder.api() }
 
+    private func makeEncoder() -> JSONEncoder {
+        let encoder = JSONEncoder()
+        // Go's time.Time JSON decoder requires RFC3339. Swift's default Date
+        // encoding is seconds since 2001 and caused portfolio requests to fail
+        // binding with HTTP 400.
+        encoder.dateEncodingStrategy = .iso8601
+        return encoder
+    }
+
     private func request(_ path: String, method: String = "GET", body: Encodable? = nil,
                          authed: Bool = false, overrideToken: String? = nil,
                          allowRetry: Bool = true) async throws -> Data {
@@ -65,7 +75,7 @@ struct APIClient {
             req.setValue("Bearer \(effToken)", forHTTPHeaderField: "Authorization")
         }
         if let body {
-            req.httpBody = try JSONEncoder().encode(AnyEncodable(body))
+            req.httpBody = try makeEncoder().encode(AnyEncodable(body))
         }
         do {
             let (data, resp) = try await Self.session.data(for: req)
@@ -78,7 +88,9 @@ struct APIClient {
                 }
             }
             guard (200..<300).contains(http.statusCode) else {
-                let msg = String(data: data, encoding: .utf8) ?? ""
+                let msg = (try? JSONDecoder().decode(APIErrorEnvelope.self, from: data).error)
+                    ?? String(data: data, encoding: .utf8)
+                    ?? ""
                 throw APIError.http(http.statusCode, msg)
             }
             return data
@@ -470,6 +482,10 @@ struct APIClient {
         _ = try await request("me/gamification/study-groups/join", method: "POST",
                               body: ["invite_code": inviteCode], authed: true)
     }
+}
+
+private struct APIErrorEnvelope: Decodable {
+    let error: String
 }
 
 private struct DailyPlanBody: Encodable {

@@ -115,6 +115,13 @@ func TestDailyPlanAndQuizAwardsAreIdempotent(t *testing.T) {
 func TestPaperScoreAndSocialPrivacyDoNotUseReturn(t *testing.T) {
 	svc, _, uid := newGamificationTestService(t)
 	ctx := context.Background()
+	initial, err := svc.Experience(ctx, uid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if initial.StudyGroups == nil {
+		t.Fatal("empty study groups must serialize as [] instead of null")
+	}
 	trade, created, err := svc.CreatePaperTrade(ctx, uid, PaperTradeInput{
 		ClientID: "paper-" + uuid.NewString(), Code: "GRAM_GOLD", Side: "buy",
 		Quantity: 1, EntryPrice: 5000, RiskBudgetPct: 1,

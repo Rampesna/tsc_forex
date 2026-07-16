@@ -456,11 +456,23 @@ struct PortfolioTransactionSheet: View {
                     }
                 }
                 if type.isTrade {
-                    TextField("Miktar", text: $quantity).keyboardType(.decimalPad)
-                    TextField("Birim fiyatı", text: $unitPrice).keyboardType(.decimalPad)
-                    TextField("Komisyon", text: $fee).keyboardType(.decimalPad)
+                    LabeledContent("Miktar") {
+                        TextField("0", text: $quantity)
+                            .keyboardType(.decimalPad).multilineTextAlignment(.trailing)
+                    }
+                    LabeledContent("Birim fiyatı") {
+                        TextField("0", text: $unitPrice)
+                            .keyboardType(.decimalPad).multilineTextAlignment(.trailing)
+                    }
+                    LabeledContent("Komisyon") {
+                        TextField("0", text: $fee)
+                            .keyboardType(.decimalPad).multilineTextAlignment(.trailing)
+                    }
                 } else {
-                    TextField("Tutar", text: $amount).keyboardType(.decimalPad)
+                    LabeledContent("Tutar") {
+                        TextField("0", text: $amount)
+                            .keyboardType(.decimalPad).multilineTextAlignment(.trailing)
+                    }
                 }
                 DatePicker("İşlem tarihi", selection: $occurredAt, in: ...Date(), displayedComponents: .date)
                 TextField("Not (opsiyonel)", text: $note)
@@ -512,9 +524,11 @@ struct PortfolioTransactionSheet: View {
             occurredAt: occurredAt,
             note: note
         )
-        await portfolio.save(body: body, transactionId: transaction?.id, prices: prices.prices)
+        let saved = await portfolio.save(
+            body: body, transactionId: transaction?.id, prices: prices.prices
+        )
         saving = false
-        if portfolio.errorMessage == nil || portfolio.errorMessage?.contains("kuyruğa") == true {
+        if saved {
             Haptics.success()
             dismiss()
         }
