@@ -7,12 +7,14 @@ import org.json.JSONObject
 data class InstrumentPrice(
     val code: String,
     val displayName: String,
-    val kind: String,          // "currency" | "gold"
+    val kind: String,          // "currency" | "gold" | "crypto" | "stock"
     val price: Double,
     val bid: Double,
     val ask: Double,
     val change: Double,
     val changePct: Double,
+    val currency: String,      // native quote currency of `price`: "TRY" (default) or "USD"
+    val priceTry: Double,      // TRY equivalent (== price for TRY instruments)
     val provider: String,
     val timestamp: String,
 ) {
@@ -20,6 +22,10 @@ data class InstrumentPrice(
     val isGold get() = kind == "gold"
     val isCrypto get() = kind == "crypto"
     val isStock get() = kind == "stock"
+
+    val isUSD get() = currency == "USD"
+    /** TRY value, falling back to `price` for TRY-quoted instruments. */
+    val tryValue get() = if (priceTry > 0) priceTry else price
 
     companion object {
         fun from(o: JSONObject) = InstrumentPrice(
@@ -31,27 +37,40 @@ data class InstrumentPrice(
             ask = o.optDouble("ask", 0.0),
             change = o.optDouble("change", 0.0),
             changePct = o.optDouble("change_pct", 0.0),
+            currency = o.optString("currency").ifEmpty { "TRY" },
+            priceTry = o.optDouble("price_try", 0.0),
             provider = o.optString("provider"),
             timestamp = o.optString("timestamp"),
         )
     }
 }
 
-/** OHLC candle for the detail chart. */
+/** OHLC candle for the detail chart. `epochMs` is derived from the bucket time. */
 data class Candle(
     val time: String,
     val open: Double,
     val high: Double,
     val low: Double,
     val close: Double,
+    val count: Long = 0,
 ) {
+    /** Bucket time in epoch millis (0 when unparseable). */
+    val epochMs: Long by lazy {
+        runCatching { java.time.Instant.parse(time).toEpochMilli() }.getOrElse {
+            runCatching { java.time.OffsetDateTime.parse(time).toInstant().toEpochMilli() }.getOrDefault(0L)
+        }
+    }
+
     companion object {
         fun from(o: JSONObject) = Candle(
-            time = o.optString("time").ifEmpty { o.optString("timestamp") },
+            time = o.optString("bucket")
+                .ifEmpty { o.optString("time") }
+                .ifEmpty { o.optString("timestamp") },
             open = o.optDouble("open", 0.0),
             high = o.optDouble("high", 0.0),
             low = o.optDouble("low", 0.0),
             close = o.optDouble("close", 0.0),
+            count = o.optLong("count", 0),
         )
     }
 }
@@ -148,6 +167,7 @@ data class AppNotification(
 data class InstrumentDetail(
     val code: String,
     val kind: String,
+    val currency: String?,   // "TRY" (BIST/currency/gold) or "USD" (global stocks)
     val priceTry: Double?,
     val priceUsd: Double?,
     // Crypto
@@ -172,6 +192,7 @@ data class InstrumentDetail(
 
         fun from(o: JSONObject) = InstrumentDetail(
             code = o.optString("code"), kind = o.optString("kind"),
+            currency = o.s("currency"),
             priceTry = o.d("price_try"), priceUsd = o.d("price_usd"),
             high24h = o.d("high24h"), low24h = o.d("low24h"), open24h = o.d("open24h"),
             changePct24h = o.d("change_pct24h"), quoteVolumeUsd = o.d("quote_volume_usd"), trades = o.i("trades"),

@@ -6,6 +6,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -38,12 +39,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.tsc.forex.data.Candle
 import com.example.tsc.forex.data.InstrumentDetail
 import com.example.tsc.forex.data.InstrumentStats
 import com.example.tsc.forex.store.AuthStore
 import com.example.tsc.forex.store.PriceStore
 import com.example.tsc.forex.ui.Card
 import com.example.tsc.forex.ui.ChangePill
+import com.example.tsc.forex.ui.ChartMode
 import com.example.tsc.forex.ui.Fmt
 import com.example.tsc.forex.ui.PriceChart
 import com.example.tsc.forex.ui.StatTile
@@ -67,29 +70,92 @@ private val TIMEFRAMES = listOf(
 /** A single label/value metric shown in the detail grid. */
 private data class Metric(val label: String, val value: String)
 
+// Sliding-window sizing: page this many candles and keep at most `MAX_WINDOW`
+// rendered so the chart stays smooth no matter how far the user scrolls back.
+private const val PAGE_SIZE = 300
+private const val MAX_WINDOW = 900
+
 @Composable
 fun AssetDetailScreen(code: String, auth: AuthStore, store: PriceStore, onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
     val ip = store.prices[code]
     var rangeKey by remember { mutableStateOf("1G") }
-    var series by remember { mutableStateOf<List<Double>>(emptyList()) }
+    var candles by remember { mutableStateOf<List<Candle>>(emptyList()) }
+    var mode by remember { mutableStateOf(ChartMode.LINE) }
     var stats by remember { mutableStateOf<InstrumentStats?>(null) }
     var detail by remember { mutableStateOf<InstrumentDetail?>(null) }
     var showAlert by remember { mutableStateOf(false) }
     var toast by remember { mutableStateOf<String?>(null) }
     var isFav by remember { mutableStateOf(store.isFavorite(code)) }
 
+    // Window paging bookkeeping.
+    var loadingOlder by remember { mutableStateOf(false) }
+    var loadingNewer by remember { mutableStateOf(false) }
+    var hasMoreHistory by remember { mutableStateOf(true) }
+    var hasMoreFuture by remember { mutableStateOf(false) }
+    var chartReset by remember { mutableStateOf(0) }
+
+    fun stepMs(interval: String): Long = when (interval) {
+        "5m" -> 300_000L; "1h" -> 3_600_000L; "1d" -> 86_400_000L
+        "1w" -> 604_800_000L; "1mo" -> 2_629_800_000L; else -> 300_000L
+    }
+
     LaunchedEffect(code, rangeKey) {
         val api = auth.newApiClient()
         val tf = TIMEFRAMES.firstOrNull { it.key == rangeKey } ?: TIMEFRAMES[0]
         val fromMs = System.currentTimeMillis() - tf.days * 86_400_000L
-        series = runCatching { api.candles(code, tf.interval, fromMs).map { it.close } }
-            .getOrElse { store.sparklines[code].orEmpty() }
-        if (series.isEmpty()) series = store.sparklines[code].orEmpty()
+        hasMoreHistory = true
+        hasMoreFuture = false
+        val loaded = runCatching { api.candles(code, tf.interval, fromMs = fromMs) }.getOrElse { emptyList() }
+        candles = loaded.takeLast(MAX_WINDOW)
+        chartReset++
         stats = runCatching { api.stats(code) }.getOrNull()
     }
     LaunchedEffect(code) {
         detail = runCatching { auth.newApiClient().detail(code) }.getOrNull()
+    }
+
+    // Live-fold the WS price into the last candle when the present is on screen.
+    val displayCandles: List<Candle> = run {
+        val p = ip?.price ?: 0.0
+        val last = candles.lastOrNull()
+        if (hasMoreFuture || p <= 0.0 || last == null) candles
+        else candles.toMutableList().also {
+            it[it.lastIndex] = last.copy(high = maxOf(last.high, p), low = minOf(last.low, p), close = p)
+        }
+    }
+
+    suspend fun loadOlder() {
+        if (loadingOlder || loadingNewer || !hasMoreHistory) return
+        val oldest = candles.firstOrNull()?.epochMs ?: return
+        loadingOlder = true
+        try {
+            val tf = TIMEFRAMES.firstOrNull { it.key == rangeKey } ?: TIMEFRAMES[0]
+            val older = runCatching { auth.newApiClient().candles(code, tf.interval, toMs = oldest - 1, limit = PAGE_SIZE) }
+                .getOrElse { emptyList() }
+            if (older.isEmpty()) { hasMoreHistory = false; return }
+            val merged = (older + candles).distinctBy { it.epochMs }.sortedBy { it.epochMs }
+            candles = if (merged.size > MAX_WINDOW) { hasMoreFuture = true; merged.take(MAX_WINDOW) } else merged
+            if (older.size < PAGE_SIZE) hasMoreHistory = false
+        } finally { loadingOlder = false }
+    }
+
+    suspend fun loadNewer() {
+        if (loadingNewer || loadingOlder || !hasMoreFuture) return
+        val newest = candles.lastOrNull()?.epochMs ?: return
+        loadingNewer = true
+        try {
+            val tf = TIMEFRAMES.firstOrNull { it.key == rangeKey } ?: TIMEFRAMES[0]
+            val newer = runCatching { auth.newApiClient().candles(code, tf.interval, fromMs = newest + 1, limit = PAGE_SIZE) }
+                .getOrElse { emptyList() }
+            if (newer.isEmpty()) { hasMoreFuture = false; return }
+            val merged = (candles + newer).distinctBy { it.epochMs }.sortedBy { it.epochMs }
+            candles = if (merged.size > MAX_WINDOW) { hasMoreHistory = true; merged.takeLast(MAX_WINDOW) } else merged
+            val step = stepMs(tf.interval)
+            if (newer.size < PAGE_SIZE || (candles.lastOrNull()?.epochMs ?: 0L) >= System.currentTimeMillis() - step * 2) {
+                hasMoreFuture = false
+            }
+        } finally { loadingNewer = false }
     }
 
     Column(
@@ -126,12 +192,53 @@ fun AssetDetailScreen(code: String, auth: AuthStore, store: PriceStore, onBack: 
         }
 
         Column(Modifier.padding(horizontal = 16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-            Row(verticalAlignment = Alignment.Bottom) {
-                Text(
-                    Fmt.tl(ip?.price ?: 0.0),
-                    color = Th.text, fontSize = 34.sp, fontWeight = FontWeight.Bold,
+            val ccy = ip?.currency
+            Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                Row(verticalAlignment = Alignment.Bottom) {
+                    Text(
+                        Fmt.money(ip?.price ?: 0.0, ccy),
+                        color = Th.text, fontSize = 34.sp, fontWeight = FontWeight.Bold,
+                    )
+                    Box(Modifier.padding(start = 10.dp, bottom = 6.dp)) { ChangePill(ip?.changePct ?: 0.0) }
+                }
+                if (ip?.isUSD == true) {
+                    Text("≈ ${Fmt.tl(ip.tryValue)}", color = Th.textDim, fontSize = 13.sp)
+                }
+            }
+
+            // Chart-mode toggle + timeframe selector.
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    listOf(ChartMode.LINE to "Çizgi", ChartMode.CANDLE to "Mum").forEach { (m, label) ->
+                        val sel = m == mode
+                        Box(
+                            Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(if (sel) Th.accent.copy(alpha = 0.18f) else Th.surface)
+                                .clickable { mode = m }
+                                .padding(horizontal = 12.dp, vertical = 6.dp),
+                        ) { Text(label, color = if (sel) Th.accent else Th.textDim, fontSize = 12.sp) }
+                    }
+                }
+                Spacer(Modifier.weight(1f))
+                if (loadingOlder || loadingNewer) {
+                    Text(if (loadingOlder) "Geçmiş yükleniyor…" else "Güncel yükleniyor…",
+                        color = Th.textDim, fontSize = 10.sp)
+                }
+            }
+
+            Card(padding = androidx.compose.foundation.layout.PaddingValues(8.dp)) {
+                PriceChart(
+                    candles = displayCandles,
+                    mode = mode,
+                    trendUp = (ip?.changePct ?: 0.0) >= 0,
+                    currency = ccy,
+                    resetToken = chartReset,
+                    canLoadOlder = hasMoreHistory,
+                    canLoadNewer = hasMoreFuture,
+                    onReachStart = { scope.launch { loadOlder() } },
+                    onReachEnd = { scope.launch { loadNewer() } },
                 )
-                Box(Modifier.padding(start = 10.dp, bottom = 6.dp)) { ChangePill(ip?.changePct ?: 0.0) }
             }
 
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -149,16 +256,12 @@ fun AssetDetailScreen(code: String, auth: AuthStore, store: PriceStore, onBack: 
                 }
             }
 
-            Card(padding = androidx.compose.foundation.layout.PaddingValues(8.dp)) {
-                PriceChart(series)
-            }
-
             stats?.let { s ->
                 Card {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        StatTile("24s Açılış", Fmt.tl(s.open))
-                        StatTile("24s Yüksek", Fmt.tl(s.high), valueColor = Th.up)
-                        StatTile("24s Düşük", Fmt.tl(s.low), valueColor = Th.down)
+                        StatTile("24s Açılış", Fmt.money(s.open, ccy))
+                        StatTile("24s Yüksek", Fmt.money(s.high, ccy), valueColor = Th.up)
+                        StatTile("24s Düşük", Fmt.money(s.low, ccy), valueColor = Th.down)
                     }
                 }
             }
@@ -166,8 +269,8 @@ fun AssetDetailScreen(code: String, auth: AuthStore, store: PriceStore, onBack: 
             ip?.let {
                 Card {
                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        StatTile("Alış", Fmt.tl(it.bid), valueColor = Th.up)
-                        StatTile("Satış", Fmt.tl(it.ask), valueColor = Th.down)
+                        StatTile("Alış", Fmt.money(it.bid, ccy), valueColor = Th.up)
+                        StatTile("Satış", Fmt.money(it.ask, ccy), valueColor = Th.down)
                         StatTile("Sağlayıcı", it.provider.ifEmpty { "-" }, valueColor = Th.textDim)
                     }
                 }
@@ -185,6 +288,7 @@ fun AssetDetailScreen(code: String, auth: AuthStore, store: PriceStore, onBack: 
     if (showAlert) {
         AlertDialogCreate(
             currentPrice = ip?.price ?: 0.0,
+            currency = ip?.currency,
             onDismiss = { showAlert = false },
             onCreate = { threshold, direction ->
                 showAlert = false
@@ -248,17 +352,19 @@ private fun cryptoSupply(d: InstrumentDetail): List<Metric> = buildList {
 }
 
 private fun stockStats(d: InstrumentDetail): List<Metric> = buildList {
-    d.dayHigh?.let { add(Metric("Gün Yüksek", Fmt.tl(it))) }
-    d.dayLow?.let { add(Metric("Gün Düşük", Fmt.tl(it))) }
-    d.week52High?.let { add(Metric("52h Yüksek", Fmt.tl(it))) }
-    d.week52Low?.let { add(Metric("52h Düşük", Fmt.tl(it))) }
+    val c = d.currency
+    if (c == "USD") d.priceTry?.let { if (it > 0) add(Metric("Fiyat (₺)", Fmt.tl(it))) }
+    d.dayHigh?.let { add(Metric("Gün Yüksek", Fmt.money(it, c))) }
+    d.dayLow?.let { add(Metric("Gün Düşük", Fmt.money(it, c))) }
+    d.week52High?.let { add(Metric("52h Yüksek", Fmt.money(it, c))) }
+    d.week52Low?.let { add(Metric("52h Düşük", Fmt.money(it, c))) }
     d.volume?.let { add(Metric("Hacim", Fmt.compact(it))) }
 }
 
 private fun stockInfo(d: InstrumentDetail): List<Metric> = buildList {
     d.longName?.let { add(Metric("Şirket", it)) }
-    d.exchange?.let { add(Metric("Borsa", it)) }
-    d.priceUsd?.let { add(Metric("Fiyat (USD)", Fmt.usd(it))) }
+    d.exchange?.let { add(Metric("Borsa", if (it == "IST") "BIST" else it)) }
+    d.priceUsd?.let { if (d.currency == "USD") add(Metric("Fiyat (USD)", Fmt.usd(it))) }
 }
 
 private fun goldMetrics(d: InstrumentDetail): List<Metric> = buildList {
@@ -315,9 +421,10 @@ private fun MetricCell(m: Metric, skeleton: Boolean, modifier: Modifier) {
 }
 
 @Composable
-private fun AlertDialogCreate(currentPrice: Double, onDismiss: () -> Unit, onCreate: (Double, String) -> Unit) {
+private fun AlertDialogCreate(currentPrice: Double, currency: String?, onDismiss: () -> Unit, onCreate: (Double, String) -> Unit) {
     var threshold by remember { mutableStateOf(if (currentPrice > 0) Fmt.number(currentPrice).replace(",", ".").replace(" ", "") else "") }
     var direction by remember { mutableStateOf("above") }
+    val sym = if (currency == "USD") "$" else "₺"
     AlertDialog(
         onDismissRequest = onDismiss,
         containerColor = Th.surface,
@@ -327,7 +434,7 @@ private fun AlertDialogCreate(currentPrice: Double, onDismiss: () -> Unit, onCre
                 OutlinedTextField(
                     value = threshold,
                     onValueChange = { threshold = it },
-                    label = { Text("Eşik fiyatı (₺)") },
+                    label = { Text("Eşik fiyatı ($sym)") },
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 )

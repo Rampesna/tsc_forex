@@ -21,9 +21,18 @@ struct AssetDetailView: View {
     @State private var tf = "1G"
     @State private var loadingChart = false
     @State private var loadingOlder = false
+    @State private var loadingNewer = false
     @State private var hasMoreHistory = true
+    // True when we've trimmed the most-recent candles off the render window
+    // (the user panned back in time). While true, the present isn't on screen,
+    // so we must NOT fold the live price into the last visible candle.
+    @State private var hasMoreFuture = false
     @State private var chartReset = 0
-    private let pageSize = 500
+    // Sliding window: fetch older/newer pages of this size and keep at most
+    // `maxWindow` candles rendered so Swift Charts stays smooth no matter how
+    // far the user scrolls into history.
+    private let pageSize = 300
+    private let maxWindow = 900
     @State private var showAlert = false
     @State private var convAmount = "1"
 
@@ -44,7 +53,8 @@ struct AssetDetailView: View {
     // Fold the live WS price into the last candle so the chart moves in real time
     // between fetches (Binance-style) without refetching history.
     private var displayCandles: [Candle] {
-        guard let p = price?.price, p > 0, let last = candles.last else { return candles }
+        // Only fold the live price in when the present is actually on screen.
+        guard !hasMoreFuture, let p = price?.price, p > 0, let last = candles.last else { return candles }
         var arr = candles
         arr[arr.count - 1] = Candle(
             bucket: last.bucket,
@@ -184,11 +194,14 @@ struct AssetDetailView: View {
                 } else {
                     PriceChart(candles: displayCandles, mode: mode, trendUp: trendUp,
                                onReachStart: { Task { await loadOlder() } },
+                               onReachEnd: { Task { await loadNewer() } },
+                               canLoadOlder: hasMoreHistory,
+                               canLoadNewer: hasMoreFuture,
                                resetToken: chartReset, currency: price?.currency)
                         .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                         .overlay(alignment: .topLeading) {
-                            if loadingOlder {
-                                Text("Geçmiş yükleniyor…")
+                            if loadingOlder || loadingNewer {
+                                Text(loadingOlder ? "Geçmiş yükleniyor…" : "Güncel yükleniyor…")
                                     .font(.system(size: 10)).foregroundStyle(Theme.textDim)
                                     .padding(.horizontal, 8).padding(.vertical, 3)
                                     .background(Theme.bgElevated.opacity(0.85), in: Capsule())
@@ -390,11 +403,14 @@ struct AssetDetailView: View {
     private func loadChart() async {
         loadingChart = true; defer { loadingChart = false }
         hasMoreHistory = true
+        hasMoreFuture = false
         let client = APIClient(token: auth.accessToken)
         let frame = timeframes.first { $0.key == tf } ?? timeframes[0]
         let from = Calendar.current.date(byAdding: .day, value: -frame.days, to: Date())
         if let c = try? await client.candles(code: code, interval: frame.interval, from: from) {
-            candles = c
+            // Keep the render window bounded even on the initial fetch.
+            candles = Array(c.suffix(maxWindow))
+            if c.count > maxWindow { hasMoreHistory = true }
         } else {
             candles = []
         }
@@ -402,11 +418,13 @@ struct AssetDetailView: View {
         chartReset += 1
     }
 
-    // Lazy-load an older page when the user pans to the start of the chart. Each
-    // page is an indexed range read on the compact candles table (no perf hit),
-    // and results are prepended without disturbing the scroll position.
+    // Lazy-load an older page when the user pans to the start of the chart, then
+    // drop the newest candles that scrolled off-screen so the rendered set stays
+    // bounded (sliding window). Each page is an indexed range read on the compact
+    // candles table (no perf hit); scroll position is preserved because the user
+    // is anchored to the OLD edge we're keeping.
     private func loadOlder() async {
-        guard !loadingOlder, hasMoreHistory, let oldest = candles.first?.bucket else { return }
+        guard !loadingOlder, !loadingNewer, hasMoreHistory, let oldest = candles.first?.bucket else { return }
         loadingOlder = true; defer { loadingOlder = false }
         let client = APIClient(token: auth.accessToken)
         let frame = timeframes.first { $0.key == tf } ?? timeframes[0]
@@ -416,12 +434,59 @@ struct AssetDetailView: View {
             hasMoreHistory = false
             return
         }
-        // Merge older + current, de-duped by bucket, sorted ascending.
         var byBucket: [Date: Candle] = [:]
         for c in older { byBucket[c.bucket] = c }
         for c in candles { byBucket[c.bucket] = c }
-        candles = byBucket.values.sorted { $0.bucket < $1.bucket }
+        var merged = byBucket.values.sorted { $0.bucket < $1.bucket }
+        if merged.count > maxWindow {
+            // Keep the oldest window slice (user is scrolling back); drop the newest.
+            merged = Array(merged.prefix(maxWindow))
+            hasMoreFuture = true
+        }
+        candles = merged
         if older.count < pageSize { hasMoreHistory = false }
+    }
+
+    // Lazy-load a newer page when the user pans back toward the present, dropping
+    // the oldest off-screen candles. Once we reach the live edge we re-enable
+    // folding the live price into the last candle.
+    private func loadNewer() async {
+        guard !loadingNewer, !loadingOlder, hasMoreFuture, let newest = candles.last?.bucket else { return }
+        loadingNewer = true; defer { loadingNewer = false }
+        let client = APIClient(token: auth.accessToken)
+        let frame = timeframes.first { $0.key == tf } ?? timeframes[0]
+        let from = newest.addingTimeInterval(1)
+        guard let newer = try? await client.candles(code: code, interval: frame.interval, from: from, limit: pageSize),
+              !newer.isEmpty else {
+            hasMoreFuture = false
+            return
+        }
+        var byBucket: [Date: Candle] = [:]
+        for c in candles { byBucket[c.bucket] = c }
+        for c in newer { byBucket[c.bucket] = c }
+        var merged = byBucket.values.sorted { $0.bucket < $1.bucket }
+        if merged.count > maxWindow {
+            // Keep the newest window slice (user is scrolling forward); drop the oldest.
+            merged = Array(merged.suffix(maxWindow))
+            hasMoreHistory = true
+        }
+        candles = merged
+        // Reached the live edge? Stop paging forward and resume live folding.
+        let step = stepSeconds(frame.interval)
+        if newer.count < pageSize || (merged.last?.bucket ?? .distantPast) >= Date().addingTimeInterval(-step * 2) {
+            hasMoreFuture = false
+        }
+    }
+
+    private func stepSeconds(_ interval: String) -> TimeInterval {
+        switch interval {
+        case "5m":  return 300
+        case "1h":  return 3_600
+        case "1d":  return 86_400
+        case "1w":  return 604_800
+        case "1mo": return 2_629_800
+        default:    return 300
+        }
     }
 
     private func loadStats() async {

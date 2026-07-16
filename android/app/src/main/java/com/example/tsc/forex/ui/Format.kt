@@ -20,6 +20,26 @@ object Fmt {
     /** Price with the Turkish Lira symbol, e.g. "₺46,9947". */
     fun tl(v: Double): String = "₺" + number(v)
 
+    /** Currency-aware price: USD → "$…", anything else → "₺…". */
+    fun money(v: Double, currency: String?): String =
+        if (currency == "USD") "$" + number(v) else tl(v)
+
+    /** Compact price for axis labels/tags (no currency symbol). */
+    fun compactPrice(v: Double): String {
+        val a = abs(v)
+        return when {
+            a >= 1_000_000 -> compact(v)
+            a >= 1000 -> String.format(tr, "%,.0f", v)
+            else -> number(v)
+        }
+    }
+
+    /** Signed percentage, e.g. "+3.42%". */
+    fun signedPct(v: Double): String {
+        val sign = if (v > 0) "+" else ""
+        return String.format(tr, "%s%.2f%%", sign, v)
+    }
+
     fun pct(v: Double): String {
         val sign = if (v > 0) "+" else ""
         return String.format(tr, "%s%.2f%%", sign, v)

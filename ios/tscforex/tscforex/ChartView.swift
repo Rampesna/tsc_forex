@@ -1,11 +1,11 @@
 //
 //  ChartView.swift
 //  Binance-grade interactive price chart built on Swift Charts:
-//    • drag to pan (native horizontal scroll)
+//    • drag to pan (native horizontal scroll) with a sliding data window
 //    • pinch to zoom (adjusts the visible time window)
-//    • tap to drop a crosshair with an OHLC tooltip + trailing price bubble
-//    • line/area and candlestick modes with an MA(7) overlay and a tick-activity
-//      histogram underneath (like Binance's volume pane).
+//    • full crosshair: vertical + horizontal rules with price/time axis tags
+//    • line/area and candlestick modes with MA(7)+MA(25) overlays and a
+//      tick-activity histogram underneath (like Binance's volume pane).
 //
 
 import SwiftUI
@@ -17,10 +17,13 @@ struct PriceChart: View {
     let candles: [Candle]
     let mode: ChartMode
     let trendUp: Bool
-    // Called when the user pans near the oldest bar so the parent can lazy-load
-    // an older page. resetToken changes only on timeframe switch (re-centers the
-    // window); it does NOT change when older pages are prepended.
+    // Called when the user pans near the oldest / newest bar so the parent can
+    // page the sliding window. resetToken changes only on timeframe switch
+    // (re-centers the window); it does NOT change when pages are swapped.
     var onReachStart: () -> Void = {}
+    var onReachEnd: () -> Void = {}
+    var canLoadOlder: Bool = false
+    var canLoadNewer: Bool = false
     var resetToken: Int = 0
     var currency: String? = nil
 
@@ -29,8 +32,9 @@ struct PriceChart: View {
             emptyState
         } else {
             InteractiveChart(candles: candles, mode: mode, trendUp: trendUp,
-                             onReachStart: onReachStart, resetToken: resetToken,
-                             currency: currency)
+                             onReachStart: onReachStart, onReachEnd: onReachEnd,
+                             canLoadOlder: canLoadOlder, canLoadNewer: canLoadNewer,
+                             resetToken: resetToken, currency: currency)
         }
     }
 
@@ -55,6 +59,9 @@ private struct InteractiveChart: View {
     let mode: ChartMode
     let trendUp: Bool
     var onReachStart: () -> Void = {}
+    var onReachEnd: () -> Void = {}
+    var canLoadOlder: Bool = false
+    var canLoadNewer: Bool = false
     var resetToken: Int = 0
     var currency: String? = nil
 
@@ -64,6 +71,10 @@ private struct InteractiveChart: View {
     @State private var scrollX: Date = .now
     @State private var selectedDate: Date?
 
+    // Binance MA palette.
+    private let ma7Color = Color(red: 0.95, green: 0.77, blue: 0.24)   // gold
+    private let ma25Color = Color(red: 0.90, green: 0.35, blue: 0.72)  // pink
+
     private var lineColor: Color { trendUp ? Theme.up : Theme.down }
     private var step: TimeInterval { candleStep(candles) }
     private var fullSpan: TimeInterval {
@@ -72,7 +83,8 @@ private struct InteractiveChart: View {
     }
     private var minLen: TimeInterval { step * 8 }            // most-zoomed: ~8 candles
     private var maxLen: TimeInterval { fullSpan + step }     // whole series
-    private var maSeries: [(date: Date, value: Double)] { movingAverage(candles, period: 7) }
+    private var ma7: [(date: Date, value: Double)] { movingAverage(candles, period: 7) }
+    private var ma25: [(date: Date, value: Double)] { movingAverage(candles, period: 25) }
 
     private var selected: Candle? {
         guard let d = selectedDate else { return nil }
@@ -93,15 +105,15 @@ private struct InteractiveChart: View {
         VStack(spacing: 8) {
             header
             GeometryReader { geo in
-                priceChart(plotWidth: geo.size.width)
+                priceChart(plotSize: geo.size)
             }
-            .frame(height: 240)
+            .frame(height: 250)
             activityChart
                 .frame(height: 46)
             hint
         }
         .onAppear(perform: initWindow)
-        // Re-center only on timeframe switch — NOT when older pages are prepended
+        // Re-center only on timeframe switch — NOT when the sliding window pages
         // (that must preserve the user's scroll position).
         .onChange(of: resetToken) { _, _ in initWindow() }
         .onChange(of: mode) { _, _ in selectedDate = nil }
@@ -114,9 +126,10 @@ private struct InteractiveChart: View {
             if let c = selected {
                 crosshairReadout(c)
             } else if let last = candles.last {
-                HStack(spacing: 10) {
+                HStack(spacing: 12) {
                     legendDot(lineColor, "Fiyat")
-                    legendDot(Theme.accent.opacity(0.9), "MA7")
+                    legendDot(ma7Color, "MA7")
+                    legendDot(ma25Color, "MA25")
                     Spacer(minLength: 0)
                     Text(Fmt.money(last.close, currency: currency))
                         .font(Theme.number(13, weight: .bold)).foregroundStyle(Theme.text)
@@ -129,7 +142,7 @@ private struct InteractiveChart: View {
 
     private func legendDot(_ color: Color, _ label: String) -> some View {
         HStack(spacing: 4) {
-            Circle().fill(color).frame(width: 6, height: 6)
+            RoundedRectangle(cornerRadius: 1).fill(color).frame(width: 10, height: 3)
             Text(label).font(.system(size: 10, weight: .medium)).foregroundStyle(Theme.textDim)
         }
     }
@@ -154,14 +167,16 @@ private struct InteractiveChart: View {
     private func ohlc(_ k: String, _ v: Double) -> some View {
         HStack(spacing: 2) {
             Text(k).font(.system(size: 9)).foregroundStyle(Theme.textFaint)
-            Text(Fmt.compactPrice(v)).font(Theme.number(10, weight: .semibold)).foregroundStyle(Theme.text)
+            Text(Fmt.compactPrice(v)).font(Theme.number(10, weight: .semibold))
+                .foregroundStyle(Theme.text)
         }
     }
 
     // MARK: Price chart
 
     @ViewBuilder
-    private func priceChart(plotWidth: CGFloat) -> some View {
+    private func priceChart(plotSize: CGSize) -> some View {
+        let plotWidth = plotSize.width
         let visibleCount = max(visibleLen / step, 1)
         let barW = max(2.0, min(16.0, (plotWidth / visibleCount) * 0.62))
         Chart {
@@ -192,25 +207,34 @@ private struct InteractiveChart: View {
                 }
             }
 
-            // MA(7) overlay
-            ForEach(maSeries, id: \.date) { p in
-                LineMark(x: .value("Zaman", p.date), y: .value("MA7", p.value), series: .value("s", "ma"))
+            // MA overlays (drawn in both modes like Binance).
+            ForEach(ma7, id: \.date) { p in
+                LineMark(x: .value("Zaman", p.date), y: .value("MA7", p.value), series: .value("s", "ma7"))
                     .interpolationMethod(.monotone)
-                    .foregroundStyle(Theme.accent.opacity(0.85))
-                    .lineStyle(StrokeStyle(lineWidth: 1.2))
+                    .foregroundStyle(ma7Color.opacity(0.9))
+                    .lineStyle(StrokeStyle(lineWidth: 1.1))
+            }
+            ForEach(ma25, id: \.date) { p in
+                LineMark(x: .value("Zaman", p.date), y: .value("MA25", p.value), series: .value("s", "ma25"))
+                    .interpolationMethod(.monotone)
+                    .foregroundStyle(ma25Color.opacity(0.85))
+                    .lineStyle(StrokeStyle(lineWidth: 1.1))
             }
 
-            // Last price dashed line + trailing bubble
+            // Last price dashed line.
             if let last = candles.last {
                 RuleMark(y: .value("Son", last.close))
                     .foregroundStyle(lineColor.opacity(0.35))
                     .lineStyle(StrokeStyle(lineWidth: 1, dash: [2, 3]))
             }
 
-            // Crosshair
+            // Crosshair — vertical + horizontal rules through the selected bar.
             if let c = selected {
                 RuleMark(x: .value("Seçili", c.bucket))
                     .foregroundStyle(Theme.textDim.opacity(0.55))
+                    .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                RuleMark(y: .value("SeçiliFiyat", c.close))
+                    .foregroundStyle(Theme.textDim.opacity(0.45))
                     .lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
                 PointMark(x: .value("Seçili", c.bucket), y: .value("Fiyat", c.close))
                     .symbolSize(70)
@@ -229,10 +253,13 @@ private struct InteractiveChart: View {
             }
         }
         .chartXAxis {
-            AxisMarks(values: .automatic(desiredCount: 4)) { _ in
+            AxisMarks(values: .automatic(desiredCount: 4)) { value in
                 AxisGridLine().foregroundStyle(Theme.stroke.opacity(0.5))
-                AxisValueLabel(format: .dateTime.hour().minute()).font(.system(size: 9))
-                    .foregroundStyle(Theme.textDim)
+                AxisValueLabel {
+                    if let d = value.as(Date.self) {
+                        Text(axisLabel(d)).font(.system(size: 9)).foregroundStyle(Theme.textDim)
+                    }
+                }
             }
         }
         .chartScrollableAxes(.horizontal)
@@ -240,27 +267,50 @@ private struct InteractiveChart: View {
         .chartScrollPosition(x: $scrollX)
         .chartXSelection(value: $selectedDate)
         .chartOverlay { proxy in
-            // Trailing price bubble anchored to the last close.
             GeometryReader { geo in
-                if let last = candles.last, let plot = proxy.plotFrame,
-                   let y = proxy.position(forY: last.close) {
+                if let plot = proxy.plotFrame {
                     let rect = geo[plot]
-                    Text(Fmt.compactPrice(last.close))
-                        .font(Theme.number(10, weight: .bold)).foregroundStyle(.white)
-                        .padding(.horizontal, 5).padding(.vertical, 2)
-                        .background(lineColor, in: RoundedRectangle(cornerRadius: 4))
-                        .position(x: rect.maxX - 22, y: rect.minY + y)
+                    // Trailing last-price tag.
+                    if let last = candles.last, let y = proxy.position(forY: last.close) {
+                        axisTag(Fmt.compactPrice(last.close), bg: lineColor)
+                            .position(x: rect.maxX - 22, y: rect.minY + y)
+                    }
+                    // Crosshair price tag on the right axis + time tag on the bottom.
+                    if let c = selected,
+                       let y = proxy.position(forY: c.close),
+                       let x = proxy.position(forX: c.bucket) {
+                        axisTag(Fmt.compactPrice(c.close), bg: Theme.surfaceHi, fg: Theme.text)
+                            .position(x: rect.maxX - 22, y: rect.minY + y)
+                        Text(c.bucket.formatted(.dateTime.month(.twoDigits).day().hour().minute()))
+                            .font(Theme.number(9, weight: .semibold)).foregroundStyle(Theme.text)
+                            .padding(.horizontal, 5).padding(.vertical, 2)
+                            .background(Theme.surfaceHi, in: RoundedRectangle(cornerRadius: 4))
+                            .position(x: rect.minX + x, y: rect.maxY - 8)
+                    }
                 }
             }
         }
         .simultaneousGesture(zoomGesture)
         .onChange(of: scrollX) { _, newX in
             if selectedDate != nil { selectedDate = nil }
-            // Near the oldest loaded bar → ask the parent for an older page.
-            if let first = candles.first?.bucket, newX <= first.addingTimeInterval(step * 3) {
+            // Near the oldest loaded bar → page older.
+            if canLoadOlder, let first = candles.first?.bucket,
+               newX <= first.addingTimeInterval(step * 3) {
                 onReachStart()
             }
+            // Near the newest loaded bar → page newer (only when we trimmed the future).
+            if canLoadNewer, let last = candles.last?.bucket,
+               newX.addingTimeInterval(visibleLen) >= last.addingTimeInterval(-step * 3) {
+                onReachEnd()
+            }
         }
+    }
+
+    private func axisTag(_ text: String, bg: Color, fg: Color = .white) -> some View {
+        Text(text)
+            .font(Theme.number(10, weight: .bold)).foregroundStyle(fg)
+            .padding(.horizontal, 5).padding(.vertical, 2)
+            .background(bg, in: RoundedRectangle(cornerRadius: 4))
     }
 
     // MARK: Activity (tick count) pane — Binance-style volume analogue
@@ -307,6 +357,17 @@ private struct InteractiveChart: View {
             scrollX = last.addingTimeInterval(-visibleLen + step)
         }
         selectedDate = nil
+    }
+
+    // Axis label adapts to the loaded interval span (intraday → HH:mm, else date).
+    private func axisLabel(_ d: Date) -> String {
+        if fullSpan <= 3 * 86_400 {
+            return d.formatted(.dateTime.hour().minute())
+        } else if fullSpan <= 365 * 86_400 {
+            return d.formatted(.dateTime.month(.abbreviated).day())
+        } else {
+            return d.formatted(.dateTime.month(.abbreviated).year(.twoDigits))
+        }
     }
 }
 

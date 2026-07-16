@@ -212,7 +212,7 @@ private fun GainersStrip(store: PriceStore, onOpen: (String) -> Unit) {
                         AssetIcon(ip, size = 24)
                         Text(ip.displayName, color = Th.textDim, fontSize = 11.sp, maxLines = 1)
                     }
-                    Text(Fmt.tl(ip.price), color = Th.text, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+                    Text(Fmt.money(ip.price, ip.currency), color = Th.text, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1)
                     ChangePill(ip.changePct)
                 }
             }
@@ -252,8 +252,11 @@ private fun MarketRow(
                 .height(28.dp)
                 .padding(end = 10.dp),
         )
-        Column(horizontalAlignment = Alignment.End, modifier = Modifier.width(96.dp)) {
-            Text(Fmt.tl(ip.price), color = Th.text, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+        Column(horizontalAlignment = Alignment.End, modifier = Modifier.width(104.dp)) {
+            Text(Fmt.money(ip.price, ip.currency), color = Th.text, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1)
+            if (ip.isUSD) {
+                Text("≈ ${Fmt.tl(ip.tryValue)}", color = Th.textFaint, fontSize = 10.sp, maxLines = 1)
+            }
             ChangePill(ip.changePct)
         }
         IconButton(onClick = onFav, modifier = Modifier.size(36.dp)) {
@@ -290,7 +293,7 @@ private fun ReorderRow(
                 .padding(start = 12.dp),
         ) {
             Text(ip.displayName, color = Th.text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
-            Text(Fmt.tl(ip.price), color = Th.textDim, fontSize = 12.sp, maxLines = 1)
+            Text(Fmt.money(ip.price, ip.currency), color = Th.textDim, fontSize = 12.sp, maxLines = 1)
         }
         IconButton(onClick = onUp, enabled = canUp) {
             Icon(Icons.Filled.KeyboardArrowUp, "yukarı", tint = if (canUp) Th.text else Th.textFaint)
