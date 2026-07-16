@@ -9,6 +9,7 @@ import type {
   GamProfile,
   InstrumentDetail,
   InstrumentPrice,
+  MarketInsight,
   Leaderboard,
   Notification,
   PortfolioOverview,
@@ -55,6 +56,12 @@ export const api = {
     return request<{ code: string; interval: string; candles: Candle[] }>(url);
   },
   detail: (code: string) => request<InstrumentDetail>(`/instruments/${code}/detail`),
+  marketInsight: (code: string) =>
+    request<MarketInsight>("/me/ai/market-insight", {
+      method: "POST",
+      auth: true,
+      body: { code },
+    }),
 
   // --- profile ---
   profile: () => request<Profile>("/me/profile", { auth: true }),

@@ -168,6 +168,18 @@ export interface NotificationPayload {
   price: number;
 }
 
+export interface MarketInsight {
+  code: string;
+  title: string;
+  stance: "positive" | "neutral" | "cautious";
+  stance_label: string;
+  summary: string;
+  factors: string[];
+  risk_note: string;
+  generated_at: string;
+  disclaimer: string;
+}
+
 // --- Gamification (streak / XP / badges / leaderboard) ---
 
 export interface GamBadge {

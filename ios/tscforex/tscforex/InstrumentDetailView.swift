@@ -34,6 +34,9 @@ struct AssetDetailView: View {
     private let maxWindow = 600
     @State private var showAlert = false
     @State private var convAmount = "1"
+    @State private var aiInsight: MarketInsight?
+    @State private var aiLoading = false
+    @State private var aiError: String?
 
     // Binance-style time ranges. Long ranges use daily/weekly/monthly buckets to
     // match backfilled history; short ranges use intraday buckets from live data.
@@ -57,6 +60,7 @@ struct AssetDetailView: View {
                     priceHeader
                     stats24h
                     chartCard
+                    aiInsightCard
                     detailSections
                     converterCard
                     Color.clear.frame(height: 96)
@@ -194,6 +198,97 @@ struct AssetDetailView: View {
                 }
                 SegBar(items: timeframes.map { ($0.key, $0.label) }, selection: $tf)
             }
+        }
+    }
+
+    // MARK: TSC AI insight
+
+    private var aiInsightCard: some View {
+        Card(padding: 16) {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 7) {
+                    Image(systemName: "sparkles")
+                        .foregroundStyle(Theme.accent)
+                    Text("TSC AI BAKIŞI")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(Theme.accent)
+                        .tracking(1)
+                    Text("BETA")
+                        .font(.system(size: 8, weight: .bold))
+                        .foregroundStyle(Theme.textFaint)
+                        .padding(.horizontal, 5).padding(.vertical, 3)
+                        .background(Theme.surfaceHi, in: Capsule())
+                    Spacer()
+                    if let insight = aiInsight {
+                        Text(insight.stanceLabel)
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(aiStanceColor(insight.stance))
+                            .padding(.horizontal, 8).padding(.vertical, 4)
+                            .background(aiStanceColor(insight.stance).opacity(0.12), in: Capsule())
+                    }
+                }
+
+                if let insight = aiInsight {
+                    Text(insight.title)
+                        .font(.system(size: 17, weight: .bold))
+                        .foregroundStyle(Theme.text)
+                    Text(insight.summary)
+                        .font(.system(size: 13))
+                        .foregroundStyle(Theme.textDim)
+                        .fixedSize(horizontal: false, vertical: true)
+                    VStack(alignment: .leading, spacing: 5) {
+                        ForEach(insight.factors, id: \.self) { factor in
+                            Text("• \(factor)")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(Theme.text)
+                        }
+                    }
+                    Label(insight.riskNote, systemImage: "exclamationmark.triangle")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.textDim)
+                    Text(insight.disclaimer)
+                        .font(.system(size: 9))
+                        .foregroundStyle(Theme.textFaint)
+                } else {
+                    Text("Canlı fiyat hareketini ve gün içi yönü kısa bir risk senaryosuna dönüştür.")
+                        .font(.system(size: 13))
+                        .foregroundStyle(Theme.textDim)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+
+                if let aiError {
+                    Text(aiError)
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.down)
+                }
+
+                Button {
+                    Haptics.tap()
+                    Task { await loadAIInsight() }
+                } label: {
+                    HStack(spacing: 8) {
+                        if aiLoading { ProgressView().tint(Theme.bg).scaleEffect(0.75) }
+                        Image(systemName: aiLoading ? "hourglass" : "sparkles")
+                        Text(auth.isLoggedIn ? (aiLoading ? "Analiz ediliyor" : "AI yorumunu getir") : "AI yorumu için giriş yap")
+                    }
+                    .font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Theme.bg)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 11)
+                    .background(Theme.accent, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                }
+                .buttonStyle(.plain)
+                .disabled(aiLoading || !auth.isLoggedIn)
+                .opacity(auth.isLoggedIn ? 1 : 0.55)
+            }
+        }
+    }
+
+    private func aiStanceColor(_ stance: String) -> Color {
+        switch stance {
+        case "positive": return Theme.up
+        case "cautious": return Color(hex: 0xE6B565)
+        default: return Theme.accent
         }
     }
 
@@ -407,6 +502,21 @@ struct AssetDetailView: View {
         }
         // Re-center the visible window on the freshly loaded interval.
         chartReset += 1
+    }
+
+    private func loadAIInsight() async {
+        guard auth.isLoggedIn else {
+            aiError = "Bu özellik için hesabınızla giriş yapın."
+            return
+        }
+        aiLoading = true
+        aiError = nil
+        defer { aiLoading = false }
+        do {
+            aiInsight = try await APIClient(token: auth.accessToken).marketInsight(code: code)
+        } catch {
+            aiError = error.localizedDescription
+        }
     }
 
     // Lazy-load an older page when the user pans to the start of the chart, then

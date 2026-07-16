@@ -23,7 +23,9 @@ export type IconName =
   | "mail"
   | "lock"
   | "key"
-  | "external";
+  | "external"
+  | "clock"
+  | "sparkles";
 
 const PATHS: Record<IconName, ReactElement> = {
   markets: (
@@ -118,6 +120,18 @@ const PATHS: Record<IconName, ReactElement> = {
     <>
       <circle cx="8" cy="8" r="4" />
       <path d="M11 11l8 8M16 16l2-2M19 19l2-2" />
+    </>
+  ),
+  clock: (
+    <>
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M12 7v5l3.5 2" />
+    </>
+  ),
+  sparkles: (
+    <>
+      <path d="M12 3l1.1 3.4L16.5 8l-3.4 1.1L12 12.5l-1.1-3.4L7.5 8l3.4-1.6z" />
+      <path d="M18.5 13.5l.7 2.1 2.1.7-2.1.7-.7 2.1-.7-2.1-2.1-.7 2.1-.7zM5 14l.8 2.5 2.5.8-2.5.8L5 20.5l-.8-2.4-2.5-.8 2.5-.8z" />
     </>
   ),
 };

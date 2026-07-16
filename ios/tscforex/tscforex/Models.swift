@@ -69,6 +69,27 @@ struct PricesResponse: Codable {
     let prices: [InstrumentPrice]
 }
 
+// Structured, risk-oriented brief from POST /me/ai/market-insight.
+// The OpenAI credential never reaches the app; this is generated server-side.
+struct MarketInsight: Codable {
+    let code: String
+    let title: String
+    let stance: String
+    let stanceLabel: String
+    let summary: String
+    let factors: [String]
+    let riskNote: String
+    let generatedAt: String
+    let disclaimer: String
+
+    enum CodingKeys: String, CodingKey {
+        case code, title, stance, summary, factors, disclaimer
+        case stanceLabel = "stance_label"
+        case riskNote = "risk_note"
+        case generatedAt = "generated_at"
+    }
+}
+
 // A registered passkey (WebAuthn credential) for the signed-in user.
 struct Passkey: Codable, Identifiable {
     let id: String

@@ -97,6 +97,12 @@ class ApiClient(
     suspend fun detail(code: String): InstrumentDetail =
         InstrumentDetail.from(unwrap(JSONObject(getRaw("instruments/$code/detail"))))
 
+    suspend fun marketInsight(code: String): MarketInsight =
+        MarketInsight.from(unwrap(postJson(
+            "me/ai/market-insight",
+            JSONObject().put("code", code),
+        )))
+
     suspend fun sparklines(points: Int = 30): Map<String, List<Double>> {
         val raw = getRaw("instruments/sparklines?points=$points")
         val obj = JSONObject(raw).let { if (it.has("data")) it.getJSONObject("data") else it }

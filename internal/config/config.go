@@ -26,7 +26,19 @@ type Config struct {
 	OAuth     OAuthConfig     `mapstructure:"oauth"`
 	WebAuthn  WebAuthnConfig  `mapstructure:"webauthn"`
 	Storage   StorageConfig   `mapstructure:"storage"`
+	AI        AIConfig        `mapstructure:"ai"`
 	Log       LogConfig       `mapstructure:"log" validate:"required"`
+}
+
+// AIConfig controls the server-side OpenAI integration. The API key must stay
+// on the backend; web and mobile clients only call the authenticated TSC route.
+type AIConfig struct {
+	Enabled         bool          `mapstructure:"enabled"`
+	APIKey          string        `mapstructure:"api_key"`
+	Model           string        `mapstructure:"model"`
+	BaseURL         string        `mapstructure:"base_url"`
+	Timeout         time.Duration `mapstructure:"timeout"`
+	MaxOutputTokens int           `mapstructure:"max_output_tokens"`
 }
 
 // StorageConfig configures the S3/MinIO object store used for user avatars and
@@ -172,8 +184,8 @@ type RESTProviderConfig struct {
 	// CryptoBaseURL is the Binance batch price endpoint used for crypto legs
 	// (e.g. https://api.binance.com/api/v3/ticker/price). Symbols are quoted in
 	// USDT and converted to TRY via the live USD/TRY leg. Swappable/optional.
-	CryptoBaseURL string        `mapstructure:"crypto_base_url"`
-	APIKey        string        `mapstructure:"api_key"`
+	CryptoBaseURL string `mapstructure:"crypto_base_url"`
+	APIKey        string `mapstructure:"api_key"`
 	// Binance API credentials. Public market data (prices) needs NO key, so the
 	// crypto feed does not use these; they are plumbed for future authenticated
 	// endpoints (account/user features) and kept only in the K8s secret.

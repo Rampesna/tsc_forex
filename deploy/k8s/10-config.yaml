@@ -25,6 +25,13 @@ data:
   # the live USD/TRY leg. Public market data needs no API key.
   APP_PROVIDER_REST_CRYPTO_BASE_URL: "https://api.binance.com/api/v3/ticker/price"
   APP_PROVIDER_SYNTHETIC_TICK_INTERVAL: "5s"
+  # AI market commentary. The API key is injected through tsc-forex-secrets;
+  # client applications never receive it.
+  APP_AI_ENABLED: "true"
+  APP_AI_MODEL: "gpt-5.6-luna"
+  APP_AI_BASE_URL: "https://api.openai.com/v1"
+  APP_AI_TIMEOUT: "8s"
+  APP_AI_MAX_OUTPUT_TOKENS: "500"
   # Object storage (MinIO) for profile pictures — shared across all pods.
   APP_STORAGE_ENABLED: "true"
   APP_STORAGE_ENDPOINT: "minio:9000"
@@ -77,4 +84,5 @@ data:
 #   kubectl -n tsc-forex create secret generic tsc-forex-secrets \
 #     --from-literal=APP_DATABASE_USER=... --from-literal=APP_DATABASE_PASSWORD=... \
 #     --from-literal=APP_JWT_SECRET=... --from-literal=APP_REDIS_PASSWORD=... \
-#     --from-literal=APP_STORAGE_ACCESS_KEY=... --from-literal=APP_STORAGE_SECRET_KEY=...
+#     --from-literal=APP_STORAGE_ACCESS_KEY=... --from-literal=APP_STORAGE_SECRET_KEY=... \
+#     --from-literal=APP_AI_API_KEY=...

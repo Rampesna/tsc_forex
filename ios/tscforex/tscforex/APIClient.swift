@@ -269,6 +269,14 @@ struct APIClient {
         return try makeDecoder().decode(InstrumentDetail.self, from: data)
     }
 
+    func marketInsight(code: String) async throws -> MarketInsight {
+        let data = try await request(
+            "me/ai/market-insight", method: "POST",
+            body: ["code": code], authed: true
+        )
+        return try makeDecoder().decode(MarketInsight.self, from: data)
+    }
+
     // MARK: Watchlist
 
     func watchlist() async throws -> [String] {

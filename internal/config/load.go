@@ -276,6 +276,13 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("storage.use_ssl", false)
 	v.SetDefault("storage.region", "us-east-1")
 
+	v.SetDefault("ai.enabled", false)
+	v.SetDefault("ai.api_key", "")
+	v.SetDefault("ai.model", "gpt-5.6-luna")
+	v.SetDefault("ai.base_url", "https://api.openai.com/v1")
+	v.SetDefault("ai.timeout", "8s")
+	v.SetDefault("ai.max_output_tokens", 500)
+
 	v.SetDefault("webauthn.enabled", false)
 	v.SetDefault("webauthn.rp_display_name", "TSC Forex")
 

@@ -42,6 +42,7 @@ import androidx.compose.ui.unit.sp
 import com.example.tsc.forex.data.Candle
 import com.example.tsc.forex.data.InstrumentDetail
 import com.example.tsc.forex.data.InstrumentStats
+import com.example.tsc.forex.data.MarketInsight
 import com.example.tsc.forex.store.AuthStore
 import com.example.tsc.forex.store.PriceStore
 import com.example.tsc.forex.ui.Card
@@ -87,6 +88,9 @@ fun AssetDetailScreen(code: String, auth: AuthStore, store: PriceStore, onBack: 
     var showAlert by remember { mutableStateOf(false) }
     var toast by remember { mutableStateOf<String?>(null) }
     var isFav by remember { mutableStateOf(store.isFavorite(code)) }
+    var aiInsight by remember { mutableStateOf<MarketInsight?>(null) }
+    var aiLoading by remember { mutableStateOf(false) }
+    var aiError by remember { mutableStateOf<String?>(null) }
 
     // Window paging bookkeeping.
     var loadingOlder by remember { mutableStateOf(false) }
@@ -272,6 +276,75 @@ fun AssetDetailScreen(code: String, auth: AuthStore, store: PriceStore, onBack: 
                         StatTile("Alış", Fmt.money(it.bid, ccy), valueColor = Th.up)
                         StatTile("Satış", Fmt.money(it.ask, ccy), valueColor = Th.down)
                         StatTile("Sağlayıcı", it.provider.ifEmpty { "-" }, valueColor = Th.textDim)
+                    }
+                }
+            }
+
+            Card {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text("✦", color = Th.accent, fontSize = 18.sp, fontWeight = FontWeight.Bold)
+                        Text(
+                            "  TSC AI BAKIŞI",
+                            color = Th.accent, fontSize = 11.sp, fontWeight = FontWeight.Bold,
+                        )
+                        Text(
+                            "  BETA", color = Th.textFaint, fontSize = 9.sp,
+                            modifier = Modifier.weight(1f),
+                        )
+                        aiInsight?.let { insight ->
+                            Text(
+                                insight.stanceLabel,
+                                color = when (insight.stance) {
+                                    "positive" -> Th.up
+                                    "cautious" -> Th.down
+                                    else -> Th.accent
+                                },
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                            )
+                        }
+                    }
+
+                    aiInsight?.let { insight ->
+                        Text(insight.title, color = Th.text, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+                        Text(insight.summary, color = Th.textDim, fontSize = 13.sp)
+                        insight.factors.forEach { factor ->
+                            Text("• $factor", color = Th.text, fontSize = 12.sp, fontWeight = FontWeight.Medium)
+                        }
+                        Text("⚠ ${insight.riskNote}", color = Th.textDim, fontSize = 11.sp)
+                        Text(insight.disclaimer, color = Th.textFaint, fontSize = 9.sp)
+                    } ?: Text(
+                        "Canlı fiyat hareketini ve gün içi yönü kısa bir risk senaryosuna dönüştür.",
+                        color = Th.textDim, fontSize = 13.sp,
+                    )
+
+                    aiError?.let { Text(it, color = Th.down, fontSize = 11.sp) }
+
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(if (auth.isLoggedIn) Th.accent else Th.accent.copy(alpha = 0.45f))
+                            .clickable(enabled = auth.isLoggedIn && !aiLoading) {
+                                scope.launch {
+                                    aiLoading = true
+                                    aiError = null
+                                    runCatching { auth.newApiClient().marketInsight(code) }
+                                        .onSuccess { aiInsight = it }
+                                        .onFailure { aiError = it.message ?: "AI yorumu şu anda alınamadı." }
+                                    aiLoading = false
+                                }
+                            }
+                            .padding(vertical = 11.dp),
+                        contentAlignment = Alignment.Center,
+                    ) {
+                        Text(
+                            if (!auth.isLoggedIn) "AI yorumu için giriş yap"
+                            else if (aiLoading) "Analiz ediliyor…"
+                            else "✦  AI yorumunu getir",
+                            color = Th.bg, fontSize = 13.sp, fontWeight = FontWeight.Bold,
+                        )
                     }
                 }
             }

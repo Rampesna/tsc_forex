@@ -193,7 +193,7 @@ export function Layout() {
             borderBottom: "1px solid var(--stroke)",
             display: "flex",
             alignItems: "center",
-            justifyContent: "flex-end",
+            justifyContent: "space-between",
             padding: "0 24px",
             gap: 16,
             position: "sticky",
@@ -203,9 +203,14 @@ export function Layout() {
             zIndex: 10,
           }}
         >
+          <div style={{ display: "flex", alignItems: "center", gap: 9, color: "var(--text-dim)", fontSize: 12.5 }}>
+            <span style={{ color: "var(--text)", fontWeight: 650 }}>TSC</span>
+            <span style={{ color: "var(--text-faint)" }}>/</span>
+            Piyasa terminali
+          </div>
           <ConnectionDot connected={connected} />
         </header>
-        <div style={{ flex: 1, padding: 24, maxWidth: 1100, width: "100%", margin: "0 auto" }}>
+        <div className="tsc-main-content" style={{ flex: 1, padding: "30px 32px 42px", maxWidth: 1460, width: "100%", margin: "0 auto" }}>
           <Outlet />
         </div>
         <footer
@@ -258,7 +263,8 @@ export function Layout() {
 
       <style>{`
         @media (max-width: 820px) {
-          .tsc-sidebar { position: fixed; z-index: 50; transform: translateX(-100%); transition: transform .2s; }
+          .tsc-sidebar { position: fixed !important; z-index: 50; transform: translateX(-100%); transition: transform .2s; }
+          .tsc-main-content { padding: 22px 16px 32px !important; }
         }
       `}</style>
     </div>

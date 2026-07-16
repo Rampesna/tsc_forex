@@ -30,6 +30,7 @@ type Deps struct {
 	Passkey      *api.PasskeyHandler      // WebAuthn; may be nil
 	Gamification *api.GamificationHandler // streak/XP/badges/leaderboard; may be nil
 	Portfolio    *api.PortfolioHandler    // transaction ledger + analytics; may be nil
+	AI           *api.MarketAIHandler     // server-side market briefs; may be nil
 
 	AuthService *service.AuthService // for protected-route middleware; may be nil
 }
@@ -140,6 +141,10 @@ func NewEngine(d Deps) *gin.Engine {
 				authed.DELETE("/me/notifications", d.User.ClearNotifications)
 
 				authed.POST("/me/devices", d.User.RegisterDevice)
+
+				if d.AI != nil {
+					authed.POST("/me/ai/market-insight", d.AI.MarketInsight)
+				}
 
 				if d.Portfolio != nil {
 					authed.GET("/me/portfolios", d.Portfolio.List)
