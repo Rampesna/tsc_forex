@@ -42,8 +42,8 @@ struct APIClient {
     // error) instead of spinning forever when the backend is unreachable.
     private static let session: URLSession = {
         let cfg = URLSessionConfiguration.default
-        cfg.timeoutIntervalForRequest = 12
-        cfg.timeoutIntervalForResource = 20
+        cfg.timeoutIntervalForRequest = 70
+        cfg.timeoutIntervalForResource = 75
         cfg.waitsForConnectivity = false
         cfg.requestCachePolicy = .reloadIgnoringLocalCacheData
         return URLSession(configuration: cfg)
@@ -62,12 +62,12 @@ struct APIClient {
 
     private func request(_ path: String, method: String = "GET", body: Encodable? = nil,
                          authed: Bool = false, overrideToken: String? = nil,
-                         allowRetry: Bool = true) async throws -> Data {
+                         allowRetry: Bool = true, timeout: TimeInterval = 12) async throws -> Data {
         // Build the URL manually so query strings (e.g. "?interval=5m") are
         // preserved. appendPathComponent would percent-encode the "?".
         let full = AppConfig.apiBaseURL.absoluteString + "/" + path
         guard let url = URL(string: full) else { throw APIError.invalidResponse }
-        var req = URLRequest(url: url, timeoutInterval: 12)
+        var req = URLRequest(url: url, timeoutInterval: timeout)
         req.httpMethod = method
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let effToken = overrideToken ?? token
@@ -84,7 +84,7 @@ struct APIClient {
             if http.statusCode == 401, authed, allowRetry, let refresher = Self.refresher {
                 if let newToken = await refresher() {
                     return try await request(path, method: method, body: body, authed: authed,
-                                             overrideToken: newToken, allowRetry: false)
+                                             overrideToken: newToken, allowRetry: false, timeout: timeout)
                 }
             }
             guard (200..<300).contains(http.statusCode) else {
@@ -270,11 +270,22 @@ struct APIClient {
     }
 
     func marketInsight(code: String) async throws -> MarketInsight {
-        let data = try await request(
-            "me/ai/market-insight", method: "POST",
-            body: ["code": code], authed: true
-        )
-        return try makeDecoder().decode(MarketInsight.self, from: data)
+        var jobID: String?
+        for _ in 0..<120 {
+            var body = ["code": code]
+            if let jobID { body["job_id"] = jobID }
+            let data = try await request(
+                "me/ai/market-insight", method: "POST",
+                body: body, authed: true, timeout: 30
+            )
+            if let job = try? makeDecoder().decode(MarketInsightJob.self, from: data), !job.jobID.isEmpty {
+                jobID = job.jobID
+                try await Task.sleep(nanoseconds: 3_000_000_000)
+                continue
+            }
+            return try makeDecoder().decode(MarketInsight.self, from: data)
+        }
+        throw APIError.http(504, "Derin araştırma beklenenden uzun sürdü; biraz sonra yeniden deneyin.")
     }
 
     // MARK: Watchlist

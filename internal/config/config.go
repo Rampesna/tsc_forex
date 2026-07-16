@@ -39,6 +39,10 @@ type AIConfig struct {
 	BaseURL         string        `mapstructure:"base_url"`
 	Timeout         time.Duration `mapstructure:"timeout"`
 	MaxOutputTokens int           `mapstructure:"max_output_tokens"`
+	ReasoningEffort string        `mapstructure:"reasoning_effort"`
+	WebSearch       bool          `mapstructure:"web_search"`
+	SearchContext   string        `mapstructure:"search_context"`
+	MaxToolCalls    int           `mapstructure:"max_tool_calls"`
 }
 
 // StorageConfig configures the S3/MinIO object store used for user avatars and

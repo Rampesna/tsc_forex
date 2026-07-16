@@ -152,7 +152,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("server.host", "0.0.0.0")
 	v.SetDefault("server.port", 8080)
 	v.SetDefault("server.read_timeout", "10s")
-	v.SetDefault("server.write_timeout", "10s")
+	v.SetDefault("server.write_timeout", "70s")
 	v.SetDefault("server.shutdown_timeout", "15s")
 	v.SetDefault("server.mode", "debug")
 
@@ -278,10 +278,14 @@ func setDefaults(v *viper.Viper) {
 
 	v.SetDefault("ai.enabled", false)
 	v.SetDefault("ai.api_key", "")
-	v.SetDefault("ai.model", "gpt-5.6-luna")
+	v.SetDefault("ai.model", "gpt-5.6-sol")
 	v.SetDefault("ai.base_url", "https://api.openai.com/v1")
-	v.SetDefault("ai.timeout", "8s")
-	v.SetDefault("ai.max_output_tokens", 500)
+	v.SetDefault("ai.timeout", "55s")
+	v.SetDefault("ai.max_output_tokens", 8000)
+	v.SetDefault("ai.reasoning_effort", "high")
+	v.SetDefault("ai.web_search", true)
+	v.SetDefault("ai.search_context", "high")
+	v.SetDefault("ai.max_tool_calls", 4)
 
 	v.SetDefault("webauthn.enabled", false)
 	v.SetDefault("webauthn.rp_display_name", "TSC Forex")

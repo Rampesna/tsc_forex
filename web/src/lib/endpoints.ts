@@ -56,12 +56,20 @@ export const api = {
     return request<{ code: string; interval: string; candles: Candle[] }>(url);
   },
   detail: (code: string) => request<InstrumentDetail>(`/instruments/${code}/detail`),
-  marketInsight: (code: string) =>
-    request<MarketInsight>("/me/ai/market-insight", {
-      method: "POST",
-      auth: true,
-      body: { code },
-    }),
+  marketInsight: async (code: string) => {
+    let jobId = "";
+    for (let attempt = 0; attempt < 120; attempt += 1) {
+      const result = await request<MarketInsight | { status: string; job_id: string }>("/me/ai/market-insight", {
+        method: "POST",
+        auth: true,
+        body: jobId ? { code, job_id: jobId } : { code },
+      });
+      if (!("job_id" in result)) return result;
+      jobId = result.job_id;
+      await new Promise((resolve) => window.setTimeout(resolve, 3000));
+    }
+    throw new Error("Derin araştırma beklenenden uzun sürdü; biraz sonra yeniden deneyin.");
+  },
 
   // --- profile ---
   profile: () => request<Profile>("/me/profile", { auth: true }),

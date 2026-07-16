@@ -205,14 +205,19 @@ export function Markets() {
           <div className="ai-core"><Icon name="sparkles" size={24} /></div>
         </div>
         <div className="ai-copy">
-          <div className="ai-label"><Icon name="sparkles" size={14} /> TSC AI BAKIŞI <span>BETA</span></div>
-          <h2>{insight?.title || "Seçtiğin varlığı verilerle birlikte yorumla"}</h2>
-          <p>{insight?.summary || "Fiyat hareketi, oynaklık ve gün içi yönü bir araya getirip sana kısa bir senaryo ve dikkat edilmesi gereken riskleri çıkarsın."}</p>
+          <div className="ai-label"><Icon name="sparkles" size={14} /> TSC DERİN ARAŞTIRMA <span>{insight?.model || "GPT-5.6 SOL"}</span></div>
+          <h2>{insight?.title || "Piyasayı tek fiyatla değil, bütün bağlantılarıyla araştır"}</h2>
+          <p>{insight?.summary || "Çok zaman dilimli TSC verisini; döviz, ons altın ve ilişkili piyasalarla karşılaştırır. Gerektiğinde güncel makroekonomik ve jeopolitik gelişmeleri web üzerinden kaynaklı biçimde araştırır."}</p>
           {insight && (
-            <div className="ai-result-meta">
-              <span className={`stance-chip ${insight.stance}`}>{insight.stance_label}</span>
-              {insight.factors.slice(0, 3).map((factor) => <span key={factor}>• {factor}</span>)}
-            </div>
+            <>
+              <div className="ai-result-meta">
+                <span className={`stance-chip ${insight.stance}`}>{insight.stance_label}</span>
+                {insight.time_horizons?.slice(0, 3).map((item) => <span key={item.horizon}>• {item.horizon}: {item.outlook}</span>)}
+              </div>
+              {!!insight.sources?.length && <div className="ai-source-links">
+                {insight.sources.slice(0, 4).map((source) => <a key={source.url} href={source.url} target="_blank" rel="noreferrer">{source.title}</a>)}
+              </div>}
+            </>
           )}
           {aiError && <div className="ai-error">{aiError}</div>}
         </div>
@@ -222,11 +227,37 @@ export function Markets() {
             {allPrices.map((item) => <option key={item.code} value={item.code}>{item.display_name} · {item.code}</option>)}
           </select>
           <button onClick={askAI} disabled={aiLoading || !selectedCode}>
-            {aiLoading ? <><span className="spinner light" /> Analiz ediliyor</> : <><Icon name="sparkles" size={16} /> {authed ? "AI yorumunu getir" : "Giriş yap ve dene"}</>}
+            {aiLoading ? <><span className="spinner light" /> Kaynaklar araştırılıyor</> : <><Icon name="sparkles" size={16} /> {authed ? "Derin araştırmayı başlat" : "Giriş yap ve dene"}</>}
           </button>
-          <small>Yatırım tavsiyesi değildir; karar desteği ve eğitim amaçlıdır.</small>
+          <small>GPT-5.6 Sol · çok zaman dilimli veri · canlı web araştırması · kaynaklı sonuç</small>
         </div>
       </section>
+
+      {insight && <section className="dashboard-card ai-research-report">
+        <div className="section-title-row">
+          <div><span className="card-kicker">Kaynaklı rapor</span><h2>{insight.code} için derin piyasa analizi</h2></div>
+          <span className={`stance-chip ${insight.stance}`}>{insight.stance_label} · güven {insight.confidence}</span>
+        </div>
+        <div className="ai-report-grid">
+          <article>
+            <h3>Zaman dilimleri</h3>
+            {insight.time_horizons.map((item) => <div className="ai-report-item" key={item.horizon}>
+              <strong>{item.horizon} · {item.outlook}</strong><p>{item.rationale}</p>
+            </div>)}
+          </article>
+          <article><h3>Makro sürücüler</h3>{insight.macro_drivers.map((item) => <p key={item}>• {item}</p>)}</article>
+          <article><h3>Çapraz varlık ilişkileri</h3>{insight.cross_asset_analysis.map((item) => <p key={item}>• {item}</p>)}</article>
+          <article><h3>Jeopolitik riskler</h3>{insight.geopolitical_risks.map((item) => <p key={item}>• {item}</p>)}</article>
+          <article className="ai-scenarios">
+            <h3>Senaryolar</h3>
+            {insight.scenarios.map((scenario) => <div className="ai-report-item" key={scenario.name}>
+              <strong>{scenario.name} · {scenario.likelihood}</strong>
+              <p><b>Tetik:</b> {scenario.trigger}</p><p>{scenario.implication}</p>
+            </div>)}
+          </article>
+        </div>
+        <div className="ai-report-risk">⚠ {insight.risk_note}<small>{insight.disclaimer}</small></div>
+      </section>}
 
       <section className="dashboard-card instruments-card">
         <div className="instruments-toolbar">

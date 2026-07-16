@@ -209,11 +209,11 @@ struct AssetDetailView: View {
                 HStack(spacing: 7) {
                     Image(systemName: "sparkles")
                         .foregroundStyle(Theme.accent)
-                    Text("TSC AI BAKIŞI")
+                    Text("TSC DERİN ARAŞTIRMA")
                         .font(.system(size: 11, weight: .bold))
                         .foregroundStyle(Theme.accent)
                         .tracking(1)
-                    Text("BETA")
+                    Text(aiInsight?.model?.uppercased() ?? "GPT-5.6 SOL")
                         .font(.system(size: 8, weight: .bold))
                         .foregroundStyle(Theme.textFaint)
                         .padding(.horizontal, 5).padding(.vertical, 3)
@@ -243,14 +243,99 @@ struct AssetDetailView: View {
                                 .foregroundStyle(Theme.text)
                         }
                     }
+
+                    if let horizons = insight.timeHorizons, !horizons.isEmpty {
+                        aiSectionTitle("ZAMAN DİLİMLERİ", icon: "clock.arrow.circlepath")
+                        VStack(spacing: 8) {
+                            ForEach(horizons, id: \.self) { item in
+                                HStack(alignment: .top, spacing: 10) {
+                                    Text(item.horizon)
+                                        .font(.system(size: 10, weight: .bold))
+                                        .foregroundStyle(Theme.accent)
+                                        .frame(width: 58, alignment: .leading)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(item.outlook)
+                                            .font(.system(size: 12, weight: .bold))
+                                            .foregroundStyle(Theme.text)
+                                        Text(item.rationale)
+                                            .font(.system(size: 11))
+                                            .foregroundStyle(Theme.textDim)
+                                            .fixedSize(horizontal: false, vertical: true)
+                                    }
+                                    Spacer(minLength: 0)
+                                }
+                                .padding(10)
+                                .background(Theme.bgElevated, in: RoundedRectangle(cornerRadius: 9))
+                            }
+                        }
+                    }
+
+                    if let macro = insight.macroDrivers, !macro.isEmpty {
+                        aiBulletSection("MAKRO SÜRÜCÜLER", icon: "chart.line.uptrend.xyaxis", items: macro)
+                    }
+                    if let crossAsset = insight.crossAssetAnalysis, !crossAsset.isEmpty {
+                        aiBulletSection("ÇAPRAZ VARLIK İLİŞKİLERİ", icon: "arrow.triangle.branch", items: crossAsset)
+                    }
+                    if let geopolitical = insight.geopoliticalRisks, !geopolitical.isEmpty {
+                        aiBulletSection("JEOPOLİTİK RİSKLER", icon: "globe.europe.africa", items: geopolitical)
+                    }
+
+                    if let scenarios = insight.scenarios, !scenarios.isEmpty {
+                        aiSectionTitle("SENARYOLAR", icon: "point.3.connected.trianglepath.dotted")
+                        VStack(spacing: 8) {
+                            ForEach(scenarios, id: \.self) { scenario in
+                                VStack(alignment: .leading, spacing: 5) {
+                                    HStack {
+                                        Text(scenario.name)
+                                            .font(.system(size: 12, weight: .bold))
+                                            .foregroundStyle(Theme.text)
+                                        Spacer()
+                                        Text(aiLikelihoodLabel(scenario.likelihood))
+                                            .font(.system(size: 9, weight: .bold))
+                                            .foregroundStyle(Theme.accent)
+                                    }
+                                    Text("Tetik: \(scenario.trigger)")
+                                        .font(.system(size: 10, weight: .semibold))
+                                        .foregroundStyle(Theme.textDim)
+                                    Text(scenario.implication)
+                                        .font(.system(size: 11))
+                                        .foregroundStyle(Theme.textDim)
+                                        .fixedSize(horizontal: false, vertical: true)
+                                }
+                                .padding(10)
+                                .background(Theme.bgElevated, in: RoundedRectangle(cornerRadius: 9))
+                            }
+                        }
+                    }
+
                     Label(insight.riskNote, systemImage: "exclamationmark.triangle")
                         .font(.system(size: 11))
                         .foregroundStyle(Theme.textDim)
+
+                    if let sources = insight.sources, !sources.isEmpty {
+                        aiSectionTitle("ARAŞTIRMA KAYNAKLARI", icon: "link")
+                        VStack(alignment: .leading, spacing: 7) {
+                            ForEach(Array(sources.prefix(8)), id: \.self) { source in
+                                if let url = URL(string: source.url) {
+                                    Link(destination: url) {
+                                        HStack(spacing: 7) {
+                                            Image(systemName: "arrow.up.right.square")
+                                            Text(source.title)
+                                                .lineLimit(2)
+                                            Spacer(minLength: 0)
+                                        }
+                                        .font(.system(size: 10, weight: .semibold))
+                                        .foregroundStyle(Theme.accent)
+                                    }
+                                }
+                            }
+                        }
+                    }
                     Text(insight.disclaimer)
                         .font(.system(size: 9))
                         .foregroundStyle(Theme.textFaint)
                 } else {
-                    Text("Canlı fiyat hareketini ve gün içi yönü kısa bir risk senaryosuna dönüştür.")
+                    Text("Çok zaman dilimli TSC verisini; döviz, ons altın ve ilişkili piyasalarla karşılaştırır. Gerektiğinde güncel makro ve jeopolitik gelişmeleri web üzerinden kaynaklı biçimde araştırır.")
                         .font(.system(size: 13))
                         .foregroundStyle(Theme.textDim)
                         .fixedSize(horizontal: false, vertical: true)
@@ -269,7 +354,7 @@ struct AssetDetailView: View {
                     HStack(spacing: 8) {
                         if aiLoading { ProgressView().tint(Theme.bg).scaleEffect(0.75) }
                         Image(systemName: aiLoading ? "hourglass" : "sparkles")
-                        Text(auth.isLoggedIn ? (aiLoading ? "Analiz ediliyor" : "AI yorumunu getir") : "AI yorumu için giriş yap")
+                        Text(auth.isLoggedIn ? (aiLoading ? "Kaynaklar araştırılıyor…" : "Derin araştırmayı başlat") : "Araştırma için giriş yap")
                     }
                     .font(.system(size: 13, weight: .bold))
                     .foregroundStyle(Theme.bg)
@@ -289,6 +374,37 @@ struct AssetDetailView: View {
         case "positive": return Theme.up
         case "cautious": return Color(hex: 0xE6B565)
         default: return Theme.accent
+        }
+    }
+
+    private func aiSectionTitle(_ title: String, icon: String) -> some View {
+        Label(title, systemImage: icon)
+            .font(.system(size: 9, weight: .bold))
+            .foregroundStyle(Theme.textFaint)
+            .tracking(0.8)
+            .padding(.top, 4)
+    }
+
+    private func aiBulletSection(_ title: String, icon: String, items: [String]) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            aiSectionTitle(title, icon: icon)
+            ForEach(items, id: \.self) { item in
+                HStack(alignment: .top, spacing: 7) {
+                    Circle().fill(Theme.accent).frame(width: 4, height: 4).padding(.top, 5)
+                    Text(item)
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.textDim)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+        }
+    }
+
+    private func aiLikelihoodLabel(_ likelihood: String) -> String {
+        switch likelihood {
+        case "high": return "YÜKSEK OLASILIK"
+        case "low": return "DÜŞÜK OLASILIK"
+        default: return "ORTA OLASILIK"
         }
     }
 

@@ -329,7 +329,7 @@ func run() error {
 		Passkey:      passkeyH,
 		Gamification: gamH,
 		Portfolio:    portfolioH,
-		AI:           api.NewMarketAIHandler(cfg.AI, engine),
+		AI:           api.NewMarketAIHandler(cfg.AI, engine, candleStore),
 		AuthService:  authSvc,
 	})
 

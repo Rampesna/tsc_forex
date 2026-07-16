@@ -79,15 +79,82 @@ struct MarketInsight: Codable {
     let summary: String
     let factors: [String]
     let riskNote: String
+    let confidence: String?
+    let timeHorizons: [MarketHorizon]?
+    let macroDrivers: [String]?
+    let geopoliticalRisks: [String]?
+    let crossAssetAnalysis: [String]?
+    let scenarios: [MarketScenario]?
+    let dataContext: [MarketDataPoint]?
+    let sources: [MarketSource]?
+    let model: String?
+    let researchMode: String?
     let generatedAt: String
     let disclaimer: String
 
     enum CodingKeys: String, CodingKey {
-        case code, title, stance, summary, factors, disclaimer
+        case code, title, stance, summary, factors, confidence, scenarios, sources, model, disclaimer
         case stanceLabel = "stance_label"
         case riskNote = "risk_note"
+        case timeHorizons = "time_horizons"
+        case macroDrivers = "macro_drivers"
+        case geopoliticalRisks = "geopolitical_risks"
+        case crossAssetAnalysis = "cross_asset_analysis"
+        case dataContext = "data_context"
+        case researchMode = "research_mode"
         case generatedAt = "generated_at"
     }
+}
+
+struct MarketInsightJob: Codable {
+    let status: String
+    let jobID: String
+
+    enum CodingKeys: String, CodingKey {
+        case status
+        case jobID = "job_id"
+    }
+}
+
+struct MarketHorizon: Codable, Hashable {
+    let horizon: String
+    let outlook: String
+    let rationale: String
+}
+
+struct MarketScenario: Codable, Hashable {
+    let name: String
+    let likelihood: String
+    let trigger: String
+    let implication: String
+}
+
+struct MarketDataPoint: Codable, Hashable {
+    let code: String
+    let displayName: String
+    let price: Double
+    let currency: String
+    let change1D: Double?
+    let change1W: Double?
+    let change1M: Double?
+    let change3M: Double?
+    let change1Y: Double?
+    let timestamp: String
+
+    enum CodingKeys: String, CodingKey {
+        case code, price, currency, timestamp
+        case displayName = "display_name"
+        case change1D = "change_1d_pct"
+        case change1W = "change_1w_pct"
+        case change1M = "change_1m_pct"
+        case change3M = "change_3m_pct"
+        case change1Y = "change_1y_pct"
+    }
+}
+
+struct MarketSource: Codable, Hashable {
+    let title: String
+    let url: String
 }
 
 // A registered passkey (WebAuthn credential) for the signed-in user.

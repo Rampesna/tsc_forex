@@ -176,6 +176,27 @@ export interface MarketInsight {
   summary: string;
   factors: string[];
   risk_note: string;
+  confidence: "low" | "medium" | "high";
+  time_horizons: Array<{ horizon: string; outlook: string; rationale: string }>;
+  macro_drivers: string[];
+  geopolitical_risks: string[];
+  cross_asset_analysis: string[];
+  scenarios: Array<{ name: string; likelihood: "low" | "medium" | "high"; trigger: string; implication: string }>;
+  data_context: Array<{
+    code: string;
+    display_name: string;
+    price: number;
+    currency: string;
+    change_1d_pct?: number;
+    change_1w_pct?: number;
+    change_1m_pct?: number;
+    change_3m_pct?: number;
+    change_1y_pct?: number;
+    timestamp: string;
+  }>;
+  sources: Array<{ title: string; url: string }>;
+  model: string;
+  research_mode: string;
   generated_at: string;
   disclaimer: string;
 }

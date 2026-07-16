@@ -7,6 +7,7 @@ data:
   APP_APP_ENVIRONMENT: "production"
   APP_SERVER_MODE: "release"
   APP_SERVER_PORT: "8080"
+  APP_SERVER_WRITE_TIMEOUT: "70s"
   APP_DATABASE_HOST: "postgres"
   APP_DATABASE_PORT: "5432"
   APP_DATABASE_NAME: "tsc_forex"
@@ -28,10 +29,14 @@ data:
   # AI market commentary. The API key is injected through tsc-forex-secrets;
   # client applications never receive it.
   APP_AI_ENABLED: "true"
-  APP_AI_MODEL: "gpt-5.6-luna"
+  APP_AI_MODEL: "gpt-5.6-sol"
   APP_AI_BASE_URL: "https://api.openai.com/v1"
-  APP_AI_TIMEOUT: "8s"
-  APP_AI_MAX_OUTPUT_TOKENS: "500"
+  APP_AI_TIMEOUT: "55s"
+  APP_AI_MAX_OUTPUT_TOKENS: "8000"
+  APP_AI_REASONING_EFFORT: "high"
+  APP_AI_WEB_SEARCH: "true"
+  APP_AI_SEARCH_CONTEXT: "high"
+  APP_AI_MAX_TOOL_CALLS: "4"
   # Object storage (MinIO) for profile pictures — shared across all pods.
   APP_STORAGE_ENABLED: "true"
   APP_STORAGE_ENDPOINT: "minio:9000"

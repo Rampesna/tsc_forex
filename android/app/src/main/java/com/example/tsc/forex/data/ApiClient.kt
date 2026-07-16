@@ -2,6 +2,7 @@ package com.example.tsc.forex.data
 
 import com.example.tsc.forex.AppConfig
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
@@ -29,7 +30,7 @@ class ApiClient(
 ) {
     private val client = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
-        .readTimeout(20, TimeUnit.SECONDS)
+        .readTimeout(70, TimeUnit.SECONDS)
         .build()
 
     private val json = "application/json; charset=utf-8".toMediaType()
@@ -97,11 +98,19 @@ class ApiClient(
     suspend fun detail(code: String): InstrumentDetail =
         InstrumentDetail.from(unwrap(JSONObject(getRaw("instruments/$code/detail"))))
 
-    suspend fun marketInsight(code: String): MarketInsight =
-        MarketInsight.from(unwrap(postJson(
-            "me/ai/market-insight",
-            JSONObject().put("code", code),
-        )))
+    suspend fun marketInsight(code: String): MarketInsight {
+        var jobId = ""
+        repeat(120) {
+            val body = JSONObject().put("code", code)
+            if (jobId.isNotEmpty()) body.put("job_id", jobId)
+            val response = unwrap(postJson("me/ai/market-insight", body))
+            val pendingJob = response.optString("job_id")
+            if (pendingJob.isEmpty()) return MarketInsight.from(response)
+            jobId = pendingJob
+            delay(3_000)
+        }
+        throw ApiException(504, "Derin araştırma beklenenden uzun sürdü; biraz sonra yeniden deneyin.")
+    }
 
     suspend fun sparklines(points: Int = 30): Map<String, List<Double>> {
         val raw = getRaw("instruments/sparklines?points=$points")

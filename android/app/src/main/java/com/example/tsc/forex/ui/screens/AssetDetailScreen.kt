@@ -37,6 +37,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.tsc.forex.data.Candle
@@ -77,8 +78,29 @@ private const val PAGE_SIZE = 300
 private const val MAX_WINDOW = 900
 
 @Composable
+private fun ResearchTitle(title: String) {
+    Text(title, color = Th.textFaint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+}
+
+@Composable
+private fun ResearchBullets(title: String, items: List<String>) {
+    if (items.isEmpty()) return
+    Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+        ResearchTitle(title)
+        items.forEach { item -> Text("• $item", color = Th.textDim, fontSize = 11.sp) }
+    }
+}
+
+private fun LikelihoodLabel(value: String) = when (value) {
+    "high" -> "YÜKSEK OLASILIK"
+    "low" -> "DÜŞÜK OLASILIK"
+    else -> "ORTA OLASILIK"
+}
+
+@Composable
 fun AssetDetailScreen(code: String, auth: AuthStore, store: PriceStore, onBack: () -> Unit) {
     val scope = rememberCoroutineScope()
+    val uriHandler = LocalUriHandler.current
     val ip = store.prices[code]
     var rangeKey by remember { mutableStateOf("1G") }
     var candles by remember { mutableStateOf<List<Candle>>(emptyList()) }
@@ -285,11 +307,11 @@ fun AssetDetailScreen(code: String, auth: AuthStore, store: PriceStore, onBack: 
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Text("✦", color = Th.accent, fontSize = 18.sp, fontWeight = FontWeight.Bold)
                         Text(
-                            "  TSC AI BAKIŞI",
+                            "  TSC DERİN ARAŞTIRMA",
                             color = Th.accent, fontSize = 11.sp, fontWeight = FontWeight.Bold,
                         )
                         Text(
-                            "  BETA", color = Th.textFaint, fontSize = 9.sp,
+                            "  ${aiInsight?.model?.uppercase()?.ifEmpty { "GPT-5.6 SOL" } ?: "GPT-5.6 SOL"}", color = Th.textFaint, fontSize = 9.sp,
                             modifier = Modifier.weight(1f),
                         )
                         aiInsight?.let { insight ->
@@ -312,10 +334,57 @@ fun AssetDetailScreen(code: String, auth: AuthStore, store: PriceStore, onBack: 
                         insight.factors.forEach { factor ->
                             Text("• $factor", color = Th.text, fontSize = 12.sp, fontWeight = FontWeight.Medium)
                         }
+
+                        if (insight.timeHorizons.isNotEmpty()) {
+                            ResearchTitle("ZAMAN DİLİMLERİ")
+                            insight.timeHorizons.forEach { horizon ->
+                                Column(
+                                    Modifier.fillMaxWidth().clip(RoundedCornerShape(9.dp)).background(Th.surfaceAlt).padding(10.dp),
+                                    verticalArrangement = Arrangement.spacedBy(3.dp),
+                                ) {
+                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        Text(horizon.horizon, color = Th.accent, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                                        Text(horizon.outlook, color = Th.text, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                    Text(horizon.rationale, color = Th.textDim, fontSize = 11.sp)
+                                }
+                            }
+                        }
+                        ResearchBullets("MAKRO SÜRÜCÜLER", insight.macroDrivers)
+                        ResearchBullets("ÇAPRAZ VARLIK İLİŞKİLERİ", insight.crossAssetAnalysis)
+                        ResearchBullets("JEOPOLİTİK RİSKLER", insight.geopoliticalRisks)
+
+                        if (insight.scenarios.isNotEmpty()) {
+                            ResearchTitle("SENARYOLAR")
+                            insight.scenarios.forEach { scenario ->
+                                Column(
+                                    Modifier.fillMaxWidth().clip(RoundedCornerShape(9.dp)).background(Th.surfaceAlt).padding(10.dp),
+                                    verticalArrangement = Arrangement.spacedBy(3.dp),
+                                ) {
+                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                                        Text(scenario.name, color = Th.text, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                                        Text(LikelihoodLabel(scenario.likelihood), color = Th.accent, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                    }
+                                    Text("Tetik: ${scenario.trigger}", color = Th.textDim, fontSize = 10.sp, fontWeight = FontWeight.Medium)
+                                    Text(scenario.implication, color = Th.textDim, fontSize = 11.sp)
+                                }
+                            }
+                        }
                         Text("⚠ ${insight.riskNote}", color = Th.textDim, fontSize = 11.sp)
+                        if (insight.sources.isNotEmpty()) {
+                            ResearchTitle("ARAŞTIRMA KAYNAKLARI")
+                            insight.sources.take(8).forEach { source ->
+                                Text(
+                                    "↗ ${source.title}", color = Th.accent, fontSize = 10.sp, fontWeight = FontWeight.Medium,
+                                    modifier = Modifier.clickable(enabled = source.url.startsWith("http")) {
+                                        runCatching { uriHandler.openUri(source.url) }
+                                    },
+                                )
+                            }
+                        }
                         Text(insight.disclaimer, color = Th.textFaint, fontSize = 9.sp)
                     } ?: Text(
-                        "Canlı fiyat hareketini ve gün içi yönü kısa bir risk senaryosuna dönüştür.",
+                        "Çok zaman dilimli TSC verisini ilişkili piyasalarla karşılaştırır; gerektiğinde güncel makro ve jeopolitik gelişmeleri web üzerinden kaynaklı biçimde araştırır.",
                         color = Th.textDim, fontSize = 13.sp,
                     )
 
@@ -341,8 +410,8 @@ fun AssetDetailScreen(code: String, auth: AuthStore, store: PriceStore, onBack: 
                     ) {
                         Text(
                             if (!auth.isLoggedIn) "AI yorumu için giriş yap"
-                            else if (aiLoading) "Analiz ediliyor…"
-                            else "✦  AI yorumunu getir",
+                            else if (aiLoading) "Kaynaklar araştırılıyor…"
+                            else "✦  Derin araştırmayı başlat",
                             color = Th.bg, fontSize = 13.sp, fontWeight = FontWeight.Bold,
                         )
                     }
