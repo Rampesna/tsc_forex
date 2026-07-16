@@ -223,3 +223,201 @@ export interface Leaderboard {
   entries: LeaderEntry[];
   me: LeaderEntry;
 }
+
+export interface DailyPlan {
+  id: string;
+  day_key: string;
+  risk_appetite: "low" | "moderate" | "high";
+  watch_codes: string[];
+  learning_goal: string;
+  reflection: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface LessonQuestion {
+  code: string;
+  text: string;
+  choices: string[];
+}
+
+export interface LessonStatus {
+  code: string;
+  title: string;
+  summary: string;
+  cards: string[];
+  question: LessonQuestion;
+  mastery: number;
+  attempts: number;
+  completed: boolean;
+  due_for_review: boolean;
+  next_review_at?: string;
+}
+
+export interface DisciplineQuest {
+  code: string;
+  title: string;
+  description: string;
+  xp: number;
+  completed: boolean;
+}
+
+export interface SeasonView {
+  code: string;
+  name: string;
+  league: string;
+  points: number;
+  rank: number;
+  ends_at: string;
+  standings: LeaderEntry[];
+  scoring: string;
+}
+
+export interface PaperTrade {
+  id: string;
+  client_id: string;
+  code: string;
+  side: "buy" | "sell";
+  quantity: number;
+  entry_price: number;
+  thesis: string;
+  risk_budget_pct: number;
+  invalidation: string;
+  occurred_at: string;
+  followed_plan?: boolean;
+  retrospective: string;
+  process_score: number;
+  reviewed_at?: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface GamificationPrivacy {
+  user_id: string;
+  alias: string;
+  league_opt_in: boolean;
+  personalized_learning: boolean;
+  social_opt_in: boolean;
+  learning_notifications: boolean;
+  updated_at: string;
+}
+
+export interface StudyGroup {
+  id: string;
+  owner_id: string;
+  name: string;
+  invite_code: string;
+  created_at: string;
+  member_count: number;
+}
+
+export interface GamificationExperience {
+  rule_version: string;
+  daily_plan?: DailyPlan;
+  lessons: LessonStatus[];
+  discipline_quests: DisciplineQuest[];
+  season: SeasonView;
+  paper_trades: PaperTrade[];
+  privacy: GamificationPrivacy;
+  study_groups: StudyGroup[];
+  weekly_summary: {
+    mastered_lessons: number;
+    total_lessons: number;
+    season_points: number;
+    due_reviews: number;
+  };
+}
+
+export interface QuizAttemptResult {
+  correct: boolean;
+  xp_gained: number;
+  created: boolean;
+  lesson: LessonStatus;
+}
+
+// --- Cloud portfolio ledger / analytics ---
+
+export type DecimalValue = string | number;
+
+export interface PortfolioMeta {
+  id: string;
+  user_id: string;
+  name: string;
+  base_currency: string;
+  net_deposits_try: DecimalValue;
+  version: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PortfolioPosition {
+  id: string;
+  code: string;
+  display_name: string;
+  kind: string;
+  currency: string;
+  quantity: DecimalValue;
+  average_cost_native: DecimalValue;
+  average_cost_try: DecimalValue;
+  current_price_native: DecimalValue;
+  current_price_try: DecimalValue;
+  value_native: DecimalValue;
+  value_try: DecimalValue;
+  cost_basis_try: DecimalValue;
+  unrealized_pnl_try: DecimalValue;
+  unrealized_pnl_pct: DecimalValue;
+  realized_pnl_try: DecimalValue;
+  day_change_try: DecimalValue;
+  day_change_pct: DecimalValue;
+  allocation_pct: DecimalValue;
+  updated_at: string;
+}
+
+export interface PortfolioOverview {
+  portfolio: PortfolioMeta;
+  positions: PortfolioPosition[];
+  total_value_try: DecimalValue;
+  total_cost_try: DecimalValue;
+  unrealized_pnl_try: DecimalValue;
+  realized_pnl_try: DecimalValue;
+  day_change_try: DecimalValue;
+  day_change_pct: DecimalValue;
+  net_deposits_try: DecimalValue;
+  active_positions: number;
+}
+
+export type PortfolioTransactionType =
+  | "buy"
+  | "sell"
+  | "dividend"
+  | "fee"
+  | "deposit"
+  | "withdraw";
+
+export interface PortfolioTransaction {
+  id: string;
+  portfolio_id: string;
+  user_id: string;
+  client_id: string;
+  code: string;
+  type: PortfolioTransactionType;
+  quantity: DecimalValue;
+  unit_price_native: DecimalValue;
+  amount_native: DecimalValue;
+  fee_native: DecimalValue;
+  currency: string;
+  usdtry: DecimalValue;
+  occurred_at: string;
+  note: string;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PortfolioPerformancePoint {
+  date: string;
+  value_try: DecimalValue;
+  cost_basis_try: DecimalValue;
+  realized_pnl_try: DecimalValue;
+  total_pnl_try: DecimalValue;
+  net_deposits_try: DecimalValue;
+}

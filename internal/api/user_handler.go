@@ -41,13 +41,12 @@ func (h *UserHandler) WithGamification(g GamificationAwarder) *UserHandler {
 	return h
 }
 
-// award grants XP asynchronously (fire-and-forget) so it never delays the API
-// response or gets cancelled with the request context.
-func (h *UserHandler) award(userID uuid.UUID, action string) {
+// award persists the idempotent XP mutation before the domain response is sent.
+func (h *UserHandler) award(ctx context.Context, userID uuid.UUID, action, sourceID string) {
 	if h.gam == nil {
 		return
 	}
-	go h.gam.Award(context.Background(), userID, action)
+	h.gam.Award(ctx, userID, action, sourceID)
 }
 
 // DeleteAccount permanently deletes the authenticated user and all of their
@@ -293,7 +292,7 @@ func (h *UserHandler) AddWatchlist(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "add failed"})
 		return
 	}
-	h.award(uid, service.EventFavorite)
+	h.award(c.Request.Context(), uid, service.EventFavorite, req.Code)
 	c.JSON(http.StatusCreated, gin.H{"code": req.Code})
 }
 
@@ -369,7 +368,7 @@ func (h *UserHandler) CreateAlert(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "create failed"})
 		return
 	}
-	h.award(uid, service.EventAlert)
+	h.award(c.Request.Context(), uid, service.EventAlert, alert.ID.String())
 	c.JSON(http.StatusCreated, AlertResponse{
 		ID:        alert.ID.String(),
 		Code:      alert.Code,

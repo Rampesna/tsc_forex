@@ -18,12 +18,17 @@ const (
 	EventCheckIn       = "checkin"
 	EventFavorite      = "favorite_add"
 	EventAlert         = "alert_create"
+	EventDailyPlan     = "daily_plan"
+	EventLesson        = "lesson_mastery"
+	EventDiscipline    = "discipline_review"
+	EventPaperReview   = "paper_review"
 	EventDailyComplete = "daily_complete"
 
-	checkInBaseXP = 20
-	favoriteXP    = 10
-	alertXP       = 15
-	dailyBonusXP  = 25
+	gamificationRuleVersion = "2026.1"
+	checkInBaseXP           = 20
+	favoriteXP              = 10
+	alertXP                 = 15
+	dailyBonusXP            = 25
 )
 
 // BadgeDef is a static achievement definition.
@@ -61,9 +66,9 @@ type QuestDef struct {
 }
 
 var dailyQuests = []QuestDef{
-	{EventCheckIn, "Günlük Giriş", "Bugün uygulamaya giriş yap.", checkInBaseXP},
-	{EventFavorite, "Bir Favori Ekle", "İzleme listene bir varlık ekle.", favoriteXP},
-	{EventAlert, "Alarm Kur", "Bir fiyat alarmı oluştur.", alertXP},
+	{EventDailyPlan, "Günü Planla", "Risk sınırını, takip listesini ve öğrenme hedefini belirle.", 25},
+	{EventLesson, "Bilgini Sına", "Bir mikro dersin bilgi kontrolünü doğru tamamla.", 20},
+	{EventDiscipline, "Süreci Değerlendir", "Portföy kararlarından birini kısa bir notla gözden geçir.", 25},
 }
 
 // BadgeStatus is a badge plus whether the current user has earned it.
@@ -241,34 +246,43 @@ func (g *GamificationService) buildProfile(ctx context.Context, uid uuid.UUID, s
 // grants XP, then evaluates badges and the daily-quest bonus. Idempotent within
 // the same Istanbul day.
 func (g *GamificationService) CheckIn(ctx context.Context, uid uuid.UUID) (CheckInResult, error) {
-	st, err := g.repo.State(ctx, uid)
+	today := g.today()
+	gained := 0
+	out, err := g.repo.ApplyAward(ctx, repository.AwardSpec{
+		UserID: uid, IdempotencyKey: "checkin:" + today, EventType: EventCheckIn,
+		SourceType: "calendar_day", SourceID: today, Reason: "Günlük plan serisi",
+		RuleVersion: gamificationRuleVersion, DayKey: today,
+	}, func(st *models.UserGamification) int {
+		yesterday := g.dayKey(time.Now().AddDate(0, 0, -1))
+		if st.LastCheckInDay == yesterday {
+			st.CurrentStreak++
+		} else {
+			st.CurrentStreak = 1
+		}
+		if st.CurrentStreak > st.LongestStreak {
+			st.LongestStreak = st.CurrentStreak
+		}
+		st.LastCheckInDay = today
+		st.TotalCheckIns++
+		gained = checkInBaseXP + min(st.CurrentStreak-1, 10)*3
+		st.XP += int64(gained)
+		st.Level = levelForXP(st.XP)
+		return gained
+	})
 	if err != nil {
 		return CheckInResult{}, err
 	}
-	today := g.today()
-	if st.LastCheckInDay == today {
-		return CheckInResult{Profile: g.buildProfile(ctx, uid, st), AlreadyCheckedIn: true}, nil
+	if !out.Created {
+		return CheckInResult{
+			Profile: g.buildProfile(ctx, uid, out.State), AlreadyCheckedIn: true,
+		}, nil
 	}
 
-	yesterday := g.dayKey(time.Now().AddDate(0, 0, -1))
-	if st.LastCheckInDay == yesterday {
-		st.CurrentStreak++
-	} else {
-		st.CurrentStreak = 1
+	newBadges := g.evaluate(ctx, uid, out.State, today)
+	st, stateErr := g.repo.State(ctx, uid)
+	if stateErr != nil {
+		return CheckInResult{}, stateErr
 	}
-	if st.CurrentStreak > st.LongestStreak {
-		st.LongestStreak = st.CurrentStreak
-	}
-	st.LastCheckInDay = today
-	st.TotalCheckIns++
-
-	gained := checkInBaseXP + min(st.CurrentStreak-1, 10)*3
-	st.XP += int64(gained)
-	st.Level = levelForXP(st.XP)
-	_ = g.repo.AddEvent(ctx, &models.GamificationEvent{UserID: uid, Type: EventCheckIn, XP: gained, DayKey: today})
-
-	newBadges := g.evaluate(ctx, uid, &st, today)
-	_ = g.repo.SaveState(ctx, &st)
 
 	return CheckInResult{
 		Profile:   g.buildProfile(ctx, uid, st),
@@ -277,46 +291,39 @@ func (g *GamificationService) CheckIn(ctx context.Context, uid uuid.UUID) (Check
 	}, nil
 }
 
-// Award grants XP for a server-verified engagement action (favorite/alert).
-// XP is capped to the first occurrence of each action per day; the event is
-// always logged so daily quests and count-based badges still progress.
-func (g *GamificationService) Award(ctx context.Context, uid uuid.UUID, action string) {
+// Award grants XP for a server-verified engagement action. sourceID ties the
+// reward to the durable domain object, so delete/recreate loops cannot farm XP.
+func (g *GamificationService) Award(ctx context.Context, uid uuid.UUID, action string, sourceIDs ...string) {
 	if action != EventFavorite && action != EventAlert {
 		return
 	}
-	st, err := g.repo.State(ctx, uid)
-	if err != nil {
+	today := g.today()
+	sourceID := today
+	if len(sourceIDs) > 0 && sourceIDs[0] != "" {
+		sourceID = sourceIDs[0]
+	}
+	xp := favoriteXP
+	if action == EventAlert {
+		xp = alertXP
+	}
+	out, err := g.awardXP(ctx, uid, action+":"+sourceID, action, "engagement", sourceID,
+		"Doğrulanmış uygulama eylemi", xp, 0)
+	if err != nil || !out.Created {
 		return
 	}
-	today := g.today()
-	todayTypes, _ := g.repo.TodayTypes(ctx, uid, today)
-	xp := 0
-	if !todayTypes[action] {
-		switch action {
-		case EventFavorite:
-			xp = favoriteXP
-		case EventAlert:
-			xp = alertXP
-		}
-	}
-	st.XP += int64(xp)
-	st.Level = levelForXP(st.XP)
-	_ = g.repo.AddEvent(ctx, &models.GamificationEvent{UserID: uid, Type: action, XP: xp, DayKey: today})
-
-	g.evaluate(ctx, uid, &st, today)
-	_ = g.repo.SaveState(ctx, &st)
+	g.evaluate(ctx, uid, out.State, today)
 }
 
 // evaluate grants any newly-qualified badges and the all-quests-done daily
 // bonus, mutating st (XP/level) and logging ledger events. Badge/quest wins are
 // pushed to the user via the notifier (WS + APNs/FCM) when configured.
-func (g *GamificationService) evaluate(ctx context.Context, uid uuid.UUID, st *models.UserGamification, today string) []BadgeStatus {
+func (g *GamificationService) evaluate(ctx context.Context, uid uuid.UUID, st models.UserGamification, today string) []BadgeStatus {
 	favCount, _ := g.repo.CountByType(ctx, uid, EventFavorite)
 	alertCount, _ := g.repo.CountByType(ctx, uid, EventAlert)
 
 	var newly []BadgeStatus
 	for _, def := range badgeCatalog {
-		if !badgeQualifies(def.Code, st, favCount, alertCount) {
+		if !badgeQualifies(def.Code, &st, favCount, alertCount) {
 			continue
 		}
 		created, err := g.repo.AddBadge(ctx, uid, def.Code, time.Now().UTC())
@@ -324,8 +331,11 @@ func (g *GamificationService) evaluate(ctx context.Context, uid uuid.UUID, st *m
 			continue
 		}
 		if def.XP > 0 {
-			st.XP += int64(def.XP)
-			_ = g.repo.AddEvent(ctx, &models.GamificationEvent{UserID: uid, Type: "badge:" + def.Code, XP: def.XP, DayKey: today})
+			out, awardErr := g.awardXP(ctx, uid, "badge:"+def.Code, "badge:"+def.Code,
+				"badge", def.Code, "Kalıcı başarı rozeti", def.XP, 0)
+			if awardErr == nil && out.Created {
+				st = out.State
+			}
 		}
 		now := time.Now().UTC()
 		newly = append(newly, BadgeStatus{def.Code, def.Name, def.Description, def.Icon, true, &now})
@@ -340,9 +350,12 @@ func (g *GamificationService) evaluate(ctx context.Context, uid uuid.UUID, st *m
 
 	// Daily quest completion bonus (once per day).
 	todayTypes, _ := g.repo.TodayTypes(ctx, uid, today)
-	if !todayTypes[EventDailyComplete] && todayTypes[EventCheckIn] && todayTypes[EventFavorite] && todayTypes[EventAlert] {
-		st.XP += int64(dailyBonusXP)
-		_ = g.repo.AddEvent(ctx, &models.GamificationEvent{UserID: uid, Type: EventDailyComplete, XP: dailyBonusXP, DayKey: today})
+	if !todayTypes[EventDailyComplete] && todayTypes[EventDailyPlan] && todayTypes[EventLesson] && todayTypes[EventDiscipline] {
+		out, awardErr := g.awardXP(ctx, uid, "daily-complete:"+today, EventDailyComplete,
+			"calendar_day", today, "Üç anlamlı günlük görevi tamamlama", dailyBonusXP, 15)
+		if awardErr == nil && out.Created {
+			st = out.State
+		}
 		if g.notifier != nil {
 			g.notifier.Notify(ctx, uid, nil, "",
 				"Günlük görevler tamam",
@@ -350,8 +363,31 @@ func (g *GamificationService) evaluate(ctx context.Context, uid uuid.UUID, st *m
 		}
 	}
 
-	st.Level = levelForXP(st.XP)
 	return newly
+}
+
+func (g *GamificationService) awardXP(
+	ctx context.Context,
+	uid uuid.UUID,
+	idempotencyKey, eventType, sourceType, sourceID, reason string,
+	xp, seasonPoints int,
+) (repository.AwardOutcome, error) {
+	return g.repo.ApplyAward(ctx, repository.AwardSpec{
+		UserID: uid, IdempotencyKey: idempotencyKey, EventType: eventType,
+		SourceType: sourceType, SourceID: sourceID, Reason: reason,
+		RuleVersion: gamificationRuleVersion, DayKey: g.today(),
+		SeasonCode: g.currentSeasonCode(), SeasonPoints: seasonPoints,
+	}, func(st *models.UserGamification) int {
+		st.XP += int64(xp)
+		st.Level = levelForXP(st.XP)
+		return xp
+	})
+}
+
+func (g *GamificationService) currentSeasonCode() string {
+	now := time.Now().In(g.loc)
+	quarter := (int(now.Month())-1)/3 + 1
+	return fmt.Sprintf("%d-Q%d", now.Year(), quarter)
 }
 
 func badgeQualifies(code string, st *models.UserGamification, favCount, alertCount int64) bool {

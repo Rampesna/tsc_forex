@@ -35,19 +35,20 @@ var baseResolutions = []struct {
 // intervalToBase maps a client-requested interval to (baseResolution, factor).
 // factor>1 means re-bucket `factor` base candles into one requested candle.
 var intervalToBase = map[string]struct {
-	Base   string
-	Secs   int
-	Factor int
+	Base     string
+	Secs     int
+	Factor   int
+	Calendar string
 }{
-	"1m":  {"1m", 60, 1},
-	"5m":  {"5m", 300, 1},
-	"15m": {"15m", 900, 1},
-	"30m": {"15m", 900, 2},
-	"1h":  {"1h", 3600, 1},
-	"4h":  {"4h", 14400, 1},
-	"1d":  {"1d", 86400, 1},
-	"1w":  {"1d", 86400, 7},
-	"1mo": {"1d", 86400, 30},
+	"1m":  {Base: "1m", Secs: 60, Factor: 1},
+	"5m":  {Base: "5m", Secs: 300, Factor: 1},
+	"15m": {Base: "15m", Secs: 900, Factor: 1},
+	"30m": {Base: "15m", Secs: 900, Factor: 2},
+	"1h":  {Base: "1h", Secs: 3600, Factor: 1},
+	"4h":  {Base: "4h", Secs: 14400, Factor: 1},
+	"1d":  {Base: "1d", Secs: 86400, Factor: 1},
+	"1w":  {Base: "1d", Secs: 86400, Factor: 7, Calendar: "week"},
+	"1mo": {Base: "1d", Secs: 86400, Factor: 31, Calendar: "month"},
 }
 
 const sparkCap = 40
@@ -277,27 +278,37 @@ func (s *CandleStore) Bootstrap(ctx context.Context) {
 		defer release()
 
 		now := time.Now().UTC()
+		codes := make([]string, 0, len(domain.Catalog))
+		for _, instrument := range domain.Catalog {
+			codes = append(codes, instrument.Code)
+		}
 		for _, br := range baseResolutions {
 			// Look for real history (older than 3 bar-widths ago) so the live
 			// forming candle just flushed to the DB doesn't skip the bootstrap.
 			cutoff := now.Add(-3 * time.Duration(br.Secs) * time.Second)
-			has, err := s.repo.HasHistoryBefore(ctx, br.Name, cutoff)
+			missing, err := s.repo.MissingHistoryCodes(ctx, br.Name, cutoff, codes)
 			if err != nil {
 				s.log.Warn("candle bootstrap check failed", zap.String("res", br.Name), zap.Error(err))
 				continue
 			}
-			if has {
+			if len(missing) == 0 {
 				continue
 			}
 			from := now.Add(-bootstrapLookback[br.Name])
 			cctx, cancel := context.WithTimeout(ctx, 15*time.Minute)
-			n, err := s.repo.SeedFromTicks(cctx, br.Name, br.Secs, from, now)
+			n, err := s.repo.SeedFromTicks(cctx, br.Name, br.Secs, from, now, missing)
 			cancel()
 			if err != nil {
-				s.log.Warn("candle bootstrap failed", zap.String("res", br.Name), zap.Error(err))
+				s.log.Warn("candle bootstrap failed",
+					zap.String("res", br.Name),
+					zap.Int("missing_codes", len(missing)),
+					zap.Error(err))
 				continue
 			}
-			s.log.Info("candle bootstrap done", zap.String("res", br.Name), zap.Int64("rows", n))
+			s.log.Info("candle bootstrap done",
+				zap.String("res", br.Name),
+				zap.Int("missing_codes", len(missing)),
+				zap.Int64("rows", n))
 		}
 	}()
 }
@@ -319,6 +330,12 @@ func (s *CandleStore) Candles(ctx context.Context, code, interval string, from, 
 	m, ok := intervalToBase[interval]
 	if !ok {
 		return nil, ErrUnsupportedInterval
+	}
+	if limit <= 0 {
+		limit = 1000
+	}
+	if limit > 2000 {
+		limit = 2000
 	}
 	var base []models.OHLC
 	if s.repo != nil {
@@ -346,7 +363,16 @@ func (s *CandleStore) Candles(ctx context.Context, code, interval string, from, 
 	if m.Factor == 1 {
 		return base, nil
 	}
-	return rebucket(base, m.Secs*m.Factor), nil
+	var out []models.OHLC
+	if m.Calendar != "" {
+		out = rebucketCalendar(base, m.Calendar)
+	} else {
+		out = rebucket(base, m.Secs*m.Factor)
+	}
+	if len(out) > limit {
+		out = out[len(out)-limit:]
+	}
+	return out, nil
 }
 
 // rebucket aggregates fine base candles into coarser ones of `secs` width.
@@ -364,6 +390,61 @@ func rebucket(in []models.OHLC, secs int) []models.OHLC {
 			}
 			nc := models.OHLC{Bucket: b, Open: c.Open, High: c.High, Low: c.Low, Close: c.Close, Count: c.Count}
 			cur = &nc
+			continue
+		}
+		if c.High > cur.High {
+			cur.High = c.High
+		}
+		if c.Low < cur.Low {
+			cur.Low = c.Low
+		}
+		cur.Close = c.Close
+		cur.Count += c.Count
+	}
+	if cur != nil {
+		out = append(out, *cur)
+	}
+	return out
+}
+
+// rebucketCalendar aligns weekly candles to Monday 00:00 UTC and monthly
+// candles to the first calendar day. Fixed Unix-duration buckets made weeks
+// start on Thursday and represented a "month" as arbitrary 30-day windows.
+func rebucketCalendar(in []models.OHLC, period string) []models.OHLC {
+	if len(in) == 0 {
+		return in
+	}
+	bucket := func(ts time.Time) time.Time {
+		t := ts.UTC()
+		switch period {
+		case "week":
+			day := time.Date(t.Year(), t.Month(), t.Day(), 0, 0, 0, 0, time.UTC)
+			daysSinceMonday := (int(day.Weekday()) + 6) % 7
+			return day.AddDate(0, 0, -daysSinceMonday)
+		case "month":
+			return time.Date(t.Year(), t.Month(), 1, 0, 0, 0, 0, time.UTC)
+		default:
+			return t
+		}
+	}
+
+	out := make([]models.OHLC, 0, len(in))
+	var cur *models.OHLC
+	for _, c := range in {
+		b := bucket(c.Bucket)
+		if cur == nil || !cur.Bucket.Equal(b) {
+			if cur != nil {
+				out = append(out, *cur)
+			}
+			next := models.OHLC{
+				Bucket: b,
+				Open:   c.Open,
+				High:   c.High,
+				Low:    c.Low,
+				Close:  c.Close,
+				Count:  c.Count,
+			}
+			cur = &next
 			continue
 		}
 		if c.High > cur.High {

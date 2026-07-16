@@ -10,6 +10,11 @@ import okhttp3.Request
 import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
+import java.util.UUID
 import java.util.concurrent.TimeUnit
 
 class ApiException(val code: Int, message: String) : Exception(message)
@@ -34,8 +39,11 @@ class ApiClient(
     suspend fun login(email: String, password: String): TokenResponse =
         TokenResponse.from(postJson("auth/login", JSONObject().put("email", email).put("password", password), auth = false))
 
-    suspend fun register(email: String, password: String): TokenResponse =
-        TokenResponse.from(postJson("auth/register", JSONObject().put("email", email).put("password", password), auth = false))
+    suspend fun register(email: String, password: String): TokenResponse {
+        val body = JSONObject().put("email", email).put("password", password)
+        postJson("auth/register", body, auth = false)
+        return login(email, password)
+    }
 
     suspend fun googleLogin(idToken: String): TokenResponse =
         TokenResponse.from(postJson("auth/google", JSONObject().put("id_token", idToken), auth = false))
@@ -140,6 +148,123 @@ class ApiClient(
 
     suspend fun leaderboard(limit: Int = 50): Leaderboard =
         Leaderboard.from(unwrap(JSONObject(getRaw("me/gamification/leaderboard?limit=$limit"))))
+
+    suspend fun gamificationExperience(): GamificationExperience =
+        GamificationExperience.from(unwrap(JSONObject(getRaw("me/gamification/experience"))))
+
+    suspend fun saveDailyPlan(
+        risk: String,
+        codes: List<String>,
+        learningGoal: String,
+        reflection: String,
+    ): GamCheckInResult {
+        val body = JSONObject()
+            .put("risk_appetite", risk)
+            .put("watch_codes", JSONArray(codes))
+            .put("learning_goal", learningGoal)
+            .put("reflection", reflection)
+        return GamCheckInResult.from(unwrap(postJson("me/gamification/daily-plan", body)))
+    }
+
+    suspend fun submitQuiz(lesson: String, question: String, answer: Int): QuizAttemptResult =
+        QuizAttemptResult.from(unwrap(postJson("me/gamification/quiz-attempts", JSONObject()
+            .put("lesson_code", lesson)
+            .put("question_code", question)
+            .put("answer", answer)
+            .put("idempotency_key", UUID.randomUUID().toString()))))
+
+    suspend fun completeDiscipline(code: String, note: String): Pair<Boolean, Int> {
+        val response = unwrap(postJson("me/gamification/discipline/$code", JSONObject().put("note", note)))
+        return response.optBoolean("awarded") to response.optInt("xp_gained")
+    }
+
+    suspend fun createPaperTrade(
+        code: String,
+        side: String,
+        quantity: Double,
+        entryPrice: Double,
+        thesis: String,
+        riskBudgetPct: Double,
+        invalidation: String,
+    ): PaperTrade {
+        val formatter = SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).apply {
+            timeZone = TimeZone.getTimeZone("UTC")
+        }
+        val response = unwrap(postJson("me/gamification/paper-trades", JSONObject()
+            .put("client_id", UUID.randomUUID().toString())
+            .put("code", code)
+            .put("side", side)
+            .put("quantity", quantity)
+            .put("entry_price", entryPrice)
+            .put("thesis", thesis)
+            .put("risk_budget_pct", riskBudgetPct)
+            .put("invalidation", invalidation)
+            .put("occurred_at", formatter.format(Date()))))
+        return PaperTrade.from(response.optJSONObject("trade") ?: response)
+    }
+
+    suspend fun reviewPaperTrade(id: String, followedPlan: Boolean, retrospective: String): Pair<PaperTrade, Int> {
+        val response = unwrap(postJson(
+            "me/gamification/paper-trades/$id/review",
+            JSONObject().put("followed_plan", followedPlan).put("retrospective", retrospective),
+            method = "PATCH",
+        ))
+        return PaperTrade.from(response.optJSONObject("trade") ?: JSONObject()) to response.optInt("xp_gained")
+    }
+
+    suspend fun saveGamificationPrivacy(privacy: GamificationPrivacy): GamificationPrivacy =
+        GamificationPrivacy.from(unwrap(postJson(
+            "me/gamification/privacy", privacy.json(), method = "PATCH",
+        )))
+
+    suspend fun createStudyGroup(name: String): StudyGroupOverview =
+        StudyGroupOverview.from(unwrap(postJson(
+            "me/gamification/study-groups", JSONObject().put("name", name),
+        )))
+
+    suspend fun joinStudyGroup(inviteCode: String) {
+        postJson("me/gamification/study-groups/join", JSONObject().put("invite_code", inviteCode))
+    }
+
+    // ---- Portfolio ledger ----
+
+    suspend fun portfolios(): List<PortfolioOverview> =
+        parseArray(getRaw("me/portfolios"), "portfolios") { PortfolioOverview.from(it) }
+
+    suspend fun createPortfolio(name: String): PortfolioMeta =
+        PortfolioMeta.from(unwrap(postJson("me/portfolios", JSONObject().put("name", name))))
+
+    suspend fun portfolio(id: String): PortfolioOverview =
+        PortfolioOverview.from(unwrap(JSONObject(getRaw("me/portfolios/$id"))))
+
+    suspend fun portfolioPosition(id: String, code: String): PortfolioPositionDetail =
+        PortfolioPositionDetail.from(unwrap(JSONObject(getRaw("me/portfolios/$id/positions/$code"))))
+
+    suspend fun createPortfolioTransaction(id: String, body: JSONObject): PortfolioTransaction {
+        val response = postJson("me/portfolios/$id/transactions", body)
+        return PortfolioTransaction.from(response.optJSONObject("transaction") ?: unwrap(response))
+    }
+
+    suspend fun updatePortfolioTransaction(
+        portfolioId: String,
+        transactionId: String,
+        body: JSONObject,
+    ): PortfolioTransaction =
+        PortfolioTransaction.from(unwrap(postJson(
+            "me/portfolios/$portfolioId/transactions/$transactionId",
+            body,
+            method = "PATCH",
+        )))
+
+    suspend fun deletePortfolioTransaction(portfolioId: String, transactionId: String) {
+        delete("me/portfolios/$portfolioId/transactions/$transactionId")
+    }
+
+    suspend fun portfolioPerformance(id: String, range: String = "1y"): List<PortfolioPerformancePoint> =
+        parseArray(
+            getRaw("me/portfolios/$id/performance?range=$range&points=365"),
+            "points",
+        ) { PortfolioPerformancePoint.from(it) }
 
     // ---- Account ----
 

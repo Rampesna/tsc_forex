@@ -90,6 +90,23 @@ func (r *userRepository) ByID(ctx context.Context, id uuid.UUID) (models.User, e
 func (r *userRepository) DeleteUser(ctx context.Context, id uuid.UUID) error {
 	start := time.Now()
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		portfolioIDs := tx.Model(&models.Portfolio{}).
+			Select("id").
+			Where("user_id = ?", id)
+		if err := tx.Where("portfolio_id IN (?)", portfolioIDs).
+			Delete(&models.PortfolioPosition{}).Error; err != nil {
+			return err
+		}
+		ownedGroupIDs := tx.Model(&models.StudyGroup{}).
+			Select("id").
+			Where("owner_id = ?", id)
+		if err := tx.Where("group_id IN (?)", ownedGroupIDs).
+			Delete(&models.StudyGroupMember{}).Error; err != nil {
+			return err
+		}
+		if err := tx.Where("owner_id = ?", id).Delete(&models.StudyGroup{}).Error; err != nil {
+			return err
+		}
 		owned := []any{
 			&models.WatchlistItem{},
 			&models.PriceAlert{},
@@ -100,7 +117,18 @@ func (r *userRepository) DeleteUser(ctx context.Context, id uuid.UUID) error {
 			&models.WebAuthnCredential{},
 			&models.UserBadge{},
 			&models.GamificationEvent{},
+			&models.XPLedgerEntry{},
 			&models.UserGamification{},
+			&models.DailyPlan{},
+			&models.LearningProgress{},
+			&models.LearningAttempt{},
+			&models.DisciplineReview{},
+			&models.SeasonScore{},
+			&models.PaperTrade{},
+			&models.GamificationPrivacy{},
+			&models.StudyGroupMember{},
+			&models.PortfolioTransaction{},
+			&models.Portfolio{},
 		}
 		for _, m := range owned {
 			if err := tx.Where("user_id = ?", id).Delete(m).Error; err != nil {

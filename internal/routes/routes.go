@@ -22,13 +22,14 @@ type Deps struct {
 	WS      *ws.Handler
 	Metrics *metrics.Metrics
 
-	Gold          *api.GoldHandler
-	Instrument    *api.InstrumentHandler
-	System        *api.SystemHandler
-	Auth          *api.AuthHandler
-	User          *api.UserHandler          // protected per-user features; may be nil
-	Passkey       *api.PasskeyHandler       // WebAuthn; may be nil
-	Gamification  *api.GamificationHandler // streak/XP/badges/leaderboard; may be nil
+	Gold         *api.GoldHandler
+	Instrument   *api.InstrumentHandler
+	System       *api.SystemHandler
+	Auth         *api.AuthHandler
+	User         *api.UserHandler         // protected per-user features; may be nil
+	Passkey      *api.PasskeyHandler      // WebAuthn; may be nil
+	Gamification *api.GamificationHandler // streak/XP/badges/leaderboard; may be nil
+	Portfolio    *api.PortfolioHandler    // transaction ledger + analytics; may be nil
 
 	AuthService *service.AuthService // for protected-route middleware; may be nil
 }
@@ -140,11 +141,35 @@ func NewEngine(d Deps) *gin.Engine {
 
 				authed.POST("/me/devices", d.User.RegisterDevice)
 
+				if d.Portfolio != nil {
+					authed.GET("/me/portfolios", d.Portfolio.List)
+					authed.POST("/me/portfolios", d.Portfolio.Create)
+					authed.GET("/me/portfolios/:portfolioID", d.Portfolio.Get)
+					authed.PATCH("/me/portfolios/:portfolioID", d.Portfolio.Update)
+					authed.DELETE("/me/portfolios/:portfolioID", d.Portfolio.Delete)
+					authed.GET("/me/portfolios/:portfolioID/positions/:code", d.Portfolio.Position)
+					authed.GET("/me/portfolios/:portfolioID/transactions", d.Portfolio.Transactions)
+					authed.POST("/me/portfolios/:portfolioID/transactions", d.Portfolio.CreateTransaction)
+					authed.PATCH("/me/portfolios/:portfolioID/transactions/:transactionID", d.Portfolio.UpdateTransaction)
+					authed.DELETE("/me/portfolios/:portfolioID/transactions/:transactionID", d.Portfolio.DeleteTransaction)
+					authed.GET("/me/portfolios/:portfolioID/performance", d.Portfolio.Performance)
+				}
+
 				// Gamification: daily streak, XP/levels, badges, leaderboard.
 				if d.Gamification != nil {
 					authed.GET("/me/gamification", d.Gamification.Get)
 					authed.POST("/me/gamification/checkin", d.Gamification.CheckIn)
 					authed.GET("/me/gamification/leaderboard", d.Gamification.Leaderboard)
+					authed.GET("/me/gamification/experience", d.Gamification.Experience)
+					authed.POST("/me/gamification/daily-plan", d.Gamification.SaveDailyPlan)
+					authed.POST("/me/gamification/quiz-attempts", d.Gamification.SubmitQuiz)
+					authed.POST("/me/gamification/discipline/:code", d.Gamification.CompleteDiscipline)
+					authed.GET("/me/gamification/season", d.Gamification.Season)
+					authed.POST("/me/gamification/paper-trades", d.Gamification.CreatePaperTrade)
+					authed.PATCH("/me/gamification/paper-trades/:tradeID/review", d.Gamification.ReviewPaperTrade)
+					authed.PATCH("/me/gamification/privacy", d.Gamification.SavePrivacy)
+					authed.POST("/me/gamification/study-groups", d.Gamification.CreateStudyGroup)
+					authed.POST("/me/gamification/study-groups/join", d.Gamification.JoinStudyGroup)
 				}
 
 				// Passkey registration + management for the signed-in user.

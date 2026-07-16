@@ -71,7 +71,9 @@ var Cryptos = []CryptoDef{
 	{"AVAX", "Avalanche", "AVAX-USD", "avalanche-2"},
 	{"DOT", "Polkadot", "DOT-USD", "polkadot"},
 	{"LINK", "Chainlink", "LINK-USD", "chainlink"},
-	{"MATIC", "Polygon", "MATIC-USD", "matic-network"},
+	// Polygon migrated MATIC to POL 1:1 in September 2024. Keep the public code
+	// stable for existing favorites/portfolios while sourcing the live successor.
+	{"MATIC", "Polygon (POL)", "POL28321-USD", "polygon-ecosystem-token"},
 	{"LTC", "Litecoin", "LTC-USD", "litecoin"},
 	{"ATOM", "Cosmos", "ATOM-USD", "cosmos"},
 	{"XLM", "Stellar", "XLM-USD", "stellar"},

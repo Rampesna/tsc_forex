@@ -142,6 +142,7 @@ func run() error {
 		userH       *api.UserHandler
 		passkeyH    *api.PasskeyHandler
 		gamH        *api.GamificationHandler
+		portfolioH  *api.PortfolioHandler
 		instrRepo   repository.PriceRepository
 		histWriter  *service.HistoryWriter
 		instrWriter *service.InstrumentWriter
@@ -223,6 +224,10 @@ func run() error {
 			}
 		}
 		userH = api.NewUserHandler(watchRepo, alertRepo, notifRepo, deviceRepo, userRepo, avatarStore, log)
+
+		portfolioRepo := repository.NewPortfolioRepository(db, m)
+		portfolioSvc := service.NewPortfolioService(portfolioRepo, engine).WithHistory(candleStore)
+		portfolioH = api.NewPortfolioHandler(portfolioSvc)
 
 		// Push senders, routed by device platform (ios → APNs, android → FCM).
 		senders := map[string]service.PushSender{}
@@ -323,6 +328,7 @@ func run() error {
 		User:         userH,
 		Passkey:      passkeyH,
 		Gamification: gamH,
+		Portfolio:    portfolioH,
 		AuthService:  authSvc,
 	})
 

@@ -23,6 +23,6 @@ class TscApp : Application() {
         if (AppConfig.allowsServerOverride) AppConfig.hostOverride = prefs.hostOverride
         auth = AuthStore(prefs)
         prices = PriceStore(prefs, auth)
-        portfolio = PortfolioStore(prefs)
+        portfolio = PortfolioStore(prefs, auth)
     }
 }

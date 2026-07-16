@@ -1,51 +1,335 @@
 package com.example.tsc.forex.store
 
+import android.util.Base64
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
+import com.example.tsc.forex.data.ApiException
 import com.example.tsc.forex.data.InstrumentPrice
+import com.example.tsc.forex.data.PortfolioOverview
+import com.example.tsc.forex.data.PortfolioPerformancePoint
+import com.example.tsc.forex.data.PortfolioPosition
+import com.example.tsc.forex.data.PortfolioPositionDetail
 import com.example.tsc.forex.data.Prefs
+import org.json.JSONArray
+import org.json.JSONObject
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+import java.util.TimeZone
+import java.util.UUID
 
-/** A single portfolio position. */
 data class Holding(val code: String, val amount: Double, val cost: Double)
 
-/** Local portfolio: holdings with live valuation and P/L. */
-class PortfolioStore(private val prefs: Prefs) {
-    var holdings by mutableStateOf(load())
+class PortfolioStore(
+    private val prefs: Prefs,
+    private val auth: AuthStore,
+) {
+    var overview by mutableStateOf<PortfolioOverview?>(null)
         private set
+    var performance by mutableStateOf<List<PortfolioPerformancePoint>>(emptyList())
+        private set
+    var loading by mutableStateOf(false)
+        private set
+    var errorMessage by mutableStateOf<String?>(null)
+        private set
+    var legacyPreview by mutableStateOf<List<Holding>>(emptyList())
+        private set
+    private var userScope: String? = null
 
-    fun add(code: String, amount: Double, cost: Double) {
-        holdings = holdings + Holding(code, amount, cost)
-        persist()
-    }
+    val activePositions: List<PortfolioPosition>
+        get() = overview?.positions?.filter { it.quantity > 0 } ?: emptyList()
 
-    fun remove(index: Int) {
-        if (index in holdings.indices) {
-            holdings = holdings.toMutableList().also { it.removeAt(index) }
-            persist()
+    suspend fun sync(prices: Map<String, InstrumentPrice>, range: String = "1y") {
+        if (!auth.isLoggedIn) return
+        activateScope(jwtUserId(auth.accessToken))
+        loading = overview == null
+        errorMessage = null
+        try {
+            val api = auth.newApiClient()
+            var portfolios = api.portfolios()
+            if (portfolios.isEmpty()) {
+                val created = api.createPortfolio("Ana Portföy")
+                portfolios = listOf(api.portfolio(created.id))
+            }
+            var next = portfolios.first()
+            if (userScope == null) activateScope(next.portfolio.userId)
+            migrateLegacyStorage(next)
+            val legacy = legacyHoldings()
+            if (legacy.isNotEmpty() && !legacyMigrated()) {
+                if (next.positions.any { it.quantity > 0 }) {
+                    legacyPreview = legacy
+                } else {
+                    importLegacy(next.portfolio.id, legacy, prices)
+                    next = api.portfolio(next.portfolio.id)
+                }
+            }
+            overview = next
+            persistCache(next)
+            if (flushOutbox()) {
+                next = api.portfolio(next.portfolio.id)
+                overview = next
+                persistCache(next)
+            }
+            performance = runCatching {
+                api.portfolioPerformance(next.portfolio.id, range)
+            }.getOrDefault(emptyList())
+        } catch (e: Exception) {
+            errorMessage = e.message ?: "Portföy yüklenemedi."
+        } finally {
+            loading = false
         }
     }
 
-    /** Current market value of a holding using the live price. */
-    fun value(h: Holding, prices: Map<String, InstrumentPrice>): Double =
-        (prices[h.code]?.price ?: 0.0) * h.amount
+    suspend fun refreshPerformance(range: String) {
+        val id = overview?.portfolio?.id ?: return
+        performance = runCatching {
+            auth.newApiClient().portfolioPerformance(id, range)
+        }.getOrDefault(emptyList())
+    }
 
-    fun totalValue(prices: Map<String, InstrumentPrice>): Double =
-        holdings.sumOf { value(it, prices) }
+    suspend fun positionDetail(code: String): PortfolioPositionDetail? {
+        val id = overview?.portfolio?.id ?: return null
+        return runCatching { auth.newApiClient().portfolioPosition(id, code) }
+            .onFailure { errorMessage = it.message }
+            .getOrNull()
+    }
 
-    fun totalCost(): Double = holdings.sumOf { it.cost * it.amount }
+    suspend fun saveTransaction(
+        body: JSONObject,
+        prices: Map<String, InstrumentPrice>,
+        transactionId: String? = null,
+    ): Boolean {
+        val id = overview?.portfolio?.id ?: return false
+        errorMessage = null
+        return try {
+            if (transactionId == null) {
+                auth.newApiClient().createPortfolioTransaction(id, body)
+            } else {
+                auth.newApiClient().updatePortfolioTransaction(id, transactionId, body)
+            }
+            sync(prices)
+            true
+        } catch (e: Exception) {
+            if (transactionId == null && e !is ApiException) {
+                enqueue(id, body)
+                errorMessage = "İşlem çevrimdışı kuyruğa alındı."
+                true
+            } else {
+                errorMessage = e.message ?: "İşlem kaydedilemedi."
+                false
+            }
+        }
+    }
 
-    fun totalPL(prices: Map<String, InstrumentPrice>): Double =
-        totalValue(prices) - totalCost()
+    suspend fun deleteTransaction(
+        transactionId: String,
+        prices: Map<String, InstrumentPrice>,
+    ) {
+        val id = overview?.portfolio?.id ?: return
+        runCatching {
+            auth.newApiClient().deletePortfolioTransaction(id, transactionId)
+            sync(prices)
+        }.onFailure { errorMessage = it.message }
+    }
 
-    private fun load(): List<Holding> =
+    suspend fun confirmLegacyImport(prices: Map<String, InstrumentPrice>) {
+        val id = overview?.portfolio?.id ?: return
+        runCatching {
+            importLegacy(id, legacyPreview, prices)
+            legacyPreview = emptyList()
+            sync(prices)
+        }.onFailure { errorMessage = it.message }
+    }
+
+    fun skipLegacyImport() {
+        setLegacyMigrated()
+        legacyPreview = emptyList()
+    }
+
+    private suspend fun importLegacy(
+        portfolioId: String,
+        holdings: List<Holding>,
+        prices: Map<String, InstrumentPrice>,
+    ) {
+        val usdtry = (prices["USDTRY"]?.price ?: 1.0).coerceAtLeast(1.0)
+        holdings.forEach { holding ->
+            val live = prices[holding.code]
+            val isUSD = live?.isUSD == true
+            val nativeCost = when {
+                holding.cost > 0 && isUSD -> holding.cost / usdtry
+                holding.cost > 0 -> holding.cost
+                else -> live?.price ?: 0.0
+            }
+            if (holding.amount <= 0 || nativeCost <= 0) return@forEach
+            val legacyId = UUID.nameUUIDFromBytes(
+                "${holding.code}|${holding.amount}|${holding.cost}".toByteArray(),
+            )
+            auth.newApiClient().createPortfolioTransaction(
+                portfolioId,
+                transactionBody(
+                    clientId = "android-legacy-v2-$legacyId",
+                    code = holding.code,
+                    type = "buy",
+                    quantity = holding.amount,
+                    unitPrice = nativeCost,
+                    currency = if (isUSD) "USD" else "TRY",
+                    usdtry = if (isUSD) usdtry else 1.0,
+                    note = "Eski cihaz portföyünden aktarıldı",
+                ),
+            )
+        }
+        setLegacyMigrated()
+        prefs.holdings = ""
+    }
+
+    private fun legacyHoldings(): List<Holding> =
         prefs.holdings.split(";").filter { it.isNotEmpty() }.mapNotNull { row ->
             val parts = row.split(":")
-            if (parts.size == 3) Holding(parts[0], parts[1].toDoubleOrNull() ?: 0.0, parts[2].toDoubleOrNull() ?: 0.0)
-            else null
+            if (parts.size == 3) {
+                Holding(parts[0], parts[1].toDoubleOrNull() ?: 0.0, parts[2].toDoubleOrNull() ?: 0.0)
+            } else null
         }
 
-    private fun persist() {
-        prefs.holdings = holdings.joinToString(";") { "${it.code}:${it.amount}:${it.cost}" }
+    private fun enqueue(portfolioId: String, body: JSONObject) {
+        val scope = userScope ?: return
+        val rows = runCatching { JSONArray(prefs.portfolioOutbox(scope)) }.getOrElse { JSONArray() }
+        rows.put(JSONObject().put("portfolio_id", portfolioId).put("body", body))
+        prefs.setPortfolioOutbox(scope, rows.toString())
+    }
+
+    private suspend fun flushOutbox(): Boolean {
+        val scope = userScope ?: return false
+        val rows = runCatching { JSONArray(prefs.portfolioOutbox(scope)) }.getOrElse { JSONArray() }
+        if (rows.length() == 0) return false
+        val remaining = JSONArray()
+        var sent = false
+        for (index in 0 until rows.length()) {
+            val item = rows.getJSONObject(index)
+            runCatching {
+                auth.newApiClient().createPortfolioTransaction(
+                    item.optString("portfolio_id"),
+                    item.getJSONObject("body"),
+                )
+            }.onSuccess { sent = true }.onFailure { remaining.put(item) }
+        }
+        prefs.setPortfolioOutbox(scope, remaining.toString())
+        return sent
+    }
+
+    private fun loadCache(scope: String): PortfolioOverview? =
+        runCatching {
+            val value = prefs.portfolioCache(scope)
+            if (value.isBlank()) null else PortfolioOverview.from(JSONObject(value))
+        }.getOrNull()
+
+    private fun persistCache(value: PortfolioOverview) {
+        userScope?.let { prefs.setPortfolioCache(it, overviewJSON(value).toString()) }
+    }
+
+    private fun overviewJSON(value: PortfolioOverview): JSONObject = JSONObject()
+        .put("portfolio", JSONObject()
+            .put("id", value.portfolio.id)
+            .put("user_id", value.portfolio.userId)
+            .put("name", value.portfolio.name)
+            .put("base_currency", value.portfolio.baseCurrency)
+            .put("net_deposits_try", value.portfolio.netDepositsTry)
+            .put("version", value.portfolio.version))
+        .put("positions", JSONArray(value.positions.map { position ->
+            JSONObject()
+                .put("id", position.id).put("code", position.code)
+                .put("display_name", position.displayName).put("kind", position.kind)
+                .put("currency", position.currency).put("quantity", position.quantity)
+                .put("average_cost_native", position.averageCostNative)
+                .put("average_cost_try", position.averageCostTry)
+                .put("current_price_native", position.currentPriceNative)
+                .put("current_price_try", position.currentPriceTry)
+                .put("value_native", position.valueNative).put("value_try", position.valueTry)
+                .put("cost_basis_try", position.costBasisTry)
+                .put("unrealized_pnl_try", position.unrealizedPnlTry)
+                .put("unrealized_pnl_pct", position.unrealizedPnlPct)
+                .put("realized_pnl_try", position.realizedPnlTry)
+                .put("day_change_try", position.dayChangeTry)
+                .put("day_change_pct", position.dayChangePct)
+                .put("allocation_pct", position.allocationPct)
+        }))
+        .put("total_value_try", value.totalValueTry)
+        .put("total_cost_try", value.totalCostTry)
+        .put("unrealized_pnl_try", value.unrealizedPnlTry)
+        .put("realized_pnl_try", value.realizedPnlTry)
+        .put("day_change_try", value.dayChangeTry)
+        .put("day_change_pct", value.dayChangePct)
+        .put("net_deposits_try", value.netDepositsTry)
+        .put("active_positions", value.activePositions)
+
+    private fun activateScope(scope: String?) {
+        if (userScope == scope) return
+        userScope = scope
+        overview = scope?.let(::loadCache)
+        performance = emptyList()
+        legacyPreview = emptyList()
+    }
+
+    private fun legacyMigrated(): Boolean =
+        userScope?.let { prefs.portfolioLegacyMigrated(it) } ?: false
+
+    private fun setLegacyMigrated() {
+        userScope?.let { prefs.setPortfolioLegacyMigrated(it, true) }
+    }
+
+    private fun migrateLegacyStorage(current: PortfolioOverview) {
+        val scope = userScope ?: return
+        val old = runCatching {
+            if (prefs.portfolioCache.isBlank()) null
+            else PortfolioOverview.from(JSONObject(prefs.portfolioCache))
+        }.getOrNull() ?: return
+        if (old.portfolio.id != current.portfolio.id) return
+        if (prefs.portfolioOutbox(scope).isBlank() && prefs.portfolioOutbox.isNotBlank()) {
+            prefs.setPortfolioOutbox(scope, prefs.portfolioOutbox)
+        }
+        if (prefs.portfolioLegacyMigrated) {
+            prefs.setPortfolioLegacyMigrated(scope, true)
+        }
+        prefs.clearLegacyPortfolioStorage()
+    }
+
+    private fun jwtUserId(token: String?): String? {
+        val payload = token?.split(".")?.getOrNull(1) ?: return null
+        return runCatching {
+            val decoded = Base64.decode(payload, Base64.URL_SAFE or Base64.NO_WRAP or Base64.NO_PADDING)
+            JSONObject(String(decoded, Charsets.UTF_8)).optString("uid").ifBlank { null }
+        }.getOrNull()
+    }
+
+    companion object {
+        fun transactionBody(
+            clientId: String = UUID.randomUUID().toString(),
+            code: String = "",
+            type: String,
+            quantity: Double = 0.0,
+            unitPrice: Double = 0.0,
+            amount: Double = 0.0,
+            fee: Double = 0.0,
+            currency: String = "TRY",
+            usdtry: Double = 0.0,
+            occurredAt: String = isoNow(),
+            note: String = "",
+        ): JSONObject = JSONObject()
+            .put("client_id", clientId)
+            .put("code", code)
+            .put("type", type)
+            .put("quantity", quantity.toString())
+            .put("unit_price_native", unitPrice.toString())
+            .put("amount_native", amount.toString())
+            .put("fee_native", fee.toString())
+            .put("currency", currency)
+            .put("usdtry", usdtry.toString())
+            .put("occurred_at", occurredAt)
+            .put("note", note)
+
+        private fun isoNow(): String =
+            SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
+                timeZone = TimeZone.getTimeZone("UTC")
+            }.format(Date())
     }
 }

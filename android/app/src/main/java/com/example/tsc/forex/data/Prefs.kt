@@ -46,6 +46,47 @@ class Prefs(context: Context) {
         get() = sp.getString(KEY_HOLDINGS, "") ?: ""
         set(v) = sp.edit().putString(KEY_HOLDINGS, v).apply()
 
+    var portfolioCache: String
+        get() = sp.getString(KEY_PORTFOLIO_CACHE, "") ?: ""
+        set(v) = sp.edit().putString(KEY_PORTFOLIO_CACHE, v).apply()
+
+    var portfolioOutbox: String
+        get() = sp.getString(KEY_PORTFOLIO_OUTBOX, "") ?: ""
+        set(v) = sp.edit().putString(KEY_PORTFOLIO_OUTBOX, v).apply()
+
+    var portfolioLegacyMigrated: Boolean
+        get() = sp.getBoolean(KEY_PORTFOLIO_MIGRATED, false)
+        set(v) = sp.edit().putBoolean(KEY_PORTFOLIO_MIGRATED, v).apply()
+
+    fun portfolioCache(scope: String): String =
+        sp.getString("$KEY_PORTFOLIO_CACHE.$scope", "") ?: ""
+
+    fun setPortfolioCache(scope: String, value: String) {
+        sp.edit().putString("$KEY_PORTFOLIO_CACHE.$scope", value).apply()
+    }
+
+    fun portfolioOutbox(scope: String): String =
+        sp.getString("$KEY_PORTFOLIO_OUTBOX.$scope", "") ?: ""
+
+    fun setPortfolioOutbox(scope: String, value: String) {
+        sp.edit().putString("$KEY_PORTFOLIO_OUTBOX.$scope", value).apply()
+    }
+
+    fun portfolioLegacyMigrated(scope: String): Boolean =
+        sp.getBoolean("$KEY_PORTFOLIO_MIGRATED.$scope", false)
+
+    fun setPortfolioLegacyMigrated(scope: String, value: Boolean) {
+        sp.edit().putBoolean("$KEY_PORTFOLIO_MIGRATED.$scope", value).apply()
+    }
+
+    fun clearLegacyPortfolioStorage() {
+        sp.edit()
+            .remove(KEY_PORTFOLIO_CACHE)
+            .remove(KEY_PORTFOLIO_OUTBOX)
+            .remove(KEY_PORTFOLIO_MIGRATED)
+            .apply()
+    }
+
     fun clearSession() {
         sp.edit().remove(KEY_ACCESS).remove(KEY_REFRESH).remove(KEY_NAME).remove(KEY_AVATAR).apply()
     }
@@ -60,5 +101,8 @@ class Prefs(context: Context) {
         private const val KEY_FAVS = "favorites"
         private const val KEY_FAV_ORDER = "favorite_order"
         private const val KEY_HOLDINGS = "holdings"
+        private const val KEY_PORTFOLIO_CACHE = "portfolio_cloud_cache_v2"
+        private const val KEY_PORTFOLIO_OUTBOX = "portfolio_outbox_v1"
+        private const val KEY_PORTFOLIO_MIGRATED = "portfolio_legacy_migrated_v2"
     }
 }

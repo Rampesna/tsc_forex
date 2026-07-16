@@ -15,6 +15,7 @@ tags:
   - name: gold
   - name: instruments
   - name: user
+  - name: portfolio
   - name: system
   - name: auth
 paths:
@@ -196,6 +197,239 @@ paths:
       summary: Register a push (APNs/FCM) token
       security: [{ bearerAuth: [] }]
       responses: { "201": { description: Registered } }
+  /me/portfolios:
+    get:
+      tags: [portfolio]
+      summary: List cloud portfolios with live TRY analytics
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200": { description: Portfolio overviews }
+    post:
+      tags: [portfolio]
+      summary: Create a portfolio
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PortfolioRequest" }
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Portfolio" }
+  /me/portfolios/{portfolioID}:
+    parameters:
+      - { name: portfolioID, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [portfolio]
+      summary: Portfolio positions, allocation and P&L
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Overview
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PortfolioOverview" }
+    patch:
+      tags: [portfolio]
+      summary: Rename a portfolio
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PortfolioRequest" }
+      responses: { "200": { description: Updated } }
+    delete:
+      tags: [portfolio]
+      summary: Delete a portfolio and its complete ledger
+      security: [{ bearerAuth: [] }]
+      responses: { "204": { description: Deleted } }
+  /me/portfolios/{portfolioID}/positions/{code}:
+    get:
+      tags: [portfolio]
+      summary: Position analytics and transaction history
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: portfolioID, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: code, in: path, required: true, schema: { type: string } }
+      responses: { "200": { description: Position detail } }
+  /me/portfolios/{portfolioID}/transactions:
+    parameters:
+      - { name: portfolioID, in: path, required: true, schema: { type: string, format: uuid } }
+    get:
+      tags: [portfolio]
+      summary: Paginated transaction ledger
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: limit, in: query, schema: { type: integer, maximum: 500 } }
+        - { name: before, in: query, schema: { type: string, format: date-time } }
+      responses: { "200": { description: Transactions } }
+    post:
+      tags: [portfolio]
+      summary: Add an idempotent ledger transaction
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PortfolioTransactionRequest" }
+      responses:
+        "201": { description: Created }
+        "200": { description: Existing transaction returned for duplicate client_id }
+        "409": { description: Transaction would make a position negative }
+  /me/portfolios/{portfolioID}/transactions/{transactionID}:
+    parameters:
+      - { name: portfolioID, in: path, required: true, schema: { type: string, format: uuid } }
+      - { name: transactionID, in: path, required: true, schema: { type: string, format: uuid } }
+    patch:
+      tags: [portfolio]
+      summary: Edit and atomically re-project the ledger
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PortfolioTransactionRequest" }
+      responses: { "200": { description: Updated }, "409": { description: Negative position } }
+    delete:
+      tags: [portfolio]
+      summary: Delete and atomically re-project the ledger
+      security: [{ bearerAuth: [] }]
+      responses: { "204": { description: Deleted }, "409": { description: Negative position } }
+  /me/portfolios/{portfolioID}/performance:
+    get:
+      tags: [portfolio]
+      summary: Cash-flow-aware daily portfolio performance from indexed candles
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: portfolioID, in: path, required: true, schema: { type: string, format: uuid } }
+        - { name: range, in: query, schema: { type: string, enum: [1m, 3m, 6m, 1y, 5y, max] } }
+        - { name: points, in: query, schema: { type: integer, maximum: 2000 } }
+      responses: { "200": { description: Daily performance points } }
+  /me/gamification:
+    get:
+      tags: [gamification]
+      summary: XP, streak, badge and daily quest projection
+      security: [{ bearerAuth: [] }]
+      responses: { "200": { description: Gamification profile } }
+  /me/gamification/checkin:
+    post:
+      tags: [gamification]
+      summary: Legacy idempotent daily check-in
+      security: [{ bearerAuth: [] }]
+      responses: { "200": { description: Current profile and awarded XP } }
+  /me/gamification/leaderboard:
+    get:
+      tags: [gamification]
+      summary: Legacy weekly XP leaderboard
+      security: [{ bearerAuth: [] }]
+      responses: { "200": { description: Weekly leaderboard } }
+  /me/gamification/experience:
+    get:
+      tags: [gamification]
+      summary: Versioned learning, discipline, season, paper and privacy dashboard
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: Complete cross-platform experience snapshot
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/GamificationExperience" }
+  /me/gamification/daily-plan:
+    post:
+      tags: [gamification]
+      summary: Save today's risk and learning plan and advance the streak idempotently
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/DailyPlanRequest" }
+      responses: { "200": { description: Updated profile and award result } }
+  /me/gamification/quiz-attempts:
+    post:
+      tags: [gamification]
+      summary: Record an idempotent mastery or spaced-repetition attempt
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/QuizAttemptRequest" }
+      responses: { "200": { description: Correctness, mastery and XP result } }
+  /me/gamification/discipline/{code}:
+    post:
+      tags: [gamification]
+      summary: Complete a process-based portfolio discipline review
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: code, in: path, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [note]
+              properties:
+                note: { type: string, minLength: 20, maxLength: 1000 }
+      responses: { "200": { description: Idempotent award result } }
+  /me/gamification/season:
+    get:
+      tags: [gamification]
+      summary: Current process-scored season, league and privacy-filtered standings
+      security: [{ bearerAuth: [] }]
+      responses: { "200": { description: Current season } }
+  /me/gamification/paper-trades:
+    post:
+      tags: [gamification]
+      summary: Lock a paper decision with thesis, risk and invalidation criteria
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PaperTradeRequest" }
+      responses:
+        "201": { description: Created }
+        "200": { description: Existing trade returned for duplicate client_id }
+  /me/gamification/paper-trades/{tradeID}/review:
+    patch:
+      tags: [gamification]
+      summary: Score a paper decision process without using financial return
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: tradeID, in: path, required: true, schema: { type: string, format: uuid } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [followed_plan, retrospective]
+              properties:
+                followed_plan: { type: boolean }
+                retrospective: { type: string, minLength: 20, maxLength: 1000 }
+      responses: { "200": { description: Reviewed trade and XP result } }
+  /me/gamification/privacy:
+    patch:
+      tags: [gamification]
+      summary: Update alias, league, personalization, social and notification consent
+      security: [{ bearerAuth: [] }]
+      responses: { "200": { description: Saved privacy preferences } }
+  /me/gamification/study-groups:
+    post:
+      tags: [gamification]
+      summary: Create a privacy-safe 3–8 person learning group
+      security: [{ bearerAuth: [] }]
+      responses: { "201": { description: Group and invite code } }
+  /me/gamification/study-groups/join:
+    post:
+      tags: [gamification]
+      summary: Join a privacy-safe learning group by invite code
+      security: [{ bearerAuth: [] }]
+      responses: { "200": { description: Joined }, "409": { description: Group full } }
 components:
   securitySchemes:
     bearerAuth:
@@ -237,3 +471,106 @@ components:
       type: object
       properties:
         error: { type: string }
+    Decimal:
+      oneOf:
+        - { type: string, pattern: "^-?[0-9]+(\\.[0-9]+)?$" }
+        - { type: number }
+      description: Exact NUMERIC value; responses serialize it as a decimal string.
+    PortfolioRequest:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, minLength: 1, maxLength: 80 }
+    Portfolio:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        name: { type: string }
+        base_currency: { type: string, enum: [TRY] }
+        net_deposits_try: { $ref: "#/components/schemas/Decimal" }
+        version: { type: integer, format: int64 }
+    PortfolioPosition:
+      type: object
+      properties:
+        code: { type: string }
+        currency: { type: string, enum: [TRY, USD] }
+        quantity: { $ref: "#/components/schemas/Decimal" }
+        average_cost_native: { $ref: "#/components/schemas/Decimal" }
+        average_cost_try: { $ref: "#/components/schemas/Decimal" }
+        value_try: { $ref: "#/components/schemas/Decimal" }
+        unrealized_pnl_try: { $ref: "#/components/schemas/Decimal" }
+        realized_pnl_try: { $ref: "#/components/schemas/Decimal" }
+        allocation_pct: { $ref: "#/components/schemas/Decimal" }
+    PortfolioOverview:
+      type: object
+      properties:
+        portfolio: { $ref: "#/components/schemas/Portfolio" }
+        positions:
+          type: array
+          items: { $ref: "#/components/schemas/PortfolioPosition" }
+        total_value_try: { $ref: "#/components/schemas/Decimal" }
+        total_cost_try: { $ref: "#/components/schemas/Decimal" }
+        unrealized_pnl_try: { $ref: "#/components/schemas/Decimal" }
+        realized_pnl_try: { $ref: "#/components/schemas/Decimal" }
+        day_change_try: { $ref: "#/components/schemas/Decimal" }
+    PortfolioTransactionRequest:
+      type: object
+      required: [client_id, type, occurred_at]
+      properties:
+        client_id: { type: string, maxLength: 80 }
+        code: { type: string }
+        type: { type: string, enum: [buy, sell, dividend, fee, deposit, withdraw] }
+        quantity: { $ref: "#/components/schemas/Decimal" }
+        unit_price_native: { $ref: "#/components/schemas/Decimal" }
+        amount_native: { $ref: "#/components/schemas/Decimal" }
+        fee_native: { $ref: "#/components/schemas/Decimal" }
+        currency: { type: string, enum: [TRY, USD] }
+        usdtry: { $ref: "#/components/schemas/Decimal" }
+        occurred_at: { type: string, format: date-time }
+        note: { type: string, maxLength: 500 }
+    DailyPlanRequest:
+      type: object
+      required: [risk_appetite, watch_codes, learning_goal]
+      properties:
+        risk_appetite: { type: string, enum: [low, moderate, high] }
+        watch_codes:
+          type: array
+          maxItems: 3
+          uniqueItems: true
+          items: { type: string }
+        learning_goal: { type: string, enum: [risk_budget, diversification, fees_behavior] }
+        reflection: { type: string, maxLength: 500 }
+    QuizAttemptRequest:
+      type: object
+      required: [lesson_code, question_code, answer, idempotency_key]
+      properties:
+        lesson_code: { type: string }
+        question_code: { type: string }
+        answer: { type: integer, minimum: 0 }
+        idempotency_key: { type: string, minLength: 8, maxLength: 120 }
+    PaperTradeRequest:
+      type: object
+      required: [client_id, code, side, quantity, entry_price, thesis, risk_budget_pct, invalidation]
+      properties:
+        client_id: { type: string, minLength: 8, maxLength: 80 }
+        code: { type: string }
+        side: { type: string, enum: [buy, sell] }
+        quantity: { type: number, exclusiveMinimum: 0 }
+        entry_price: { type: number, exclusiveMinimum: 0 }
+        thesis: { type: string, minLength: 20, maxLength: 1000 }
+        risk_budget_pct: { type: number, exclusiveMinimum: 0, maximum: 5 }
+        invalidation: { type: string, minLength: 10, maxLength: 500 }
+        occurred_at: { type: string, format: date-time }
+    GamificationExperience:
+      type: object
+      required: [rule_version, lessons, discipline_quests, season, paper_trades, privacy, study_groups, weekly_summary]
+      properties:
+        rule_version: { type: string }
+        daily_plan: { type: object, nullable: true }
+        lessons: { type: array, items: { type: object } }
+        discipline_quests: { type: array, items: { type: object } }
+        season: { type: object }
+        paper_trades: { type: array, items: { type: object } }
+        privacy: { type: object }
+        study_groups: { type: array, items: { type: object } }
+        weekly_summary: { type: object }

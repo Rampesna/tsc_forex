@@ -4,6 +4,7 @@ import (
 	"time"
 
 	"github.com/google/uuid"
+	"github.com/shopspring/decimal"
 	"gorm.io/gorm"
 )
 
@@ -254,8 +255,8 @@ type WebAuthnCredential struct {
 	// replayed at login: synced (iCloud/Google) passkeys set BE=1, and go-webauthn
 	// rejects the assertion if the stored BE differs from the response ("Backup
 	// Eligible flag inconsistency").
-	BackupEligible bool      `gorm:"not null;default:false" json:"-"`
-	BackupState    bool      `gorm:"not null;default:false" json:"-"`
+	BackupEligible bool `gorm:"not null;default:false" json:"-"`
+	BackupState    bool `gorm:"not null;default:false" json:"-"`
 	// Name is a user-editable label for the passkey (e.g. "iPhone'um").
 	Name      string    `gorm:"type:varchar(80)" json:"name"`
 	CreatedAt time.Time `json:"created_at"`
@@ -308,12 +309,15 @@ func (b *UserBadge) BeforeCreate(_ *gorm.DB) error {
 // GamificationEvent is an XP ledger entry. It drives daily quests (today's
 // events) and the weekly leaderboard (sum of XP since the ISO week start).
 type GamificationEvent struct {
-	ID        uuid.UUID `gorm:"type:uuid;primaryKey" json:"id"`
-	UserID    uuid.UUID `gorm:"type:uuid;index:idx_gam_user_created,priority:1;not null" json:"user_id"`
-	Type      string    `gorm:"type:varchar(48);not null" json:"type"`
-	XP        int       `gorm:"not null;default:0" json:"xp"`
-	DayKey    string    `gorm:"type:varchar(10);index" json:"day_key"`
-	CreatedAt time.Time `gorm:"index:idx_gam_user_created,priority:2;not null" json:"created_at"`
+	ID          uuid.UUID `gorm:"type:uuid;primaryKey" json:"id"`
+	UserID      uuid.UUID `gorm:"type:uuid;index:idx_gam_user_created,priority:1;not null" json:"user_id"`
+	Type        string    `gorm:"type:varchar(48);not null" json:"type"`
+	XP          int       `gorm:"not null;default:0" json:"xp"`
+	DayKey      string    `gorm:"type:varchar(10);index" json:"day_key"`
+	SourceType  string    `gorm:"type:varchar(32);index" json:"source_type"`
+	SourceID    string    `gorm:"type:varchar(96);index" json:"source_id"`
+	RuleVersion string    `gorm:"type:varchar(24);not null;default:'2026.1'" json:"rule_version"`
+	CreatedAt   time.Time `gorm:"index:idx_gam_user_created,priority:2;not null" json:"created_at"`
 }
 
 func (GamificationEvent) TableName() string { return "gamification_events" }
@@ -321,6 +325,306 @@ func (GamificationEvent) TableName() string { return "gamification_events" }
 func (e *GamificationEvent) BeforeCreate(_ *gorm.DB) error {
 	if e.ID == uuid.Nil {
 		e.ID = uuid.New()
+	}
+	return nil
+}
+
+// XPLedgerEntry is the immutable, idempotent source of truth for every XP
+// mutation. Projections such as UserGamification and SeasonScore are updated in
+// the same DB transaction and can be rebuilt from this ledger.
+type XPLedgerEntry struct {
+	ID             uuid.UUID `gorm:"type:uuid;primaryKey" json:"id"`
+	UserID         uuid.UUID `gorm:"type:uuid;not null;uniqueIndex:uq_xp_ledger_user_key,priority:1;index:idx_xp_ledger_user_created,priority:1" json:"user_id"`
+	IdempotencyKey string    `gorm:"type:varchar(120);not null;uniqueIndex:uq_xp_ledger_user_key,priority:2" json:"idempotency_key"`
+	EventType      string    `gorm:"type:varchar(48);not null;index" json:"event_type"`
+	SourceType     string    `gorm:"type:varchar(32);index" json:"source_type"`
+	SourceID       string    `gorm:"type:varchar(96);index" json:"source_id"`
+	Reason         string    `gorm:"type:varchar(160);not null" json:"reason"`
+	RuleVersion    string    `gorm:"type:varchar(24);not null" json:"rule_version"`
+	Delta          int       `gorm:"not null" json:"delta"`
+	DayKey         string    `gorm:"type:varchar(10);index" json:"day_key"`
+	CreatedAt      time.Time `gorm:"index:idx_xp_ledger_user_created,priority:2;not null" json:"created_at"`
+}
+
+func (XPLedgerEntry) TableName() string { return "xp_ledger" }
+
+func (e *XPLedgerEntry) BeforeCreate(_ *gorm.DB) error {
+	if e.ID == uuid.Nil {
+		e.ID = uuid.New()
+	}
+	if e.CreatedAt.IsZero() {
+		e.CreatedAt = time.Now().UTC()
+	}
+	return nil
+}
+
+// DailyPlan turns check-in into a short planning ritual. WatchCodes stores a
+// comma-separated canonical list (maximum three) to remain portable across
+// Postgres and SQLite tests.
+type DailyPlan struct {
+	ID           uuid.UUID `gorm:"type:uuid;primaryKey" json:"id"`
+	UserID       uuid.UUID `gorm:"type:uuid;not null;uniqueIndex:uq_daily_plan_user_day,priority:1;index" json:"user_id"`
+	DayKey       string    `gorm:"type:varchar(10);not null;uniqueIndex:uq_daily_plan_user_day,priority:2" json:"day_key"`
+	RiskAppetite string    `gorm:"type:varchar(16);not null" json:"risk_appetite"`
+	WatchCodes   string    `gorm:"type:varchar(128)" json:"-"`
+	LearningGoal string    `gorm:"type:varchar(64);not null" json:"learning_goal"`
+	Reflection   string    `gorm:"type:varchar(500)" json:"reflection"`
+	CreatedAt    time.Time `json:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at"`
+}
+
+func (DailyPlan) TableName() string { return "daily_plans" }
+
+func (p *DailyPlan) BeforeCreate(_ *gorm.DB) error {
+	if p.ID == uuid.Nil {
+		p.ID = uuid.New()
+	}
+	return nil
+}
+
+type LearningProgress struct {
+	ID           uuid.UUID  `gorm:"type:uuid;primaryKey" json:"id"`
+	UserID       uuid.UUID  `gorm:"type:uuid;not null;uniqueIndex:uq_learning_progress_user_lesson,priority:1;index" json:"user_id"`
+	LessonCode   string     `gorm:"type:varchar(48);not null;uniqueIndex:uq_learning_progress_user_lesson,priority:2" json:"lesson_code"`
+	Mastery      int        `gorm:"not null;default:0" json:"mastery"`
+	Attempts     int        `gorm:"not null;default:0" json:"attempts"`
+	Correct      int        `gorm:"not null;default:0" json:"correct"`
+	CompletedAt  *time.Time `json:"completed_at,omitempty"`
+	NextReviewAt *time.Time `gorm:"index" json:"next_review_at,omitempty"`
+	UpdatedAt    time.Time  `json:"updated_at"`
+}
+
+func (LearningProgress) TableName() string { return "learning_progress" }
+
+func (p *LearningProgress) BeforeCreate(_ *gorm.DB) error {
+	if p.ID == uuid.Nil {
+		p.ID = uuid.New()
+	}
+	return nil
+}
+
+type LearningAttempt struct {
+	ID             uuid.UUID `gorm:"type:uuid;primaryKey" json:"id"`
+	UserID         uuid.UUID `gorm:"type:uuid;not null;uniqueIndex:uq_learning_attempt_user_key,priority:1;index" json:"user_id"`
+	IdempotencyKey string    `gorm:"type:varchar(120);not null;uniqueIndex:uq_learning_attempt_user_key,priority:2" json:"idempotency_key"`
+	LessonCode     string    `gorm:"type:varchar(48);not null;index" json:"lesson_code"`
+	QuestionCode   string    `gorm:"type:varchar(64);not null" json:"question_code"`
+	Answer         int       `gorm:"not null" json:"answer"`
+	Correct        bool      `gorm:"not null" json:"correct"`
+	XPAwarded      int       `gorm:"not null;default:0" json:"xp_awarded"`
+	CreatedAt      time.Time `gorm:"index;not null" json:"created_at"`
+}
+
+func (LearningAttempt) TableName() string { return "learning_attempts" }
+
+func (a *LearningAttempt) BeforeCreate(_ *gorm.DB) error {
+	if a.ID == uuid.Nil {
+		a.ID = uuid.New()
+	}
+	if a.CreatedAt.IsZero() {
+		a.CreatedAt = time.Now().UTC()
+	}
+	return nil
+}
+
+type DisciplineReview struct {
+	ID        uuid.UUID `gorm:"type:uuid;primaryKey" json:"id"`
+	UserID    uuid.UUID `gorm:"type:uuid;not null;uniqueIndex:uq_discipline_review_user_key,priority:1;index" json:"user_id"`
+	DayKey    string    `gorm:"type:varchar(10);not null;uniqueIndex:uq_discipline_review_user_key,priority:2" json:"day_key"`
+	Code      string    `gorm:"type:varchar(48);not null;uniqueIndex:uq_discipline_review_user_key,priority:3" json:"code"`
+	Note      string    `gorm:"type:varchar(1000);not null" json:"note"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+func (DisciplineReview) TableName() string { return "discipline_reviews" }
+
+func (r *DisciplineReview) BeforeCreate(_ *gorm.DB) error {
+	if r.ID == uuid.Nil {
+		r.ID = uuid.New()
+	}
+	return nil
+}
+
+type SeasonScore struct {
+	ID         uuid.UUID `gorm:"type:uuid;primaryKey" json:"id"`
+	UserID     uuid.UUID `gorm:"type:uuid;not null;uniqueIndex:uq_season_score_user,priority:1;index" json:"user_id"`
+	SeasonCode string    `gorm:"type:varchar(32);not null;uniqueIndex:uq_season_score_user,priority:2;index" json:"season_code"`
+	Points     int64     `gorm:"not null;default:0;index" json:"points"`
+	League     string    `gorm:"type:varchar(24);not null;default:'Başlangıç'" json:"league"`
+	UpdatedAt  time.Time `json:"updated_at"`
+}
+
+func (SeasonScore) TableName() string { return "season_scores" }
+
+func (s *SeasonScore) BeforeCreate(_ *gorm.DB) error {
+	if s.ID == uuid.Nil {
+		s.ID = uuid.New()
+	}
+	return nil
+}
+
+// PaperTrade records the decision process separately from the real portfolio.
+// ProcessScore never depends on return; it rewards thesis/risk planning and a
+// completed retrospective.
+type PaperTrade struct {
+	ID            uuid.UUID  `gorm:"type:uuid;primaryKey" json:"id"`
+	UserID        uuid.UUID  `gorm:"type:uuid;not null;uniqueIndex:uq_paper_trade_user_client,priority:1;index" json:"user_id"`
+	ClientID      string     `gorm:"type:varchar(80);not null;uniqueIndex:uq_paper_trade_user_client,priority:2" json:"client_id"`
+	Code          string     `gorm:"type:varchar(32);not null;index" json:"code"`
+	Side          string     `gorm:"type:varchar(8);not null" json:"side"`
+	Quantity      float64    `gorm:"not null" json:"quantity"`
+	EntryPrice    float64    `gorm:"not null" json:"entry_price"`
+	Thesis        string     `gorm:"type:varchar(1000);not null" json:"thesis"`
+	RiskBudgetPct float64    `gorm:"not null" json:"risk_budget_pct"`
+	Invalidation  string     `gorm:"type:varchar(500);not null" json:"invalidation"`
+	OccurredAt    time.Time  `gorm:"index;not null" json:"occurred_at"`
+	FollowedPlan  *bool      `json:"followed_plan,omitempty"`
+	Retrospective string     `gorm:"type:varchar(1000)" json:"retrospective"`
+	ProcessScore  int        `gorm:"not null;default:0" json:"process_score"`
+	ReviewedAt    *time.Time `json:"reviewed_at,omitempty"`
+	CreatedAt     time.Time  `json:"created_at"`
+	UpdatedAt     time.Time  `json:"updated_at"`
+}
+
+func (PaperTrade) TableName() string { return "paper_trades" }
+
+func (p *PaperTrade) BeforeCreate(_ *gorm.DB) error {
+	if p.ID == uuid.Nil {
+		p.ID = uuid.New()
+	}
+	return nil
+}
+
+type GamificationPrivacy struct {
+	UserID                uuid.UUID `gorm:"type:uuid;primaryKey" json:"user_id"`
+	Alias                 string    `gorm:"type:varchar(40)" json:"alias"`
+	LeagueOptIn           bool      `gorm:"not null;default:true" json:"league_opt_in"`
+	PersonalizedLearning  bool      `gorm:"not null;default:true" json:"personalized_learning"`
+	SocialOptIn           bool      `gorm:"not null;default:false" json:"social_opt_in"`
+	LearningNotifications bool      `gorm:"not null;default:true" json:"learning_notifications"`
+	UpdatedAt             time.Time `json:"updated_at"`
+}
+
+func (GamificationPrivacy) TableName() string { return "gamification_privacy" }
+
+type StudyGroup struct {
+	ID         uuid.UUID `gorm:"type:uuid;primaryKey" json:"id"`
+	OwnerID    uuid.UUID `gorm:"type:uuid;not null;index" json:"owner_id"`
+	Name       string    `gorm:"type:varchar(60);not null" json:"name"`
+	InviteCode string    `gorm:"type:varchar(12);not null;uniqueIndex" json:"invite_code"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
+func (StudyGroup) TableName() string { return "study_groups" }
+
+func (g *StudyGroup) BeforeCreate(_ *gorm.DB) error {
+	if g.ID == uuid.Nil {
+		g.ID = uuid.New()
+	}
+	return nil
+}
+
+type StudyGroupMember struct {
+	ID       uuid.UUID `gorm:"type:uuid;primaryKey" json:"id"`
+	GroupID  uuid.UUID `gorm:"type:uuid;not null;uniqueIndex:uq_study_group_member,priority:1;index" json:"group_id"`
+	UserID   uuid.UUID `gorm:"type:uuid;not null;uniqueIndex:uq_study_group_member,priority:2;index" json:"user_id"`
+	Alias    string    `gorm:"type:varchar(40);not null" json:"alias"`
+	JoinedAt time.Time `json:"joined_at"`
+}
+
+func (StudyGroupMember) TableName() string { return "study_group_members" }
+
+func (m *StudyGroupMember) BeforeCreate(_ *gorm.DB) error {
+	if m.ID == uuid.Nil {
+		m.ID = uuid.New()
+	}
+	if m.JoinedAt.IsZero() {
+		m.JoinedAt = time.Now().UTC()
+	}
+	return nil
+}
+
+// Portfolio is a user-owned, cloud-synchronised investment account. Version is
+// incremented on every ledger mutation and lets clients invalidate offline
+// caches/outboxes without relying on wall-clock timestamps.
+type Portfolio struct {
+	ID             uuid.UUID       `gorm:"type:uuid;primaryKey" json:"id"`
+	UserID         uuid.UUID       `gorm:"type:uuid;not null;index:idx_portfolios_user_updated,priority:1" json:"user_id"`
+	Name           string          `gorm:"type:varchar(80);not null" json:"name"`
+	BaseCurrency   string          `gorm:"type:varchar(3);not null;default:'TRY'" json:"base_currency"`
+	NetDepositsTRY decimal.Decimal `gorm:"type:numeric(36,12);not null;default:0" json:"net_deposits_try"`
+	Version        int64           `gorm:"not null;default:1" json:"version"`
+	CreatedAt      time.Time       `json:"created_at"`
+	UpdatedAt      time.Time       `gorm:"index:idx_portfolios_user_updated,priority:2" json:"updated_at"`
+}
+
+func (Portfolio) TableName() string { return "portfolios" }
+
+func (p *Portfolio) BeforeCreate(_ *gorm.DB) error {
+	if p.ID == uuid.Nil {
+		p.ID = uuid.New()
+	}
+	if p.BaseCurrency == "" {
+		p.BaseCurrency = "TRY"
+	}
+	if p.Version == 0 {
+		p.Version = 1
+	}
+	return nil
+}
+
+// PortfolioPosition is the materialized projection of the immutable-style
+// transaction ledger. It is rebuilt inside the same DB transaction whenever
+// the ledger changes, so reads stay fast while edits/deletes remain correct.
+type PortfolioPosition struct {
+	ID                uuid.UUID       `gorm:"type:uuid;primaryKey" json:"id"`
+	PortfolioID       uuid.UUID       `gorm:"type:uuid;not null;uniqueIndex:uq_portfolio_position,priority:1;index" json:"portfolio_id"`
+	Code              string          `gorm:"type:varchar(32);not null;uniqueIndex:uq_portfolio_position,priority:2" json:"code"`
+	Currency          string          `gorm:"type:varchar(3);not null" json:"currency"`
+	Quantity          decimal.Decimal `gorm:"type:numeric(36,18);not null;default:0" json:"quantity"`
+	AverageCostNative decimal.Decimal `gorm:"type:numeric(36,12);not null;default:0" json:"average_cost_native"`
+	AverageCostTRY    decimal.Decimal `gorm:"type:numeric(36,12);not null;default:0" json:"average_cost_try"`
+	RealizedPnLTRY    decimal.Decimal `gorm:"type:numeric(36,12);not null;default:0" json:"realized_pnl_try"`
+	CreatedAt         time.Time       `json:"created_at"`
+	UpdatedAt         time.Time       `json:"updated_at"`
+}
+
+func (PortfolioPosition) TableName() string { return "portfolio_positions" }
+
+func (p *PortfolioPosition) BeforeCreate(_ *gorm.DB) error {
+	if p.ID == uuid.Nil {
+		p.ID = uuid.New()
+	}
+	return nil
+}
+
+// PortfolioTransaction is the source of truth for holdings and P&L. ClientID
+// is generated by mobile/web outboxes and unique per portfolio, making retries
+// after offline/network failures exactly-once from the user's perspective.
+type PortfolioTransaction struct {
+	ID              uuid.UUID       `gorm:"type:uuid;primaryKey" json:"id"`
+	PortfolioID     uuid.UUID       `gorm:"type:uuid;not null;index:idx_portfolio_tx_time,priority:1;uniqueIndex:uq_portfolio_client,priority:1" json:"portfolio_id"`
+	UserID          uuid.UUID       `gorm:"type:uuid;not null;index" json:"user_id"`
+	ClientID        string          `gorm:"type:varchar(80);not null;uniqueIndex:uq_portfolio_client,priority:2" json:"client_id"`
+	Code            string          `gorm:"type:varchar(32);index" json:"code"`
+	Type            string          `gorm:"type:varchar(16);not null" json:"type"`
+	Quantity        decimal.Decimal `gorm:"type:numeric(36,18);not null;default:0" json:"quantity"`
+	UnitPriceNative decimal.Decimal `gorm:"type:numeric(36,12);not null;default:0" json:"unit_price_native"`
+	AmountNative    decimal.Decimal `gorm:"type:numeric(36,12);not null;default:0" json:"amount_native"`
+	FeeNative       decimal.Decimal `gorm:"type:numeric(36,12);not null;default:0" json:"fee_native"`
+	Currency        string          `gorm:"type:varchar(3);not null" json:"currency"`
+	USDTRY          decimal.Decimal `gorm:"type:numeric(24,12);not null;default:1" json:"usdtry"`
+	OccurredAt      time.Time       `gorm:"not null;index:idx_portfolio_tx_time,priority:2" json:"occurred_at"`
+	Note            string          `gorm:"type:varchar(500)" json:"note"`
+	CreatedAt       time.Time       `json:"created_at"`
+	UpdatedAt       time.Time       `json:"updated_at"`
+}
+
+func (PortfolioTransaction) TableName() string { return "portfolio_transactions" }
+
+func (t *PortfolioTransaction) BeforeCreate(_ *gorm.DB) error {
+	if t.ID == uuid.Nil {
+		t.ID = uuid.New()
 	}
 	return nil
 }

@@ -290,6 +290,73 @@ struct APIClient {
         _ = try await request("me/alerts/\(id)", method: "DELETE", authed: true)
     }
 
+    // MARK: Portfolio
+
+    func portfolios() async throws -> [CloudPortfolioOverview] {
+        struct Response: Decodable { let portfolios: [CloudPortfolioOverview] }
+        let data = try await request("me/portfolios", authed: true)
+        return try makeDecoder().decode(Response.self, from: data).portfolios
+    }
+
+    func createPortfolio(name: String) async throws -> CloudPortfolio {
+        let data = try await request(
+            "me/portfolios", method: "POST", body: ["name": name], authed: true
+        )
+        return try makeDecoder().decode(CloudPortfolio.self, from: data)
+    }
+
+    func portfolio(id: String) async throws -> CloudPortfolioOverview {
+        let data = try await request("me/portfolios/\(id)", authed: true)
+        return try makeDecoder().decode(CloudPortfolioOverview.self, from: data)
+    }
+
+    func portfolioPosition(id: String, code: String) async throws -> PortfolioPositionDetail {
+        let safeCode = code.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? code
+        let data = try await request("me/portfolios/\(id)/positions/\(safeCode)", authed: true)
+        return try makeDecoder().decode(PortfolioPositionDetail.self, from: data)
+    }
+
+    func createPortfolioTransaction(
+        portfolioId: String, body: PortfolioTransactionBody
+    ) async throws -> CloudPortfolioTransaction {
+        struct Response: Decodable {
+            let created: Bool
+            let transaction: CloudPortfolioTransaction
+        }
+        let data = try await request(
+            "me/portfolios/\(portfolioId)/transactions",
+            method: "POST", body: body, authed: true
+        )
+        return try makeDecoder().decode(Response.self, from: data).transaction
+    }
+
+    func updatePortfolioTransaction(
+        portfolioId: String, transactionId: String, body: PortfolioTransactionBody
+    ) async throws -> CloudPortfolioTransaction {
+        let data = try await request(
+            "me/portfolios/\(portfolioId)/transactions/\(transactionId)",
+            method: "PATCH", body: body, authed: true
+        )
+        return try makeDecoder().decode(CloudPortfolioTransaction.self, from: data)
+    }
+
+    func deletePortfolioTransaction(portfolioId: String, transactionId: String) async throws {
+        _ = try await request(
+            "me/portfolios/\(portfolioId)/transactions/\(transactionId)",
+            method: "DELETE", authed: true
+        )
+    }
+
+    func portfolioPerformance(id: String, range: String) async throws -> [PortfolioPerformancePoint] {
+        struct Response: Decodable { let points: [PortfolioPerformancePoint] }
+        let safeRange = range.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed) ?? "1y"
+        let data = try await request(
+            "me/portfolios/\(id)/performance?range=\(safeRange)&points=365",
+            authed: true
+        )
+        return try makeDecoder().decode(Response.self, from: data).points
+    }
+
     // MARK: Notifications
 
     func notifications() async throws -> [AppNotification] {
@@ -335,6 +402,149 @@ struct APIClient {
     func leaderboard(limit: Int = 50) async throws -> LeaderboardResponse {
         let data = try await request("me/gamification/leaderboard?limit=\(limit)", authed: true)
         return try makeDecoder().decode(LeaderboardResponse.self, from: data)
+    }
+
+    func gamificationExperience() async throws -> GamificationExperience {
+        let data = try await request("me/gamification/experience", authed: true)
+        return try makeDecoder().decode(GamificationExperience.self, from: data)
+    }
+
+    func saveDailyPlan(risk: String, codes: [String], learningGoal: String,
+                       reflection: String) async throws -> GamCheckInResult {
+        let body = DailyPlanBody(riskAppetite: risk, watchCodes: codes,
+                                 learningGoal: learningGoal, reflection: reflection)
+        let data = try await request("me/gamification/daily-plan", method: "POST",
+                                     body: body, authed: true)
+        return try makeDecoder().decode(GamCheckInResult.self, from: data)
+    }
+
+    func submitQuiz(lesson: String, question: String, answer: Int,
+                    idempotencyKey: String = UUID().uuidString) async throws -> QuizAttemptResult {
+        let body = QuizAttemptBody(lessonCode: lesson, questionCode: question,
+                                   answer: answer, idempotencyKey: idempotencyKey)
+        let data = try await request("me/gamification/quiz-attempts", method: "POST",
+                                     body: body, authed: true)
+        return try makeDecoder().decode(QuizAttemptResult.self, from: data)
+    }
+
+    func completeDiscipline(code: String, note: String) async throws -> XPAwardResponse {
+        let data = try await request("me/gamification/discipline/\(code)", method: "POST",
+                                     body: ["note": note], authed: true)
+        return try makeDecoder().decode(XPAwardResponse.self, from: data)
+    }
+
+    func createPaperTrade(code: String, side: String, quantity: Double, entryPrice: Double,
+                          thesis: String, riskBudgetPct: Double,
+                          invalidation: String) async throws -> PaperTrade {
+        let body = PaperTradeBody(
+            clientId: UUID().uuidString, code: code, side: side, quantity: quantity,
+            entryPrice: entryPrice, thesis: thesis, riskBudgetPct: riskBudgetPct,
+            invalidation: invalidation, occurredAt: AppDateParser.plain.string(from: Date())
+        )
+        let data = try await request("me/gamification/paper-trades", method: "POST",
+                                     body: body, authed: true)
+        return try makeDecoder().decode(PaperTradeEnvelope.self, from: data).trade
+    }
+
+    func reviewPaperTrade(id: String, followedPlan: Bool,
+                          retrospective: String) async throws -> PaperTradeReviewResponse {
+        let body = PaperTradeReviewBody(followedPlan: followedPlan, retrospective: retrospective)
+        let data = try await request("me/gamification/paper-trades/\(id)/review",
+                                     method: "PATCH", body: body, authed: true)
+        return try makeDecoder().decode(PaperTradeReviewResponse.self, from: data)
+    }
+
+    func saveGamificationPrivacy(_ privacy: GamificationPrivacy) async throws -> GamificationPrivacy {
+        let data = try await request("me/gamification/privacy", method: "PATCH",
+                                     body: privacy, authed: true)
+        return try makeDecoder().decode(GamificationPrivacy.self, from: data)
+    }
+
+    func createStudyGroup(name: String) async throws -> StudyGroupOverview {
+        let data = try await request("me/gamification/study-groups", method: "POST",
+                                     body: ["name": name], authed: true)
+        return try makeDecoder().decode(StudyGroupOverview.self, from: data)
+    }
+
+    func joinStudyGroup(inviteCode: String) async throws {
+        _ = try await request("me/gamification/study-groups/join", method: "POST",
+                              body: ["invite_code": inviteCode], authed: true)
+    }
+}
+
+private struct DailyPlanBody: Encodable {
+    let riskAppetite: String
+    let watchCodes: [String]
+    let learningGoal: String
+    let reflection: String
+    enum CodingKeys: String, CodingKey {
+        case reflection
+        case riskAppetite = "risk_appetite"
+        case watchCodes = "watch_codes"
+        case learningGoal = "learning_goal"
+    }
+}
+
+private struct QuizAttemptBody: Encodable {
+    let lessonCode: String
+    let questionCode: String
+    let answer: Int
+    let idempotencyKey: String
+    enum CodingKeys: String, CodingKey {
+        case answer
+        case lessonCode = "lesson_code"
+        case questionCode = "question_code"
+        case idempotencyKey = "idempotency_key"
+    }
+}
+
+private struct PaperTradeBody: Encodable {
+    let clientId: String
+    let code: String
+    let side: String
+    let quantity: Double
+    let entryPrice: Double
+    let thesis: String
+    let riskBudgetPct: Double
+    let invalidation: String
+    let occurredAt: String
+    enum CodingKeys: String, CodingKey {
+        case code, side, quantity, thesis, invalidation
+        case clientId = "client_id"
+        case entryPrice = "entry_price"
+        case riskBudgetPct = "risk_budget_pct"
+        case occurredAt = "occurred_at"
+    }
+}
+
+private struct PaperTradeReviewBody: Encodable {
+    let followedPlan: Bool
+    let retrospective: String
+    enum CodingKeys: String, CodingKey {
+        case followedPlan = "followed_plan"
+        case retrospective
+    }
+}
+
+private struct PaperTradeEnvelope: Decodable {
+    let trade: PaperTrade
+}
+
+struct PaperTradeReviewResponse: Decodable {
+    let trade: PaperTrade
+    let xpGained: Int
+    enum CodingKeys: String, CodingKey {
+        case trade
+        case xpGained = "xp_gained"
+    }
+}
+
+struct XPAwardResponse: Decodable {
+    let awarded: Bool
+    let xpGained: Int
+    enum CodingKeys: String, CodingKey {
+        case awarded
+        case xpGained = "xp_gained"
     }
 }
 

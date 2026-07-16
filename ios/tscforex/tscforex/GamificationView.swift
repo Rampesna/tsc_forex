@@ -11,6 +11,7 @@ struct GamificationView: View {
     @EnvironmentObject var auth: AuthStore
 
     @State private var profile: GamProfile?
+    @State private var experience: GamificationExperience?
     @State private var leaders: [LeaderEntry] = []
     @State private var me: LeaderEntry?
     @State private var loading = true
@@ -27,7 +28,12 @@ struct GamificationView: View {
                 if let p = profile {
                     heroCard(p)
                     statsRow(p)
-                    dailyReward(p)
+                    GamificationExperienceHub(
+                        experience: $experience,
+                        token: auth.accessToken,
+                        onProfile: { profile = $0 },
+                        onToast: showToast
+                    )
                     questsCard(p)
                     badgesCard(p)
                     leaderboardCard()
@@ -320,12 +326,15 @@ struct GamificationView: View {
         let c = APIClient(token: auth.accessToken)
         async let profFetch = c.gamification()
         async let boardFetch = c.leaderboard(limit: 20)
+        async let experienceFetch = c.gamificationExperience()
         let prof = try? await profFetch
         let board = try? await boardFetch
+        let experience = try? await experienceFetch
         await MainActor.run {
             if let prof { self.profile = prof; self.failed = false }
             else if self.profile == nil { self.failed = true }
             if let board { self.leaders = board.entries; self.me = board.me }
+            if let experience { self.experience = experience }
             self.loading = false
         }
     }

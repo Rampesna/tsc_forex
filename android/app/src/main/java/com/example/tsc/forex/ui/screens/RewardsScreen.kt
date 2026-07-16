@@ -24,7 +24,6 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -37,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.tsc.forex.data.GamBadge
+import com.example.tsc.forex.data.GamificationExperience
 import com.example.tsc.forex.data.GamProfile
 import com.example.tsc.forex.data.Leaderboard
 import com.example.tsc.forex.data.LeaderEntry
@@ -45,15 +45,13 @@ import com.example.tsc.forex.ui.Card
 import com.example.tsc.forex.ui.ScreenHeader
 import com.example.tsc.forex.ui.StatTile
 import com.example.tsc.forex.ui.theme.Th
-import kotlinx.coroutines.launch
 
 @Composable
 fun RewardsScreen(auth: AuthStore) {
-    val scope = rememberCoroutineScope()
     var profile by remember { mutableStateOf<GamProfile?>(null) }
     var board by remember { mutableStateOf<Leaderboard?>(null) }
+    var experience by remember { mutableStateOf<GamificationExperience?>(null) }
     var loading by remember { mutableStateOf(true) }
-    var checkingIn by remember { mutableStateOf(false) }
     var toast by remember { mutableStateOf<String?>(null) }
 
     suspend fun load() {
@@ -61,6 +59,7 @@ fun RewardsScreen(auth: AuthStore) {
             val api = auth.newApiClient()
             profile = api.gamification()
             board = api.leaderboard(20)
+            experience = api.gamificationExperience()
         } catch (_: Exception) { /* keep last */ } finally { loading = false }
     }
 
@@ -78,24 +77,15 @@ fun RewardsScreen(auth: AuthStore) {
             } else if (p != null) {
                 HeroCard(p)
                 StatsRow(p)
-                DailyReward(
-                    checkedIn = p.checkedInToday,
-                    busy = checkingIn,
-                    onClaim = {
-                        checkingIn = true
-                        scope.launch {
-                            try {
-                                val res = auth.newApiClient().gamificationCheckIn()
-                                profile = res.profile
-                                toast = if (res.alreadyCheckedIn) "Bugün zaten giriş yaptın"
-                                        else "+${res.xpGained} XP · ${res.profile.currentStreak} günlük seri!"
-                                board = auth.newApiClient().leaderboard(20)
-                            } catch (_: Exception) {
-                                toast = "Bir hata oluştu"
-                            } finally { checkingIn = false }
-                        }
-                    },
-                )
+                experience?.let { exp ->
+                    GamificationExperienceSection(
+                        auth = auth,
+                        initial = exp,
+                        onExperience = { experience = it },
+                        onProfile = { profile = it },
+                        onToast = { toast = it },
+                    )
+                }
                 if (p.quests.isNotEmpty()) QuestsCard(p)
                 if (p.badges.isNotEmpty()) BadgesCard(p.badges)
                 board?.let { LeaderboardCard(it) }

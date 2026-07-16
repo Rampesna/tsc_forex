@@ -51,6 +51,21 @@ func New(ctx context.Context, cfg config.DatabaseConfig) (*gorm.DB, error) {
 // pgvector extension plus an embeddings table reserved for future AI features
 // (price-pattern similarity search, anomaly detection, forecasting).
 func Migrate(db *gorm.DB) error {
+	if db.Dialector.Name() == "postgres" {
+		// Every app pod starts with AutoMigrate. A transaction-scoped advisory
+		// lock serializes DDL during rolling deploys and releases automatically
+		// on commit, rollback, or connection loss.
+		return db.Transaction(func(tx *gorm.DB) error {
+			if err := tx.Exec("SELECT pg_advisory_xact_lock(?)", int64(847326451)).Error; err != nil {
+				return fmt.Errorf("migration lock: %w", err)
+			}
+			return migrateSchema(tx)
+		})
+	}
+	return migrateSchema(db)
+}
+
+func migrateSchema(db *gorm.DB) error {
 	if err := db.AutoMigrate(
 		&models.GoldPrice{},
 		&models.User{},
@@ -66,6 +81,19 @@ func Migrate(db *gorm.DB) error {
 		&models.UserGamification{},
 		&models.UserBadge{},
 		&models.GamificationEvent{},
+		&models.XPLedgerEntry{},
+		&models.DailyPlan{},
+		&models.LearningProgress{},
+		&models.LearningAttempt{},
+		&models.DisciplineReview{},
+		&models.SeasonScore{},
+		&models.PaperTrade{},
+		&models.GamificationPrivacy{},
+		&models.StudyGroup{},
+		&models.StudyGroupMember{},
+		&models.Portfolio{},
+		&models.PortfolioPosition{},
+		&models.PortfolioTransaction{},
 	); err != nil {
 		return err
 	}
@@ -122,6 +150,18 @@ func addProductionIndexes(db *gorm.DB) error {
 		// (day_key) index keep both cheap.
 		`CREATE INDEX IF NOT EXISTS idx_gam_events_user_created ON gamification_events (user_id, created_at DESC)`,
 		`CREATE INDEX IF NOT EXISTS idx_gam_events_created ON gamification_events (created_at)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_xp_ledger_user_key ON xp_ledger (user_id, idempotency_key)`,
+		`CREATE INDEX IF NOT EXISTS idx_xp_ledger_user_created ON xp_ledger (user_id, created_at DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_learning_attempts_user_created ON learning_attempts (user_id, created_at DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_season_scores_rank ON season_scores (season_code, points DESC, updated_at)`,
+		`CREATE INDEX IF NOT EXISTS idx_paper_trades_user_created ON paper_trades (user_id, created_at DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_study_group_members_user ON study_group_members (user_id, joined_at DESC)`,
+
+		// Portfolio hot reads and idempotent offline outbox synchronization.
+		`CREATE INDEX IF NOT EXISTS idx_portfolios_user_updated ON portfolios (user_id, updated_at DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_portfolio_positions_portfolio ON portfolio_positions (portfolio_id, code)`,
+		`CREATE INDEX IF NOT EXISTS idx_portfolio_transactions_time ON portfolio_transactions (portfolio_id, occurred_at DESC, id)`,
+		`CREATE UNIQUE INDEX IF NOT EXISTS idx_portfolio_transactions_client ON portfolio_transactions (portfolio_id, client_id)`,
 	}
 	for _, s := range stmts {
 		if err := db.Exec(s).Error; err != nil {

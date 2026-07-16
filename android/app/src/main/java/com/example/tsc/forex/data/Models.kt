@@ -340,6 +340,422 @@ data class Leaderboard(
     }
 }
 
+data class DailyPlan(
+    val id: String,
+    val dayKey: String,
+    val riskAppetite: String,
+    val watchCodes: List<String>,
+    val learningGoal: String,
+    val reflection: String,
+) {
+    companion object {
+        fun from(o: JSONObject) = DailyPlan(
+            id = o.optString("id"),
+            dayKey = o.optString("day_key"),
+            riskAppetite = o.optString("risk_appetite", "moderate"),
+            watchCodes = (o.optJSONArray("watch_codes") ?: JSONArray()).let { arr ->
+                buildList { for (i in 0 until arr.length()) add(arr.optString(i)) }
+            },
+            learningGoal = o.optString("learning_goal"),
+            reflection = o.optString("reflection"),
+        )
+    }
+}
+
+data class LessonQuestion(val code: String, val text: String, val choices: List<String>) {
+    companion object {
+        fun from(o: JSONObject) = LessonQuestion(
+            code = o.optString("code"),
+            text = o.optString("text"),
+            choices = (o.optJSONArray("choices") ?: JSONArray()).let { arr ->
+                buildList { for (i in 0 until arr.length()) add(arr.optString(i)) }
+            },
+        )
+    }
+}
+
+data class LessonStatus(
+    val code: String,
+    val title: String,
+    val summary: String,
+    val cards: List<String>,
+    val question: LessonQuestion,
+    val mastery: Int,
+    val attempts: Int,
+    val completed: Boolean,
+    val dueForReview: Boolean,
+    val nextReviewAt: String?,
+) {
+    companion object {
+        fun from(o: JSONObject) = LessonStatus(
+            code = o.optString("code"),
+            title = o.optString("title"),
+            summary = o.optString("summary"),
+            cards = (o.optJSONArray("cards") ?: JSONArray()).let { arr ->
+                buildList { for (i in 0 until arr.length()) add(arr.optString(i)) }
+            },
+            question = LessonQuestion.from(o.optJSONObject("question") ?: JSONObject()),
+            mastery = o.optInt("mastery"),
+            attempts = o.optInt("attempts"),
+            completed = o.optBoolean("completed"),
+            dueForReview = o.optBoolean("due_for_review"),
+            nextReviewAt = o.optString("next_review_at").ifEmpty { null },
+        )
+    }
+}
+
+data class DisciplineQuest(
+    val code: String,
+    val title: String,
+    val description: String,
+    val xp: Int,
+    val completed: Boolean,
+) {
+    companion object {
+        fun from(o: JSONObject) = DisciplineQuest(
+            o.optString("code"), o.optString("title"), o.optString("description"),
+            o.optInt("xp"), o.optBoolean("completed"),
+        )
+    }
+}
+
+data class SeasonView(
+    val code: String,
+    val name: String,
+    val league: String,
+    val points: Int,
+    val rank: Int,
+    val endsAt: String,
+    val standings: List<LeaderEntry>,
+    val scoring: String,
+) {
+    companion object {
+        fun from(o: JSONObject) = SeasonView(
+            code = o.optString("code"),
+            name = o.optString("name"),
+            league = o.optString("league"),
+            points = o.optInt("points"),
+            rank = o.optInt("rank", 1),
+            endsAt = o.optString("ends_at"),
+            standings = (o.optJSONArray("standings") ?: JSONArray()).let { arr ->
+                buildList { for (i in 0 until arr.length()) add(LeaderEntry.from(arr.getJSONObject(i))) }
+            },
+            scoring = o.optString("scoring"),
+        )
+    }
+}
+
+data class PaperTrade(
+    val id: String,
+    val clientId: String,
+    val code: String,
+    val side: String,
+    val quantity: Double,
+    val entryPrice: Double,
+    val thesis: String,
+    val riskBudgetPct: Double,
+    val invalidation: String,
+    val occurredAt: String,
+    val followedPlan: Boolean?,
+    val retrospective: String,
+    val processScore: Int,
+    val reviewedAt: String?,
+) {
+    companion object {
+        fun from(o: JSONObject) = PaperTrade(
+            id = o.optString("id"),
+            clientId = o.optString("client_id"),
+            code = o.optString("code"),
+            side = o.optString("side"),
+            quantity = o.optDouble("quantity"),
+            entryPrice = o.optDouble("entry_price"),
+            thesis = o.optString("thesis"),
+            riskBudgetPct = o.optDouble("risk_budget_pct"),
+            invalidation = o.optString("invalidation"),
+            occurredAt = o.optString("occurred_at"),
+            followedPlan = if (o.isNull("followed_plan")) null else o.optBoolean("followed_plan"),
+            retrospective = o.optString("retrospective"),
+            processScore = o.optInt("process_score"),
+            reviewedAt = o.optString("reviewed_at").ifEmpty { null },
+        )
+    }
+}
+
+data class GamificationPrivacy(
+    val userId: String,
+    val alias: String,
+    val leagueOptIn: Boolean,
+    val personalizedLearning: Boolean,
+    val socialOptIn: Boolean,
+    val learningNotifications: Boolean,
+) {
+    fun json() = JSONObject()
+        .put("user_id", userId)
+        .put("alias", alias)
+        .put("league_opt_in", leagueOptIn)
+        .put("personalized_learning", personalizedLearning)
+        .put("social_opt_in", socialOptIn)
+        .put("learning_notifications", learningNotifications)
+
+    companion object {
+        fun from(o: JSONObject) = GamificationPrivacy(
+            userId = o.optString("user_id"),
+            alias = o.optString("alias"),
+            leagueOptIn = o.optBoolean("league_opt_in", true),
+            personalizedLearning = o.optBoolean("personalized_learning", true),
+            socialOptIn = o.optBoolean("social_opt_in", false),
+            learningNotifications = o.optBoolean("learning_notifications", true),
+        )
+    }
+}
+
+data class StudyGroupOverview(
+    val id: String,
+    val ownerId: String,
+    val name: String,
+    val inviteCode: String,
+    val memberCount: Int,
+) {
+    companion object {
+        fun from(o: JSONObject) = StudyGroupOverview(
+            id = o.optString("id"),
+            ownerId = o.optString("owner_id"),
+            name = o.optString("name"),
+            inviteCode = o.optString("invite_code"),
+            memberCount = o.optInt("member_count"),
+        )
+    }
+}
+
+data class WeeklyLearningSummary(
+    val masteredLessons: Int,
+    val totalLessons: Int,
+    val seasonPoints: Int,
+    val dueReviews: Int,
+) {
+    companion object {
+        fun from(o: JSONObject) = WeeklyLearningSummary(
+            o.optInt("mastered_lessons"), o.optInt("total_lessons"),
+            o.optInt("season_points"), o.optInt("due_reviews"),
+        )
+    }
+}
+
+data class GamificationExperience(
+    val ruleVersion: String,
+    val dailyPlan: DailyPlan?,
+    val lessons: List<LessonStatus>,
+    val disciplineQuests: List<DisciplineQuest>,
+    val season: SeasonView,
+    val paperTrades: List<PaperTrade>,
+    val privacy: GamificationPrivacy,
+    val studyGroups: List<StudyGroupOverview>,
+    val weeklySummary: WeeklyLearningSummary,
+) {
+    companion object {
+        fun from(o: JSONObject) = GamificationExperience(
+            ruleVersion = o.optString("rule_version"),
+            dailyPlan = o.optJSONObject("daily_plan")?.let { DailyPlan.from(it) },
+            lessons = (o.optJSONArray("lessons") ?: JSONArray()).let { arr ->
+                buildList { for (i in 0 until arr.length()) add(LessonStatus.from(arr.getJSONObject(i))) }
+            },
+            disciplineQuests = (o.optJSONArray("discipline_quests") ?: JSONArray()).let { arr ->
+                buildList { for (i in 0 until arr.length()) add(DisciplineQuest.from(arr.getJSONObject(i))) }
+            },
+            season = SeasonView.from(o.optJSONObject("season") ?: JSONObject()),
+            paperTrades = (o.optJSONArray("paper_trades") ?: JSONArray()).let { arr ->
+                buildList { for (i in 0 until arr.length()) add(PaperTrade.from(arr.getJSONObject(i))) }
+            },
+            privacy = GamificationPrivacy.from(o.optJSONObject("privacy") ?: JSONObject()),
+            studyGroups = (o.optJSONArray("study_groups") ?: JSONArray()).let { arr ->
+                buildList { for (i in 0 until arr.length()) add(StudyGroupOverview.from(arr.getJSONObject(i))) }
+            },
+            weeklySummary = WeeklyLearningSummary.from(o.optJSONObject("weekly_summary") ?: JSONObject()),
+        )
+    }
+}
+
+data class QuizAttemptResult(
+    val correct: Boolean,
+    val xpGained: Int,
+    val created: Boolean,
+    val lesson: LessonStatus,
+) {
+    companion object {
+        fun from(o: JSONObject) = QuizAttemptResult(
+            o.optBoolean("correct"), o.optInt("xp_gained"), o.optBoolean("created"),
+            LessonStatus.from(o.optJSONObject("lesson") ?: JSONObject()),
+        )
+    }
+}
+
+// ---- Cloud portfolio ledger / analytics ----
+
+private fun JSONObject.decimal(key: String): Double =
+    optString(key).toDoubleOrNull() ?: optDouble(key, 0.0)
+
+data class PortfolioMeta(
+    val id: String,
+    val userId: String,
+    val name: String,
+    val baseCurrency: String,
+    val netDepositsTry: Double,
+    val version: Long,
+) {
+    companion object {
+        fun from(o: JSONObject) = PortfolioMeta(
+            id = o.optString("id"),
+            userId = o.optString("user_id"),
+            name = o.optString("name"),
+            baseCurrency = o.optString("base_currency", "TRY"),
+            netDepositsTry = o.decimal("net_deposits_try"),
+            version = o.optLong("version", 1),
+        )
+    }
+}
+
+data class PortfolioPosition(
+    val id: String,
+    val code: String,
+    val displayName: String,
+    val kind: String,
+    val currency: String,
+    val quantity: Double,
+    val averageCostNative: Double,
+    val averageCostTry: Double,
+    val currentPriceNative: Double,
+    val currentPriceTry: Double,
+    val valueNative: Double,
+    val valueTry: Double,
+    val costBasisTry: Double,
+    val unrealizedPnlTry: Double,
+    val unrealizedPnlPct: Double,
+    val realizedPnlTry: Double,
+    val dayChangeTry: Double,
+    val dayChangePct: Double,
+    val allocationPct: Double,
+) {
+    companion object {
+        fun from(o: JSONObject) = PortfolioPosition(
+            id = o.optString("id"),
+            code = o.optString("code"),
+            displayName = o.optString("display_name"),
+            kind = o.optString("kind"),
+            currency = o.optString("currency", "TRY"),
+            quantity = o.decimal("quantity"),
+            averageCostNative = o.decimal("average_cost_native"),
+            averageCostTry = o.decimal("average_cost_try"),
+            currentPriceNative = o.decimal("current_price_native"),
+            currentPriceTry = o.decimal("current_price_try"),
+            valueNative = o.decimal("value_native"),
+            valueTry = o.decimal("value_try"),
+            costBasisTry = o.decimal("cost_basis_try"),
+            unrealizedPnlTry = o.decimal("unrealized_pnl_try"),
+            unrealizedPnlPct = o.decimal("unrealized_pnl_pct"),
+            realizedPnlTry = o.decimal("realized_pnl_try"),
+            dayChangeTry = o.decimal("day_change_try"),
+            dayChangePct = o.decimal("day_change_pct"),
+            allocationPct = o.decimal("allocation_pct"),
+        )
+    }
+}
+
+data class PortfolioOverview(
+    val portfolio: PortfolioMeta,
+    val positions: List<PortfolioPosition>,
+    val totalValueTry: Double,
+    val totalCostTry: Double,
+    val unrealizedPnlTry: Double,
+    val realizedPnlTry: Double,
+    val dayChangeTry: Double,
+    val dayChangePct: Double,
+    val netDepositsTry: Double,
+    val activePositions: Int,
+) {
+    companion object {
+        fun from(o: JSONObject) = PortfolioOverview(
+            portfolio = PortfolioMeta.from(o.optJSONObject("portfolio") ?: JSONObject()),
+            positions = (o.optJSONArray("positions") ?: JSONArray()).let { arr ->
+                buildList { for (i in 0 until arr.length()) add(PortfolioPosition.from(arr.getJSONObject(i))) }
+            },
+            totalValueTry = o.decimal("total_value_try"),
+            totalCostTry = o.decimal("total_cost_try"),
+            unrealizedPnlTry = o.decimal("unrealized_pnl_try"),
+            realizedPnlTry = o.decimal("realized_pnl_try"),
+            dayChangeTry = o.decimal("day_change_try"),
+            dayChangePct = o.decimal("day_change_pct"),
+            netDepositsTry = o.decimal("net_deposits_try"),
+            activePositions = o.optInt("active_positions", 0),
+        )
+    }
+}
+
+data class PortfolioTransaction(
+    val id: String,
+    val portfolioId: String,
+    val clientId: String,
+    val code: String,
+    val type: String,
+    val quantity: Double,
+    val unitPriceNative: Double,
+    val amountNative: Double,
+    val feeNative: Double,
+    val currency: String,
+    val usdtry: Double,
+    val occurredAt: String,
+    val note: String,
+) {
+    companion object {
+        fun from(o: JSONObject) = PortfolioTransaction(
+            id = o.optString("id"),
+            portfolioId = o.optString("portfolio_id"),
+            clientId = o.optString("client_id"),
+            code = o.optString("code"),
+            type = o.optString("type"),
+            quantity = o.decimal("quantity"),
+            unitPriceNative = o.decimal("unit_price_native"),
+            amountNative = o.decimal("amount_native"),
+            feeNative = o.decimal("fee_native"),
+            currency = o.optString("currency", "TRY"),
+            usdtry = o.decimal("usdtry"),
+            occurredAt = o.optString("occurred_at"),
+            note = o.optString("note"),
+        )
+    }
+}
+
+data class PortfolioPositionDetail(
+    val position: PortfolioPosition,
+    val transactions: List<PortfolioTransaction>,
+) {
+    companion object {
+        fun from(o: JSONObject) = PortfolioPositionDetail(
+            position = PortfolioPosition.from(o.optJSONObject("position") ?: JSONObject()),
+            transactions = (o.optJSONArray("transactions") ?: JSONArray()).let { arr ->
+                buildList { for (i in 0 until arr.length()) add(PortfolioTransaction.from(arr.getJSONObject(i))) }
+            },
+        )
+    }
+}
+
+data class PortfolioPerformancePoint(
+    val date: String,
+    val valueTry: Double,
+    val costBasisTry: Double,
+    val realizedPnlTry: Double,
+    val totalPnlTry: Double,
+) {
+    companion object {
+        fun from(o: JSONObject) = PortfolioPerformancePoint(
+            date = o.optString("date"),
+            valueTry = o.decimal("value_try"),
+            costBasisTry = o.decimal("cost_basis_try"),
+            realizedPnlTry = o.decimal("realized_pnl_try"),
+            totalPnlTry = o.decimal("total_pnl_try"),
+        )
+    }
+}
+
 /** Parse a JSON array (or a wrapper object holding one) into a typed list. */
 inline fun <T> parseArray(raw: String, key: String? = null, crossinline map: (JSONObject) -> T): List<T> {
     val arr: JSONArray = when {

@@ -1,30 +1,29 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/endpoints";
-import type { GamBadge, GamProfile, LeaderEntry } from "../lib/types";
+import type {
+  GamBadge,
+  GamificationExperience,
+  GamificationPrivacy,
+  GamProfile,
+  LeaderEntry,
+  LessonStatus,
+  PaperTrade,
+} from "../lib/types";
 import { Button, Card } from "../components/common";
 
 export function Rewards() {
   const qc = useQueryClient();
   const [toast, setToast] = useState<string | null>(null);
   const [celebrate, setCelebrate] = useState<GamBadge[]>([]);
+  const [showPlan, setShowPlan] = useState(false);
 
   const profileQ = useQuery({ queryKey: ["gamification"], queryFn: api.gamification, refetchOnWindowFocus: false });
   const boardQ = useQuery({ queryKey: ["leaderboard"], queryFn: () => api.leaderboard(20), refetchOnWindowFocus: false });
-
-  const checkIn = useMutation({
-    mutationFn: api.checkIn,
-    onSuccess: (res) => {
-      qc.setQueryData(["gamification"], res.profile);
-      qc.invalidateQueries({ queryKey: ["leaderboard"] });
-      if (res.already_checked_in) {
-        flash("Bugün zaten giriş yaptın ✓");
-      } else {
-        flash(`+${res.xp_gained} XP  •  🔥 ${res.profile.current_streak} gün`);
-        if (res.new_badges.length) setCelebrate(res.new_badges);
-      }
-    },
-    onError: () => flash("Bağlantı hatası, tekrar dene"),
+  const experienceQ = useQuery({
+    queryKey: ["gamification-experience"],
+    queryFn: api.gamificationExperience,
+    refetchOnWindowFocus: false,
   });
 
   function flash(msg: string) {
@@ -51,9 +50,20 @@ export function Rewards() {
           <StatsRow p={p} />
           <DailyReward
             p={p}
-            claiming={checkIn.isPending}
-            onClaim={() => checkIn.mutate()}
+            planned={Boolean(experienceQ.data?.daily_plan)}
+            onClaim={() => setShowPlan(true)}
           />
+          {experienceQ.data && (
+            <ExperienceCards
+              experience={experienceQ.data}
+              flash={flash}
+              refresh={() => {
+                qc.invalidateQueries({ queryKey: ["gamification-experience"] });
+                qc.invalidateQueries({ queryKey: ["gamification"] });
+                qc.invalidateQueries({ queryKey: ["leaderboard"] });
+              }}
+            />
+          )}
           <Quests p={p} />
           <Badges p={p} />
           <LeaderboardCard entries={boardQ.data?.entries ?? []} me={boardQ.data?.me} />
@@ -84,9 +94,479 @@ export function Rewards() {
       {celebrate.length > 0 && (
         <Celebration badges={celebrate} onClose={() => setCelebrate([])} />
       )}
+      {showPlan && (
+        <PlanEditor
+          experience={experienceQ.data}
+          onClose={() => setShowPlan(false)}
+          onSaved={(res) => {
+            qc.setQueryData(["gamification"], res.profile);
+            qc.invalidateQueries({ queryKey: ["gamification-experience"] });
+            qc.invalidateQueries({ queryKey: ["leaderboard"] });
+            setShowPlan(false);
+            flash(`Plan kaydedildi · +${res.xp_gained} XP · 🔥 ${res.profile.current_streak} gün`);
+            if (res.new_badges.length) setCelebrate(res.new_badges);
+          }}
+          flash={flash}
+        />
+      )}
     </div>
   );
 }
+
+function PlanEditor({
+  experience,
+  onClose,
+  onSaved,
+  flash,
+}: {
+  experience?: GamificationExperience;
+  onClose: () => void;
+  onSaved: (result: Awaited<ReturnType<typeof api.saveDailyPlan>>) => void;
+  flash: (message: string) => void;
+}) {
+  const lessons = experience?.lessons ?? [];
+  const [risk, setRisk] = useState<"low" | "moderate" | "high">(
+    experience?.daily_plan?.risk_appetite ?? "moderate",
+  );
+  const [codes, setCodes] = useState((experience?.daily_plan?.watch_codes ?? []).join(", "));
+  const [goal, setGoal] = useState(
+    experience?.daily_plan?.learning_goal ?? lessons[0]?.code ?? "risk_budget",
+  );
+  const [reflection, setReflection] = useState(experience?.daily_plan?.reflection ?? "");
+  const save = useMutation({
+    mutationFn: () =>
+      api.saveDailyPlan({
+        risk_appetite: risk,
+        watch_codes: codes
+          .split(",")
+          .map((code) => code.trim().toUpperCase())
+          .filter(Boolean)
+          .slice(0, 3),
+        learning_goal: goal,
+        reflection,
+      }),
+    onSuccess: onSaved,
+    onError: (error: Error) => flash(error.message || "Plan kaydedilemedi"),
+  });
+  return (
+    <Modal title="Bugünü planla" subtitle="Ödül, butona basmaya değil plan yapmaya bağlıdır." onClose={onClose}>
+      <Field label="Risk yaklaşımı">
+        <select value={risk} onChange={(event) => setRisk(event.target.value as typeof risk)} style={inputStyle}>
+          <option value="low">Düşük — korumacı</option>
+          <option value="moderate">Orta — dengeli</option>
+          <option value="high">Yüksek — sınırları belirli</option>
+        </select>
+      </Field>
+      <Field label="Bugün izleyeceğim varlıklar (en fazla 3)">
+        <input value={codes} onChange={(event) => setCodes(event.target.value)} placeholder="GRAM_GOLD, USDTRY, AAPL" style={inputStyle} />
+      </Field>
+      <Field label="Öğrenme hedefi">
+        <select value={goal} onChange={(event) => setGoal(event.target.value)} style={inputStyle}>
+          {lessons.map((lesson) => <option key={lesson.code} value={lesson.code}>{lesson.title}</option>)}
+        </select>
+      </Field>
+      <Field label="Dünkü plandan kısa not (isteğe bağlı)">
+        <textarea value={reflection} onChange={(event) => setReflection(event.target.value)} rows={3} maxLength={500} style={inputStyle} />
+      </Field>
+      <Button variant="primary" full disabled={save.isPending || !goal} onClick={() => save.mutate()}>
+        {save.isPending ? "Kaydediliyor…" : "Planı Kaydet ve Seriyi Sürdür"}
+      </Button>
+    </Modal>
+  );
+}
+
+function ExperienceCards({
+  experience,
+  refresh,
+  flash,
+}: {
+  experience: GamificationExperience;
+  refresh: () => void;
+  flash: (message: string) => void;
+}) {
+  return (
+    <>
+      <Card style={{ padding: 18 }}>
+        <div style={{ fontWeight: 800, marginBottom: 12 }}>Gelişim Özeti</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10 }}>
+          <MiniStat label="Ustalık" value={`${experience.weekly_summary.mastered_lessons}/${experience.weekly_summary.total_lessons}`} />
+          <MiniStat label="Tekrar" value={`${experience.weekly_summary.due_reviews}`} />
+          <MiniStat label="Sezon puanı" value={`${experience.weekly_summary.season_points}`} />
+        </div>
+        <div style={{ marginTop: 10, fontSize: 11, color: "var(--text-faint)" }}>
+          Kural sürümü {experience.rule_version} · Finansal getiri puanlamaya dahil değildir.
+        </div>
+      </Card>
+      <LearningLab lessons={experience.lessons} refresh={refresh} flash={flash} />
+      <DisciplineLab quests={experience.discipline_quests} refresh={refresh} flash={flash} />
+      <SeasonCard experience={experience} />
+      <PaperLab trades={experience.paper_trades} refresh={refresh} flash={flash} />
+      <PrivacyAndGroups experience={experience} refresh={refresh} flash={flash} />
+    </>
+  );
+}
+
+function LearningLab({
+  lessons,
+  refresh,
+  flash,
+}: {
+  lessons: LessonStatus[];
+  refresh: () => void;
+  flash: (message: string) => void;
+}) {
+  const [selected, setSelected] = useState(lessons[0]?.code ?? "");
+  const [answer, setAnswer] = useState<number | null>(null);
+  const lesson = lessons.find((item) => item.code === selected) ?? lessons[0];
+  const submit = useMutation({
+    mutationFn: () =>
+      api.submitQuiz({
+        lesson_code: lesson.code,
+        question_code: lesson.question.code,
+        answer: answer ?? -1,
+        idempotency_key: crypto.randomUUID(),
+      }),
+    onSuccess: (result) => {
+      flash(result.correct ? `Doğru · +${result.xp_gained} XP` : "Henüz değil; kartları yeniden gözden geçir.");
+      setAnswer(null);
+      refresh();
+    },
+    onError: (error: Error) => flash(error.message || "Yanıt gönderilemedi"),
+  });
+  if (!lesson) return null;
+  return (
+    <Card style={{ padding: 18 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 12, marginBottom: 12 }}>
+        <div>
+          <div style={{ fontWeight: 800 }}>Mikro Dersler</div>
+          <div style={{ fontSize: 12, color: "var(--text-dim)" }}>Bilgi kontrolü ve aralıklı tekrar</div>
+        </div>
+        <span style={pillStyle}>{lesson.mastery}% ustalık</span>
+      </div>
+      <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 10 }}>
+        {lessons.map((item) => (
+          <button key={item.code} onClick={() => { setSelected(item.code); setAnswer(null); }} style={{
+            ...chipStyle,
+            borderColor: item.code === lesson.code ? "var(--accent)" : "var(--stroke)",
+            color: item.code === lesson.code ? "var(--accent-hi)" : "var(--text-dim)",
+          }}>
+            {item.completed ? "✓ " : item.due_for_review ? "↻ " : ""}{item.title}
+          </button>
+        ))}
+      </div>
+      <div style={{ fontWeight: 700, margin: "4px 0" }}>{lesson.title}</div>
+      <div style={{ fontSize: 13, color: "var(--text-dim)", marginBottom: 10 }}>{lesson.summary}</div>
+      <div style={{ display: "grid", gap: 8, marginBottom: 14 }}>
+        {lesson.cards.map((card, index) => (
+          <div key={card} style={{ padding: 11, borderRadius: 10, background: "var(--surface-hi)", fontSize: 12 }}>
+            <strong>{index + 1}.</strong> {card}
+          </div>
+        ))}
+      </div>
+      <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>{lesson.question.text}</div>
+      <div style={{ display: "grid", gap: 7 }}>
+        {lesson.question.choices.map((choice, index) => (
+          <button key={choice} onClick={() => setAnswer(index)} style={{
+            ...choiceStyle,
+            borderColor: answer === index ? "var(--accent)" : "var(--stroke)",
+            background: answer === index ? "var(--accent-soft)" : "var(--surface)",
+          }}>{choice}</button>
+        ))}
+      </div>
+      <Button variant="primary" full disabled={answer == null || submit.isPending} onClick={() => submit.mutate()}>
+        {submit.isPending ? "Kontrol ediliyor…" : lesson.due_for_review ? "Bilgimi Kontrol Et" : "Tekrar Çöz"}
+      </Button>
+    </Card>
+  );
+}
+
+function DisciplineLab({
+  quests,
+  refresh,
+  flash,
+}: {
+  quests: GamificationExperience["discipline_quests"];
+  refresh: () => void;
+  flash: (message: string) => void;
+}) {
+  const [code, setCode] = useState(quests[0]?.code ?? "");
+  const [note, setNote] = useState("");
+  const submit = useMutation({
+    mutationFn: () => api.completeDiscipline(code, note),
+    onSuccess: (result) => {
+      flash(result.awarded ? `Süreç değerlendirmesi tamam · +${result.xp_gained} XP` : "Bu değerlendirme bugün zaten tamamlandı.");
+      setNote("");
+      refresh();
+    },
+    onError: (error: Error) => flash(error.message || "Değerlendirme kaydedilemedi"),
+  });
+  return (
+    <Card style={{ padding: 18 }}>
+      <div style={{ fontWeight: 800 }}>Portföy Disiplini</div>
+      <div style={{ fontSize: 12, color: "var(--text-dim)", margin: "3px 0 12px" }}>
+        Sonuca değil, karar sürecine puan verilir.
+      </div>
+      <select value={code} onChange={(event) => setCode(event.target.value)} style={inputStyle}>
+        {quests.map((quest) => <option key={quest.code} value={quest.code}>{quest.title}</option>)}
+      </select>
+      <div style={{ fontSize: 11, color: "var(--text-faint)", margin: "8px 0" }}>
+        {quests.find((quest) => quest.code === code)?.description}
+      </div>
+      <textarea value={note} onChange={(event) => setNote(event.target.value)} rows={3} maxLength={1000}
+        placeholder="Kararındaki risk, tez veya plan sapmasını en az 20 karakterle değerlendir…" style={inputStyle} />
+      <Button variant="primary" full disabled={note.trim().length < 20 || submit.isPending} onClick={() => submit.mutate()}>
+        {submit.isPending ? "Kaydediliyor…" : "Değerlendirmeyi Tamamla"}
+      </Button>
+    </Card>
+  );
+}
+
+function SeasonCard({ experience }: { experience: GamificationExperience }) {
+  const season = experience.season;
+  return (
+    <Card style={{ padding: 18 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start" }}>
+        <div>
+          <div style={{ fontWeight: 800 }}>{season.name}</div>
+          <div style={{ fontSize: 12, color: "var(--text-dim)" }}>{season.code} · {season.league} Ligi</div>
+        </div>
+        <span style={pillStyle}>#{season.rank} · {season.points} puan</span>
+      </div>
+      <div style={{ fontSize: 11, color: "var(--text-faint)", margin: "10px 0" }}>{season.scoring}</div>
+      <div style={{ display: "grid", gap: 6 }}>
+        {season.standings.slice(0, 5).map((entry) => (
+          <LeaderRow key={entry.user_id} e={entry} mine={false} />
+        ))}
+      </div>
+    </Card>
+  );
+}
+
+function PaperLab({
+  trades,
+  refresh,
+  flash,
+}: {
+  trades: PaperTrade[];
+  refresh: () => void;
+  flash: (message: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [code, setCode] = useState("GRAM_GOLD");
+  const [side, setSide] = useState<"buy" | "sell">("buy");
+  const [quantity, setQuantity] = useState("1");
+  const [price, setPrice] = useState("");
+  const [risk, setRisk] = useState("1");
+  const [thesis, setThesis] = useState("");
+  const [invalidation, setInvalidation] = useState("");
+  const [reviewID, setReviewID] = useState("");
+  const [followed, setFollowed] = useState(true);
+  const [retrospective, setRetrospective] = useState("");
+  const create = useMutation({
+    mutationFn: () => api.createPaperTrade({
+      client_id: crypto.randomUUID(), code, side, quantity: Number(quantity),
+      entry_price: Number(price), thesis, risk_budget_pct: Number(risk),
+      invalidation, occurred_at: new Date().toISOString(),
+    }),
+    onSuccess: () => {
+      flash("Paper karar günlüğüne eklendi. Getiri değil süreç izlenecek.");
+      setOpen(false); setThesis(""); setInvalidation(""); refresh();
+    },
+    onError: (error: Error) => flash(error.message || "Paper işlem eklenemedi"),
+  });
+  const review = useMutation({
+    mutationFn: () => api.reviewPaperTrade(reviewID, followed, retrospective),
+    onSuccess: (result) => {
+      flash(`Retrospektif tamamlandı · +${result.xp_gained} XP`);
+      setReviewID(""); setRetrospective(""); refresh();
+    },
+    onError: (error: Error) => flash(error.message || "Retrospektif kaydedilemedi"),
+  });
+  return (
+    <Card style={{ padding: 18 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div>
+          <div style={{ fontWeight: 800 }}>Paper Karar Laboratuvarı</div>
+          <div style={{ fontSize: 12, color: "var(--text-dim)" }}>Tez · risk · geçersizleşme · retrospektif</div>
+        </div>
+        <Button variant="soft" onClick={() => setOpen(!open)}>{open ? "Kapat" : "Yeni Karar"}</Button>
+      </div>
+      {open && (
+        <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            <input value={code} onChange={(event) => setCode(event.target.value.toUpperCase())} placeholder="Kod" style={inputStyle} />
+            <select value={side} onChange={(event) => setSide(event.target.value as typeof side)} style={inputStyle}>
+              <option value="buy">Alış senaryosu</option><option value="sell">Satış senaryosu</option>
+            </select>
+            <input value={quantity} onChange={(event) => setQuantity(event.target.value)} type="number" min="0" placeholder="Miktar" style={inputStyle} />
+            <input value={price} onChange={(event) => setPrice(event.target.value)} type="number" min="0" placeholder="Giriş fiyatı" style={inputStyle} />
+            <input value={risk} onChange={(event) => setRisk(event.target.value)} type="number" min="0.1" max="5" step="0.1" placeholder="Risk %" style={inputStyle} />
+          </div>
+          <textarea value={thesis} onChange={(event) => setThesis(event.target.value)} rows={2} placeholder="Tez (en az 20 karakter)" style={inputStyle} />
+          <textarea value={invalidation} onChange={(event) => setInvalidation(event.target.value)} rows={2} placeholder="Tezi geçersiz kılacak koşul" style={inputStyle} />
+          <Button variant="primary" full disabled={create.isPending || thesis.trim().length < 20 || invalidation.trim().length < 10 || Number(price) <= 0}
+            onClick={() => create.mutate()}>Kararı Kilitle</Button>
+        </div>
+      )}
+      <div style={{ display: "grid", gap: 8, marginTop: 12 }}>
+        {trades.slice(0, 5).map((trade) => (
+          <div key={trade.id} style={{ padding: 11, borderRadius: 10, background: "var(--surface-hi)" }}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+              <strong>{trade.code} · {trade.side === "buy" ? "Alış" : "Satış"}</strong>
+              <span style={{ fontSize: 11, color: trade.reviewed_at ? "var(--up)" : "var(--text-dim)" }}>
+                {trade.reviewed_at ? `Süreç ${trade.process_score}/100` : "Retrospektif bekliyor"}
+              </span>
+            </div>
+            <div style={{ fontSize: 11, color: "var(--text-dim)", marginTop: 3 }}>{trade.thesis}</div>
+            {!trade.reviewed_at && (
+              <button style={linkButtonStyle} onClick={() => setReviewID(reviewID === trade.id ? "" : trade.id)}>Kararı değerlendir</button>
+            )}
+            {reviewID === trade.id && (
+              <div style={{ display: "grid", gap: 8, marginTop: 8 }}>
+                <label style={{ fontSize: 12, color: "var(--text-dim)" }}>
+                  <input type="checkbox" checked={followed} onChange={(event) => setFollowed(event.target.checked)} /> Planıma uydum
+                </label>
+                <textarea value={retrospective} onChange={(event) => setRetrospective(event.target.value)}
+                  rows={2} placeholder="Sonuçtan bağımsız süreç değerlendirmesi…" style={inputStyle} />
+                <Button variant="primary" full disabled={retrospective.trim().length < 20 || review.isPending} onClick={() => review.mutate()}>
+                  Retrospektifi Tamamla
+                </Button>
+              </div>
+            )}
+          </div>
+        ))}
+        {trades.length === 0 && <div style={{ fontSize: 12, color: "var(--text-dim)" }}>Henüz paper karar kaydı yok.</div>}
+      </div>
+    </Card>
+  );
+}
+
+function PrivacyAndGroups({
+  experience,
+  refresh,
+  flash,
+}: {
+  experience: GamificationExperience;
+  refresh: () => void;
+  flash: (message: string) => void;
+}) {
+  const [privacy, setPrivacy] = useState<GamificationPrivacy>(experience.privacy);
+  const [groupName, setGroupName] = useState("");
+  const [invite, setInvite] = useState("");
+  const save = useMutation({
+    mutationFn: () => api.saveGamificationPrivacy(privacy),
+    onSuccess: (result) => { setPrivacy(result); flash("Gizlilik tercihleri kaydedildi"); refresh(); },
+    onError: (error: Error) => flash(error.message || "Tercihler kaydedilemedi"),
+  });
+  const create = useMutation({
+    mutationFn: () => api.createStudyGroup(groupName),
+    onSuccess: (group) => { flash(`Grup hazır · davet kodu ${group.invite_code}`); setGroupName(""); refresh(); },
+    onError: (error: Error) => flash(error.message || "Grup oluşturulamadı"),
+  });
+  const join = useMutation({
+    mutationFn: () => api.joinStudyGroup(invite),
+    onSuccess: () => { flash("Çalışma grubuna katıldın"); setInvite(""); refresh(); },
+    onError: (error: Error) => flash(error.message || "Gruba katılınamadı"),
+  });
+  const toggle = (key: keyof GamificationPrivacy) => {
+    setPrivacy((current) => ({ ...current, [key]: !current[key] }));
+  };
+  return (
+    <Card style={{ padding: 18 }}>
+      <div style={{ fontWeight: 800 }}>Gizlilik ve Çalışma Grupları</div>
+      <div style={{ fontSize: 12, color: "var(--text-dim)", margin: "3px 0 12px" }}>
+        Para, pozisyon ve getiri hiçbir sosyal görünümde paylaşılmaz.
+      </div>
+      <input value={privacy.alias} maxLength={40} onChange={(event) => setPrivacy({ ...privacy, alias: event.target.value })}
+        placeholder="Görünecek takma ad" style={inputStyle} />
+      <div style={{ display: "grid", gap: 8, margin: "10px 0" }}>
+        <Toggle label="Sezon sıralamasında görün" checked={privacy.league_opt_in} onChange={() => toggle("league_opt_in")} />
+        <Toggle label="Kişiselleştirilmiş öğrenme yolu" checked={privacy.personalized_learning} onChange={() => toggle("personalized_learning")} />
+        <Toggle label="Öğrenme bildirimleri" checked={privacy.learning_notifications} onChange={() => toggle("learning_notifications")} />
+        <Toggle label="Gizlilik güvenli çalışma grupları" checked={privacy.social_opt_in} onChange={() => toggle("social_opt_in")} />
+      </div>
+      <Button variant="soft" full disabled={save.isPending} onClick={() => save.mutate()}>Tercihleri Kaydet</Button>
+      {privacy.social_opt_in && (
+        <>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, marginTop: 12 }}>
+            <input value={groupName} onChange={(event) => setGroupName(event.target.value)} placeholder="Yeni grup adı" style={inputStyle} />
+            <Button variant="soft" disabled={groupName.trim().length < 3 || create.isPending} onClick={() => create.mutate()}>Oluştur</Button>
+            <input value={invite} onChange={(event) => setInvite(event.target.value.toUpperCase())} placeholder="Davet kodu" style={inputStyle} />
+            <Button variant="soft" disabled={invite.trim().length < 6 || join.isPending} onClick={() => join.mutate()}>Katıl</Button>
+          </div>
+          <div style={{ display: "grid", gap: 6, marginTop: 10 }}>
+            {experience.study_groups.map((group) => (
+              <div key={group.id} style={{ display: "flex", justifyContent: "space-between", fontSize: 12, padding: 9, background: "var(--surface-hi)", borderRadius: 8 }}>
+                <span><strong>{group.name}</strong> · {group.member_count}/8 kişi</span>
+                <span className="mono" style={{ color: "var(--accent-hi)" }}>{group.invite_code}</span>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+    </Card>
+  );
+}
+
+function Modal({ title, subtitle, onClose, children }: { title: string; subtitle: string; onClose: () => void; children: React.ReactNode }) {
+  return (
+    <div style={modalBackdropStyle} onClick={onClose}>
+      <div style={modalStyle} onClick={(event) => event.stopPropagation()}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+          <div><div style={{ fontSize: 19, fontWeight: 800 }}>{title}</div><div style={{ fontSize: 12, color: "var(--text-dim)" }}>{subtitle}</div></div>
+          <button onClick={onClose} style={linkButtonStyle}>Kapat</button>
+        </div>
+        <div style={{ display: "grid", gap: 12, marginTop: 16 }}>{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function Field({ label, children }: { label: string; children: React.ReactNode }) {
+  return <label style={{ display: "grid", gap: 6, fontSize: 12, color: "var(--text-dim)" }}>{label}{children}</label>;
+}
+
+function Toggle({ label, checked, onChange }: { label: string; checked: boolean; onChange: () => void }) {
+  return <label style={{ display: "flex", justifyContent: "space-between", gap: 12, fontSize: 13 }}>
+    <span>{label}</span><input type="checkbox" checked={checked} onChange={onChange} />
+  </label>;
+}
+
+function MiniStat({ label, value }: { label: string; value: string }) {
+  return <div style={{ padding: 10, borderRadius: 10, background: "var(--surface-hi)" }}>
+    <div style={{ fontSize: 10, color: "var(--text-faint)" }}>{label}</div>
+    <div className="mono" style={{ fontSize: 17, fontWeight: 800, marginTop: 2 }}>{value}</div>
+  </div>;
+}
+
+const inputStyle: React.CSSProperties = {
+  width: "100%", boxSizing: "border-box", background: "var(--surface-hi)", color: "var(--text)",
+  border: "1px solid var(--stroke)", borderRadius: 10, padding: "10px 11px", font: "inherit",
+};
+const chipStyle: React.CSSProperties = {
+  whiteSpace: "nowrap", background: "var(--surface-hi)", border: "1px solid var(--stroke)",
+  borderRadius: 999, padding: "7px 10px", fontSize: 11, cursor: "pointer",
+};
+const choiceStyle: React.CSSProperties = {
+  textAlign: "left", color: "var(--text)", border: "1px solid var(--stroke)", borderRadius: 10,
+  padding: "10px 11px", cursor: "pointer", marginBottom: 0,
+};
+const pillStyle: React.CSSProperties = {
+  borderRadius: 999, padding: "6px 9px", background: "var(--accent-soft)",
+  color: "var(--accent-hi)", fontSize: 11, fontWeight: 800, whiteSpace: "nowrap",
+};
+const linkButtonStyle: React.CSSProperties = {
+  background: "transparent", color: "var(--accent-hi)", border: 0, padding: "6px 0",
+  fontWeight: 700, fontSize: 12, cursor: "pointer",
+};
+const modalBackdropStyle: React.CSSProperties = {
+  position: "fixed", inset: 0, zIndex: 400, background: "rgba(0,0,0,.7)", display: "grid",
+  placeItems: "center", padding: 16, overflowY: "auto",
+};
+const modalStyle: React.CSSProperties = {
+  width: "min(560px,100%)", maxHeight: "90vh", overflowY: "auto", background: "var(--surface)",
+  border: "1px solid var(--stroke-strong)", borderRadius: 18, padding: 20, boxShadow: "var(--shadow)",
+};
 
 function Hero({ p }: { p: GamProfile }) {
   return (
@@ -114,23 +594,23 @@ function StatsRow({ p }: { p: GamProfile }) {
   );
 }
 
-function DailyReward({ p, claiming, onClaim }: { p: GamProfile; claiming: boolean; onClaim: () => void }) {
-  if (p.checked_in_today) {
+function DailyReward({ p, planned, onClaim }: { p: GamProfile; planned: boolean; onClaim: () => void }) {
+  if (planned) {
     return (
       <Card style={{ padding: 16, display: "flex", alignItems: "center", gap: 12 }}>
         <span style={{ fontSize: 24 }}>✅</span>
         <div>
-          <div style={{ fontWeight: 700 }}>Günlük giriş tamamlandı</div>
+          <div style={{ fontWeight: 700 }}>Bugünün planı hazır</div>
           <div style={{ fontSize: 12, color: "var(--text-dim)" }}>
-            Yarın tekrar gel, serini büyüt! En uzun serin: {p.longest_streak} gün
+            Risk sınırın ve öğrenme hedefin kaydedildi. Seri: {p.current_streak} gün
           </div>
         </div>
       </Card>
     );
   }
   return (
-    <Button variant="primary" full onClick={onClaim} disabled={claiming}>
-      {claiming ? "…" : "🎁 Günlük Ödülü Al"}
+    <Button variant="primary" full onClick={onClaim}>
+      🧭 Günü Planla
     </Button>
   );
 }

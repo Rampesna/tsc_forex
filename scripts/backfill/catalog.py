@@ -61,7 +61,8 @@ CRYPTOS = [
     ("AVAX", "AVAX-USD", "AVAXUSDT"),
     ("DOT", "DOT-USD", "DOTUSDT"),
     ("LINK", "LINK-USD", "LINKUSDT"),
-    ("MATIC", "MATIC-USD", "MATICUSDT"),
+    # Canonical code stays MATIC; Polygon's live successor ticker is POL (1:1).
+    ("MATIC", "POL28321-USD", "POLUSDT"),
     ("LTC", "LTC-USD", "LTCUSDT"),
     ("ATOM", "ATOM-USD", "ATOMUSDT"),
     ("XLM", "XLM-USD", "XLMUSDT"),

@@ -4,20 +4,30 @@ import type {
   Candle,
   CatalogItem,
   GamCheckInResult,
+  GamificationExperience,
+  GamificationPrivacy,
   GamProfile,
   InstrumentDetail,
   InstrumentPrice,
   Leaderboard,
   Notification,
+  PortfolioOverview,
+  PortfolioPerformancePoint,
+  PortfolioTransaction,
+  PaperTrade,
   Profile,
   Stats,
+  StudyGroup,
   TokenResponse,
+  QuizAttemptResult,
 } from "./types";
 
 export const api = {
   // --- auth ---
-  register: (email: string, password: string) =>
-    request<TokenResponse>("/auth/register", { method: "POST", body: { email, password } }),
+  register: async (email: string, password: string) => {
+    await request("/auth/register", { method: "POST", body: { email, password } });
+    return request<TokenResponse>("/auth/login", { method: "POST", body: { email, password } });
+  },
   login: (email: string, password: string) =>
     request<TokenResponse>("/auth/login", { method: "POST", body: { email, password } }),
   google: (idToken: string) =>
@@ -90,4 +100,121 @@ export const api = {
     request<GamCheckInResult>("/me/gamification/checkin", { method: "POST", auth: true }),
   leaderboard: (limit = 20) =>
     request<Leaderboard>(`/me/gamification/leaderboard?limit=${limit}`, { auth: true }),
+  gamificationExperience: () =>
+    request<GamificationExperience>("/me/gamification/experience", { auth: true }),
+  saveDailyPlan: (body: {
+    risk_appetite: "low" | "moderate" | "high";
+    watch_codes: string[];
+    learning_goal: string;
+    reflection: string;
+  }) =>
+    request<GamCheckInResult>("/me/gamification/daily-plan", {
+      method: "POST",
+      auth: true,
+      body,
+    }),
+  submitQuiz: (body: {
+    lesson_code: string;
+    question_code: string;
+    answer: number;
+    idempotency_key: string;
+  }) =>
+    request<QuizAttemptResult>("/me/gamification/quiz-attempts", {
+      method: "POST",
+      auth: true,
+      body,
+    }),
+  completeDiscipline: (code: string, note: string) =>
+    request<{ awarded: boolean; xp_gained: number; rule_version: string }>(
+      `/me/gamification/discipline/${code}`,
+      { method: "POST", auth: true, body: { note } },
+    ),
+  season: () => request<GamificationExperience["season"]>("/me/gamification/season", { auth: true }),
+  createPaperTrade: (body: Omit<PaperTrade, "id" | "followed_plan" | "retrospective" | "process_score" | "reviewed_at" | "created_at" | "updated_at">) =>
+    request<{ created: boolean; trade: PaperTrade }>("/me/gamification/paper-trades", {
+      method: "POST",
+      auth: true,
+      body,
+    }),
+  reviewPaperTrade: (id: string, followedPlan: boolean, retrospective: string) =>
+    request<{ trade: PaperTrade; xp_gained: number }>(
+      `/me/gamification/paper-trades/${id}/review`,
+      { method: "PATCH", auth: true, body: { followed_plan: followedPlan, retrospective } },
+    ),
+  saveGamificationPrivacy: (body: GamificationPrivacy) =>
+    request<GamificationPrivacy>("/me/gamification/privacy", {
+      method: "PATCH",
+      auth: true,
+      body,
+    }),
+  createStudyGroup: (name: string) =>
+    request<StudyGroup>("/me/gamification/study-groups", {
+      method: "POST",
+      auth: true,
+      body: { name },
+    }),
+  joinStudyGroup: (inviteCode: string) =>
+    request<{ joined: boolean }>("/me/gamification/study-groups/join", {
+      method: "POST",
+      auth: true,
+      body: { invite_code: inviteCode },
+    }),
+
+  // --- portfolio ledger ---
+  portfolios: () =>
+    request<{ count: number; portfolios: PortfolioOverview[] }>("/me/portfolios", { auth: true }),
+  createPortfolio: (name: string) =>
+    request<PortfolioOverview["portfolio"]>("/me/portfolios", {
+      method: "POST",
+      auth: true,
+      body: { name },
+    }),
+  portfolio: (id: string) =>
+    request<PortfolioOverview>(`/me/portfolios/${id}`, { auth: true }),
+  updatePortfolio: (id: string, name: string) =>
+    request<PortfolioOverview["portfolio"]>(`/me/portfolios/${id}`, {
+      method: "PATCH",
+      auth: true,
+      body: { name },
+    }),
+  deletePortfolio: (id: string) =>
+    request(`/me/portfolios/${id}`, { method: "DELETE", auth: true }),
+  portfolioPosition: (id: string, code: string) =>
+    request<{ position: PortfolioOverview["positions"][number]; transactions: PortfolioTransaction[] }>(
+      `/me/portfolios/${id}/positions/${encodeURIComponent(code)}`,
+      { auth: true },
+    ),
+  portfolioTransactions: (id: string, limit = 100) =>
+    request<{ count: number; transactions: PortfolioTransaction[] }>(
+      `/me/portfolios/${id}/transactions?limit=${limit}`,
+      { auth: true },
+    ),
+  createPortfolioTransaction: (
+    id: string,
+    body: Omit<PortfolioTransaction, "id" | "portfolio_id" | "user_id" | "created_at" | "updated_at">,
+  ) =>
+    request<{ created: boolean; transaction: PortfolioTransaction }>(
+      `/me/portfolios/${id}/transactions`,
+      { method: "POST", auth: true, body },
+    ),
+  updatePortfolioTransaction: (
+    id: string,
+    transactionId: string,
+    body: Omit<PortfolioTransaction, "id" | "portfolio_id" | "user_id" | "created_at" | "updated_at">,
+  ) =>
+    request<PortfolioTransaction>(`/me/portfolios/${id}/transactions/${transactionId}`, {
+      method: "PATCH",
+      auth: true,
+      body,
+    }),
+  deletePortfolioTransaction: (id: string, transactionId: string) =>
+    request(`/me/portfolios/${id}/transactions/${transactionId}`, {
+      method: "DELETE",
+      auth: true,
+    }),
+  portfolioPerformance: (id: string, range = "1y", points = 365) =>
+    request<{ count: number; points: PortfolioPerformancePoint[] }>(
+      `/me/portfolios/${id}/performance?range=${range}&points=${points}`,
+      { auth: true },
+    ),
 };

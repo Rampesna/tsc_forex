@@ -28,11 +28,10 @@ struct AssetDetailView: View {
     // so we must NOT fold the live price into the last visible candle.
     @State private var hasMoreFuture = false
     @State private var chartReset = 0
-    // Sliding window: fetch older/newer pages of this size and keep at most
-    // `maxWindow` candles rendered so Swift Charts stays smooth no matter how
-    // far the user scrolls into history.
-    private let pageSize = 300
-    private let maxWindow = 900
+    // Network/cache window. The custom chart renderer draws only the visible
+    // 8...160 bars; these limits only bound the nearby paged cache.
+    private let pageSize = 240
+    private let maxWindow = 600
     @State private var showAlert = false
     @State private var convAmount = "1"
 
@@ -49,23 +48,6 @@ struct AssetDetailView: View {
 
     private var price: InstrumentPrice? { prices.prices[code] }
     private var trendUp: Bool { (price?.changePct ?? 0) >= 0 }
-
-    // Fold the live WS price into the last candle so the chart moves in real time
-    // between fetches (Binance-style) without refetching history.
-    private var displayCandles: [Candle] {
-        // Only fold the live price in when the present is actually on screen.
-        guard !hasMoreFuture, let p = price?.price, p > 0, let last = candles.last else { return candles }
-        var arr = candles
-        arr[arr.count - 1] = Candle(
-            bucket: last.bucket,
-            open: last.open,
-            high: max(last.high, p),
-            low: min(last.low, p),
-            close: p,
-            count: last.count
-        )
-        return arr
-    }
 
     var body: some View {
         ZStack {
@@ -192,7 +174,8 @@ struct AssetDetailView: View {
                 if candles.isEmpty && loadingChart {
                     SkeletonBlock(height: 300, corner: 10).shimmer()
                 } else {
-                    PriceChart(candles: displayCandles, mode: mode, trendUp: trendUp,
+                    PriceChart(candles: candles, mode: mode, trendUp: trendUp,
+                               livePrice: hasMoreFuture ? nil : price?.price,
                                onReachStart: { Task { await loadOlder() } },
                                onReachEnd: { Task { await loadNewer() } },
                                canLoadOlder: hasMoreHistory,
@@ -404,14 +387,22 @@ struct AssetDetailView: View {
         loadingChart = true; defer { loadingChart = false }
         hasMoreHistory = true
         hasMoreFuture = false
+        let requestedTimeframe = tf
         let client = APIClient(token: auth.accessToken)
         let frame = timeframes.first { $0.key == tf } ?? timeframes[0]
         let from = Calendar.current.date(byAdding: .day, value: -frame.days, to: Date())
-        if let c = try? await client.candles(code: code, interval: frame.interval, from: from) {
-            // Keep the render window bounded even on the initial fetch.
+        if let c = try? await client.candles(
+            code: code,
+            interval: frame.interval,
+            from: from,
+            limit: maxWindow
+        ) {
+            guard tf == requestedTimeframe else { return }
+            // Keep only a nearby cache. The renderer further virtualizes this to
+            // at most 160 visible bars.
             candles = Array(c.suffix(maxWindow))
-            if c.count > maxWindow { hasMoreHistory = true }
         } else {
+            guard tf == requestedTimeframe else { return }
             candles = []
         }
         // Re-center the visible window on the freshly loaded interval.
@@ -426,11 +417,21 @@ struct AssetDetailView: View {
     private func loadOlder() async {
         guard !loadingOlder, !loadingNewer, hasMoreHistory, let oldest = candles.first?.bucket else { return }
         loadingOlder = true; defer { loadingOlder = false }
+        let requestedTimeframe = tf
         let client = APIClient(token: auth.accessToken)
         let frame = timeframes.first { $0.key == tf } ?? timeframes[0]
         let to = oldest.addingTimeInterval(-1)
-        guard let older = try? await client.candles(code: code, interval: frame.interval, to: to, limit: pageSize),
-              !older.isEmpty else {
+        guard let older = try? await client.candles(
+            code: code,
+            interval: frame.interval,
+            to: to,
+            limit: pageSize
+        ) else {
+            // A transient network failure must remain retryable.
+            return
+        }
+        guard tf == requestedTimeframe else { return }
+        guard !older.isEmpty else {
             hasMoreHistory = false
             return
         }
@@ -453,11 +454,26 @@ struct AssetDetailView: View {
     private func loadNewer() async {
         guard !loadingNewer, !loadingOlder, hasMoreFuture, let newest = candles.last?.bucket else { return }
         loadingNewer = true; defer { loadingNewer = false }
+        let requestedTimeframe = tf
         let client = APIClient(token: auth.accessToken)
         let frame = timeframes.first { $0.key == tf } ?? timeframes[0]
         let from = newest.addingTimeInterval(1)
-        guard let newer = try? await client.candles(code: code, interval: frame.interval, from: from, limit: pageSize),
-              !newer.isEmpty else {
+        // The backend returns the newest `limit` rows inside a range. Bound the
+        // upper edge so forward paging fetches the adjacent interval instead of
+        // jumping straight from old history to today's latest page.
+        let step = stepSeconds(frame.interval)
+        let to = from.addingTimeInterval(step * Double(max(pageSize - 1, 1)))
+        guard let newer = try? await client.candles(
+            code: code,
+            interval: frame.interval,
+            from: from,
+            to: to,
+            limit: pageSize
+        ) else {
+            return
+        }
+        guard tf == requestedTimeframe else { return }
+        guard !newer.isEmpty else {
             hasMoreFuture = false
             return
         }
@@ -472,8 +488,10 @@ struct AssetDetailView: View {
         }
         candles = merged
         // Reached the live edge? Stop paging forward and resume live folding.
-        let step = stepSeconds(frame.interval)
-        if newer.count < pageSize || (merged.last?.bucket ?? .distantPast) >= Date().addingTimeInterval(-step * 2) {
+        let latest = merged.last?.bucket ?? .distantPast
+        let reachedLiveEdge = latest >= Date().addingTimeInterval(-step * 2)
+            || (to >= Date() && newer.count < pageSize)
+        if reachedLiveEdge {
             hasMoreFuture = false
         }
     }

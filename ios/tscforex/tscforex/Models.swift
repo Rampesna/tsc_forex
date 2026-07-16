@@ -394,6 +394,183 @@ struct LeaderboardResponse: Codable {
     let me: LeaderEntry
 }
 
+struct DailyPlan: Codable, Identifiable {
+    let id: String
+    let dayKey: String
+    let riskAppetite: String
+    let watchCodes: [String]
+    let learningGoal: String
+    let reflection: String
+
+    enum CodingKeys: String, CodingKey {
+        case id, reflection
+        case dayKey = "day_key"
+        case riskAppetite = "risk_appetite"
+        case watchCodes = "watch_codes"
+        case learningGoal = "learning_goal"
+    }
+}
+
+struct LessonQuestion: Codable {
+    let code: String
+    let text: String
+    let choices: [String]
+}
+
+struct LessonStatus: Codable, Identifiable {
+    var id: String { code }
+    let code: String
+    let title: String
+    let summary: String
+    let cards: [String]
+    let question: LessonQuestion
+    let mastery: Int
+    let attempts: Int
+    let completed: Bool
+    let dueForReview: Bool
+    let nextReviewAt: Date?
+
+    enum CodingKeys: String, CodingKey {
+        case code, title, summary, cards, question, mastery, attempts, completed
+        case dueForReview = "due_for_review"
+        case nextReviewAt = "next_review_at"
+    }
+}
+
+struct DisciplineQuest: Codable, Identifiable {
+    var id: String { code }
+    let code: String
+    let title: String
+    let description: String
+    let xp: Int
+    let completed: Bool
+}
+
+struct SeasonView: Codable {
+    let code: String
+    let name: String
+    let league: String
+    let points: Int
+    let rank: Int
+    let endsAt: Date
+    let standings: [LeaderEntry]
+    let scoring: String
+
+    enum CodingKeys: String, CodingKey {
+        case code, name, league, points, rank, standings, scoring
+        case endsAt = "ends_at"
+    }
+}
+
+struct PaperTrade: Codable, Identifiable {
+    let id: String
+    let clientId: String
+    let code: String
+    let side: String
+    let quantity: Double
+    let entryPrice: Double
+    let thesis: String
+    let riskBudgetPct: Double
+    let invalidation: String
+    let occurredAt: Date
+    let followedPlan: Bool?
+    let retrospective: String
+    let processScore: Int
+    let reviewedAt: Date?
+
+    enum CodingKeys: String, CodingKey {
+        case id, code, side, quantity, thesis, invalidation, retrospective
+        case clientId = "client_id"
+        case entryPrice = "entry_price"
+        case riskBudgetPct = "risk_budget_pct"
+        case occurredAt = "occurred_at"
+        case followedPlan = "followed_plan"
+        case processScore = "process_score"
+        case reviewedAt = "reviewed_at"
+    }
+}
+
+struct GamificationPrivacy: Codable {
+    let userId: String
+    var alias: String
+    var leagueOptIn: Bool
+    var personalizedLearning: Bool
+    var socialOptIn: Bool
+    var learningNotifications: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case alias
+        case userId = "user_id"
+        case leagueOptIn = "league_opt_in"
+        case personalizedLearning = "personalized_learning"
+        case socialOptIn = "social_opt_in"
+        case learningNotifications = "learning_notifications"
+    }
+}
+
+struct StudyGroupOverview: Codable, Identifiable {
+    let id: String
+    let ownerId: String
+    let name: String
+    let inviteCode: String
+    let memberCount: Int
+
+    enum CodingKeys: String, CodingKey {
+        case id, name
+        case ownerId = "owner_id"
+        case inviteCode = "invite_code"
+        case memberCount = "member_count"
+    }
+}
+
+struct WeeklyLearningSummary: Codable {
+    let masteredLessons: Int
+    let totalLessons: Int
+    let seasonPoints: Int
+    let dueReviews: Int
+
+    enum CodingKeys: String, CodingKey {
+        case masteredLessons = "mastered_lessons"
+        case totalLessons = "total_lessons"
+        case seasonPoints = "season_points"
+        case dueReviews = "due_reviews"
+    }
+}
+
+struct GamificationExperience: Codable {
+    let ruleVersion: String
+    let dailyPlan: DailyPlan?
+    let lessons: [LessonStatus]
+    let disciplineQuests: [DisciplineQuest]
+    let season: SeasonView
+    let paperTrades: [PaperTrade]
+    var privacy: GamificationPrivacy
+    let studyGroups: [StudyGroupOverview]
+    let weeklySummary: WeeklyLearningSummary
+
+    enum CodingKeys: String, CodingKey {
+        case lessons, season, privacy
+        case ruleVersion = "rule_version"
+        case dailyPlan = "daily_plan"
+        case disciplineQuests = "discipline_quests"
+        case paperTrades = "paper_trades"
+        case studyGroups = "study_groups"
+        case weeklySummary = "weekly_summary"
+    }
+}
+
+struct QuizAttemptResult: Codable {
+    let correct: Bool
+    let xpGained: Int
+    let created: Bool
+    let lesson: LessonStatus
+
+    enum CodingKeys: String, CodingKey {
+        case correct, created, lesson
+        case xpGained = "xp_gained"
+    }
+}
+
 // MARK: - Shared JSON decoder (handles Go's RFC3339 with/without fractional seconds)
 
 extension JSONDecoder {

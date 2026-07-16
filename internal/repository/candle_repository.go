@@ -26,14 +26,15 @@ type CandleRepository interface {
 	// `resolution` with bucket >= since. Seeds day-open baselines fast: a DISTINCT
 	// ON over the tiny candles table instead of a day of raw ticks.
 	FirstOpenSince(ctx context.Context, resolution string, since time.Time) (map[string]float64, error)
-	// SeedFromTicks aggregates existing price_ticks into candles for a resolution
-	// over [from,to]. Idempotent (does not overwrite live candles). Used once to
-	// bootstrap chart history (including the historical backfill rows).
-	SeedFromTicks(ctx context.Context, resolution string, secs int, from, to time.Time) (int64, error)
-	// HasHistoryBefore reports whether any candle older than `before` exists for a
-	// resolution. Used to decide whether to bootstrap history from ticks WITHOUT
-	// being fooled by the just-flushed current (forming) candle.
-	HasHistoryBefore(ctx context.Context, resolution string, before time.Time) (bool, error)
+	// SeedFromTicks aggregates existing price_ticks into candles for selected
+	// instrument codes over [from,to]. Idempotent (does not overwrite live
+	// candles). Restricting by code lets instruments added after the first
+	// cluster bootstrap receive history without rescanning every instrument.
+	SeedFromTicks(ctx context.Context, resolution string, secs int, from, to time.Time, codes []string) (int64, error)
+	// MissingHistoryCodes returns catalog codes with no candle older than `before`
+	// for a resolution. The check is deliberately per code: a single old candle
+	// from an existing instrument must not hide newly-added instruments.
+	MissingHistoryCodes(ctx context.Context, resolution string, before time.Time, codes []string) ([]string, error)
 	// TryLockBootstrap acquires a cluster-wide advisory lock so only ONE pod runs
 	// the heavy tick→candle bootstrap (5 pods hammering a weak DB at once starves
 	// it). Returns locked=false if another pod holds it; call release when done.
@@ -81,8 +82,15 @@ func (r *candleRepository) UpsertBatch(ctx context.Context, candles []models.Can
 
 func (r *candleRepository) Range(ctx context.Context, code, resolution string, from, to time.Time, limit int) ([]models.OHLC, error) {
 	start := time.Now()
-	if limit <= 0 || limit > 5000 {
+	if limit <= 0 {
 		limit = 1000
+	}
+	// Coarser chart intervals are derived from daily candles. A 600-point monthly
+	// request needs ~18k daily rows, so silently resetting >5k to 1k truncated MAX
+	// charts even when the history existed. Keep a hard safety ceiling, but clamp
+	// rather than reset to a much smaller unrelated value.
+	if limit > 50_000 {
+		limit = 50_000
 	}
 	q := r.db.WithContext(ctx).Model(&models.Candle{}).
 		Select("bucket, open, high, low, close, count").
@@ -131,7 +139,10 @@ ORDER BY code, bucket ASC;`
 	return out, nil
 }
 
-func (r *candleRepository) SeedFromTicks(ctx context.Context, resolution string, secs int, from, to time.Time) (int64, error) {
+func (r *candleRepository) SeedFromTicks(ctx context.Context, resolution string, secs int, from, to time.Time, codes []string) (int64, error) {
+	if len(codes) == 0 {
+		return 0, nil
+	}
 	start := time.Now()
 	// Bucket raw ticks and insert candles that don't already exist. first/last
 	// via window functions give open/close; ON CONFLICT DO NOTHING protects any
@@ -151,20 +162,43 @@ FROM (
          first_value(price) OVER (PARTITION BY code, floor(extract(epoch from created_at) / ?) ORDER BY created_at ASC)  AS open_price,
          first_value(price) OVER (PARTITION BY code, floor(extract(epoch from created_at) / ?) ORDER BY created_at DESC) AS close_price
   FROM price_ticks
-  WHERE created_at >= ? AND created_at <= ?
+  WHERE created_at >= ? AND created_at <= ? AND code IN ?
 ) b
 GROUP BY code, bucket
 ON CONFLICT (code, resolution, bucket) DO NOTHING;`
-	res := r.db.WithContext(ctx).Exec(query, resolution, secs, secs, secs, secs, from, to)
+	res := r.db.WithContext(ctx).Exec(query, resolution, secs, secs, secs, secs, from, to, codes)
 	r.observe(start, res.Error)
 	return res.RowsAffected, res.Error
 }
 
-func (r *candleRepository) HasHistoryBefore(ctx context.Context, resolution string, before time.Time) (bool, error) {
-	var n int64
+func (r *candleRepository) MissingHistoryCodes(
+	ctx context.Context,
+	resolution string,
+	before time.Time,
+	codes []string,
+) ([]string, error) {
+	if len(codes) == 0 {
+		return nil, nil
+	}
+	var present []string
 	err := r.db.WithContext(ctx).Model(&models.Candle{}).
-		Where("resolution = ? AND bucket < ?", resolution, before).Limit(1).Count(&n).Error
-	return n > 0, err
+		Distinct("code").
+		Where("resolution = ? AND bucket < ? AND code IN ?", resolution, before, codes).
+		Pluck("code", &present).Error
+	if err != nil {
+		return nil, err
+	}
+	have := make(map[string]struct{}, len(present))
+	for _, code := range present {
+		have[code] = struct{}{}
+	}
+	missing := make([]string, 0, len(codes)-len(present))
+	for _, code := range codes {
+		if _, ok := have[code]; !ok {
+			missing = append(missing, code)
+		}
+	}
+	return missing, nil
 }
 
 // bootstrapLockKey is an arbitrary, app-unique advisory-lock key.

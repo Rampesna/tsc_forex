@@ -17,6 +17,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: backfill catalog sync
+        run: python3 scripts/backfill/check_catalog_sync.py
       - uses: actions/setup-go@v5
         with:
           go-version: "1.25"

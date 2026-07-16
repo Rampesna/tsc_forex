@@ -85,6 +85,40 @@ func TestRebucketDerivesCoarser(t *testing.T) {
 	}
 }
 
+func TestRebucketCalendarWeekStartsMonday(t *testing.T) {
+	friday := time.Date(2026, 7, 17, 0, 0, 0, 0, time.UTC)
+	monday := time.Date(2026, 7, 20, 0, 0, 0, 0, time.UTC)
+	in := []models.OHLC{
+		{Bucket: friday, Open: 10, High: 12, Low: 9, Close: 11, Count: 1},
+		{Bucket: monday, Open: 20, High: 23, Low: 19, Close: 22, Count: 1},
+	}
+	out := rebucketCalendar(in, "week")
+	if len(out) != 2 {
+		t.Fatalf("want 2 calendar weeks, got %d", len(out))
+	}
+	wantFirst := time.Date(2026, 7, 13, 0, 0, 0, 0, time.UTC)
+	if !out[0].Bucket.Equal(wantFirst) || !out[1].Bucket.Equal(monday) {
+		t.Fatalf("week buckets not Monday-aligned: %+v", out)
+	}
+}
+
+func TestRebucketCalendarMonthUsesFirstDay(t *testing.T) {
+	in := []models.OHLC{
+		{Bucket: time.Date(2026, 1, 30, 0, 0, 0, 0, time.UTC), Open: 10, High: 12, Low: 9, Close: 11, Count: 1},
+		{Bucket: time.Date(2026, 2, 2, 0, 0, 0, 0, time.UTC), Open: 11, High: 15, Low: 10, Close: 14, Count: 1},
+	}
+	out := rebucketCalendar(in, "month")
+	if len(out) != 2 {
+		t.Fatalf("want 2 calendar months, got %d", len(out))
+	}
+	if out[0].Bucket.Day() != 1 || out[0].Bucket.Month() != time.January {
+		t.Fatalf("first month bucket = %s", out[0].Bucket)
+	}
+	if out[1].Bucket.Day() != 1 || out[1].Bucket.Month() != time.February {
+		t.Fatalf("second month bucket = %s", out[1].Bucket)
+	}
+}
+
 func TestSparklineFromMemory(t *testing.T) {
 	bus := eventbus.New()
 	defer bus.Close()
