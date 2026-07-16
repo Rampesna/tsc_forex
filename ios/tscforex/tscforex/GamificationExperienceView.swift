@@ -6,10 +6,12 @@ struct GamificationExperienceHub: View {
     let onProfile: (GamProfile) -> Void
     let onToast: (String) -> Void
 
+    @EnvironmentObject private var prices: PriceStore
     @State private var tab = 0
     @State private var busy = false
     @State private var risk = "moderate"
-    @State private var watchCodes = ""
+    @State private var watchCodes: [String] = []
+    @State private var showWatchPicker = false
     @State private var learningGoal = "risk_budget"
     @State private var reflection = ""
     @State private var selectedLesson = ""
@@ -56,6 +58,13 @@ struct GamificationExperienceHub: View {
                 }
             }
             .onAppear { sync(exp) }
+            .sheet(isPresented: $showWatchPicker) {
+                InstrumentMultiPickerSheet(
+                    instruments: prices.sorted,
+                    selectedCodes: watchCodes,
+                    maxSelection: 3
+                ) { watchCodes = $0 }
+            }
         }
     }
 
@@ -98,7 +107,7 @@ struct GamificationExperienceHub: View {
                         Text("Orta").tag("moderate")
                         Text("Yüksek").tag("high")
                     }.pickerStyle(.segmented)
-                    input("İzlenecek kodlar: GRAM_GOLD, USDTRY, AAPL", text: $watchCodes)
+                    watchSelection
                     Picker("Öğrenme hedefi", selection: $learningGoal) {
                         ForEach(exp.lessons) { lesson in Text(lesson.title).tag(lesson.code) }
                     }
@@ -107,7 +116,8 @@ struct GamificationExperienceHub: View {
                     Button(busy ? "Kaydediliyor…" : "Planı Kaydet ve Seriyi Sürdür") {
                         Task { await savePlan() }
                     }
-                    .buttonStyle(FilledButtonStyle()).disabled(busy || learningGoal.isEmpty)
+                    .buttonStyle(FilledButtonStyle())
+                    .disabled(busy || learningGoal.isEmpty || watchCodes.isEmpty)
                 }
             }
 
@@ -131,6 +141,67 @@ struct GamificationExperienceHub: View {
                 }
             }
         }
+    }
+
+    private var watchSelection: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack {
+                Text("İzlenecek varlıklar")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Theme.textDim)
+                Spacer()
+                Text("\(watchCodes.count)/3")
+                    .font(Theme.number(10, weight: .bold))
+                    .foregroundStyle(Theme.textFaint)
+            }
+            Button {
+                showWatchPicker = true
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundStyle(Theme.accent)
+                    Text(watchCodes.isEmpty ? "Varlık seç" : "Seçimi düzenle")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Theme.text)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(Theme.textFaint)
+                }
+                .padding(.horizontal, 12)
+                .frame(height: 44)
+                .background(Theme.surfaceHi, in: RoundedRectangle(cornerRadius: 10))
+                .overlay(RoundedRectangle(cornerRadius: 10).stroke(Theme.stroke))
+            }
+            .buttonStyle(.plain)
+            if !selectedWatchInstruments.isEmpty {
+                ScrollView(.horizontal, showsIndicators: false) {
+                    HStack(spacing: 6) {
+                        ForEach(selectedWatchInstruments) { instrument in
+                            HStack(spacing: 5) {
+                                Text(instrument.displayName)
+                                    .font(.system(size: 11, weight: .semibold))
+                                Button {
+                                    watchCodes.removeAll { $0 == instrument.code }
+                                } label: {
+                                    Image(systemName: "xmark")
+                                        .font(.system(size: 8, weight: .bold))
+                                }
+                                .buttonStyle(.plain)
+                            }
+                            .foregroundStyle(Theme.accent)
+                            .padding(.horizontal, 9)
+                            .padding(.vertical, 7)
+                            .background(Theme.accentSoft, in: Capsule())
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var selectedWatchInstruments: [InstrumentPrice] {
+        watchCodes.compactMap { prices.prices[$0] }
     }
 
     private func learning(_ exp: GamificationExperience) -> some View {
@@ -338,7 +409,7 @@ struct GamificationExperienceHub: View {
     private func sync(_ exp: GamificationExperience) {
         if let plan = exp.dailyPlan {
             risk = plan.riskAppetite
-            watchCodes = plan.watchCodes.joined(separator: ", ")
+            watchCodes = Array(plan.watchCodes.prefix(3))
             learningGoal = plan.learningGoal
             reflection = plan.reflection
         } else if let first = exp.lessons.first {
@@ -364,9 +435,8 @@ struct GamificationExperienceHub: View {
         busy = true
         defer { busy = false }
         do {
-            let codes = watchCodes.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces).uppercased() }
             let result = try await APIClient(token: token).saveDailyPlan(
-                risk: risk, codes: Array(codes.prefix(3)), learningGoal: learningGoal, reflection: reflection
+                risk: risk, codes: Array(watchCodes.prefix(3)), learningGoal: learningGoal, reflection: reflection
             )
             onProfile(result.profile)
             onToast("Plan kaydedildi · +\(result.xpGained) XP · 🔥 \(result.profile.currentStreak) gün")

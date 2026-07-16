@@ -482,8 +482,10 @@ private fun PortfolioTransactionDialog(
     val types = listOf("buy", "sell", "dividend", "fee", "deposit", "withdraw")
     var type by remember(transaction?.id) { mutableStateOf(transaction?.type ?: "buy") }
     var typeMenu by remember { mutableStateOf(false) }
-    var code by remember(transaction?.id) { mutableStateOf(transaction?.code?.ifEmpty { null } ?: initialCode ?: "GRAM_GOLD") }
-    var codeMenu by remember { mutableStateOf(false) }
+    var code by remember(transaction?.id) { mutableStateOf(transaction?.code?.ifEmpty { null } ?: initialCode.orEmpty()) }
+    var assetKind by remember(transaction?.id) { mutableStateOf(store.prices[code]?.kind.orEmpty()) }
+    var showKindPicker by remember { mutableStateOf(false) }
+    var showAssetPicker by remember { mutableStateOf(false) }
     var quantity by remember(transaction?.id) { mutableStateOf(transaction?.quantity?.toString() ?: "") }
     var unitPrice by remember(transaction?.id) {
         mutableStateOf(transaction?.unitPriceNative?.toString() ?: (store.prices[code]?.price?.toString() ?: ""))
@@ -501,6 +503,9 @@ private fun PortfolioTransactionDialog(
         decimal(quantity) > 0 && decimal(unitPrice) > 0 && decimal(fee) >= 0
     } else {
         decimal(amount) > 0
+    }
+    LaunchedEffect(code, store.prices.size) {
+        if (assetKind.isBlank() && code.isNotBlank()) assetKind = store.prices[code]?.kind.orEmpty()
     }
 
     AlertDialog(
@@ -528,25 +533,27 @@ private fun PortfolioTransactionDialog(
                 }
                 if (usesAsset) {
                     item {
-                        Box {
-                            OutlinedTextField(
-                                value = code, onValueChange = {}, readOnly = true,
-                                label = { Text("Varlık") },
-                                modifier = Modifier.fillMaxWidth().clickable { codeMenu = true },
-                            )
-                            DropdownMenu(expanded = codeMenu, onDismissRequest = { codeMenu = false }) {
-                                store.all().forEach { price ->
-                                    DropdownMenuItem(
-                                        text = { Text("${price.code} • ${price.displayName}") },
-                                        onClick = {
-                                            code = price.code
-                                            unitPrice = price.price.toString()
-                                            codeMenu = false
-                                        },
-                                    )
-                                }
-                            }
-                        }
+                        OutlinedTextField(
+                            value = instrumentKindTitle(assetKind),
+                            onValueChange = {},
+                            readOnly = true,
+                            label = { Text("Varlık türü") },
+                            placeholder = { Text("Tür seç") },
+                            modifier = Modifier.fillMaxWidth().clickable { showKindPicker = true },
+                        )
+                    }
+                    item {
+                        OutlinedTextField(
+                            value = store.prices[code]?.displayName.orEmpty(),
+                            onValueChange = {},
+                            readOnly = true,
+                            enabled = assetKind.isNotBlank(),
+                            label = { Text("Varlık") },
+                            placeholder = { Text(if (assetKind.isBlank()) "Önce varlık türünü seç" else "Varlık seç") },
+                            modifier = Modifier.fillMaxWidth().clickable(enabled = assetKind.isNotBlank()) {
+                                showAssetPicker = true
+                            },
+                        )
                     }
                 }
                 if (trade) {
@@ -597,6 +604,28 @@ private fun PortfolioTransactionDialog(
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("Vazgeç", color = Th.textDim) } },
     )
+    if (showKindPicker) {
+        InstrumentKindPickerDialog(
+            instruments = store.all(),
+            selectedKind = assetKind,
+            onDismiss = { showKindPicker = false },
+        ) { selectedKind ->
+            assetKind = selectedKind
+            code = ""
+            unitPrice = ""
+        }
+    }
+    if (showAssetPicker && assetKind.isNotBlank()) {
+        InstrumentPickerDialog(
+            instruments = store.all(),
+            kind = assetKind,
+            selectedCode = code,
+            onDismiss = { showAssetPicker = false },
+        ) { instrument ->
+            code = instrument.code
+            unitPrice = instrument.price.toString()
+        }
+    }
 }
 
 @Composable

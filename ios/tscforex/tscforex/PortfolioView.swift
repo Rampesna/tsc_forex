@@ -422,6 +422,7 @@ struct PortfolioTransactionSheet: View {
     @EnvironmentObject private var prices: PriceStore
     @Environment(\.dismiss) private var dismiss
     @State private var type: PortfolioTransactionType
+    @State private var assetKind: String
     @State private var code: String
     @State private var quantity: String
     @State private var unitPrice: String
@@ -430,12 +431,16 @@ struct PortfolioTransactionSheet: View {
     @State private var note: String
     @State private var occurredAt: Date
     @State private var saving = false
+    @State private var showCategoryPicker = false
+    @State private var showInstrumentPicker = false
 
     init(initialCode: String? = nil, transaction: CloudPortfolioTransaction? = nil) {
         self.initialCode = initialCode
         self.transaction = transaction
+        let selectedCode = transaction?.code ?? initialCode ?? ""
         _type = State(initialValue: transaction?.type ?? .buy)
-        _code = State(initialValue: transaction?.code ?? initialCode ?? "GRAM_GOLD")
+        _assetKind = State(initialValue: "")
+        _code = State(initialValue: selectedCode)
         _quantity = State(initialValue: transaction.map { String($0.quantity) } ?? "")
         _unitPrice = State(initialValue: transaction.map { String($0.unitPriceNative) } ?? "")
         _amount = State(initialValue: transaction.map { String($0.amountNative) } ?? "")
@@ -451,8 +456,29 @@ struct PortfolioTransactionSheet: View {
                     ForEach(PortfolioTransactionType.allCases) { item in Text(item.title).tag(item) }
                 }
                 if type.usesAsset {
-                    Picker("Varlık", selection: $code) {
-                        ForEach(prices.sorted) { item in Text("\(item.code) • \(item.displayName)").tag(item.code) }
+                    LabeledContent("Varlık türü") {
+                        Button {
+                            showCategoryPicker = true
+                        } label: {
+                            HStack(spacing: 5) {
+                                Text(selectedCategory?.title ?? "Tür seç")
+                                Image(systemName: "chevron.up.chevron.down")
+                                    .font(.system(size: 10, weight: .bold))
+                            }
+                        }
+                    }
+                    LabeledContent("Varlık") {
+                        Button {
+                            showInstrumentPicker = selectedCategory != nil
+                        } label: {
+                            HStack(spacing: 5) {
+                                Text(selectedInstrument?.displayName ?? "Varlık seç")
+                                    .lineLimit(1)
+                                Image(systemName: "magnifyingglass")
+                                    .font(.system(size: 11, weight: .bold))
+                            }
+                        }
+                        .disabled(selectedCategory == nil)
                     }
                 }
                 if type.isTrade {
@@ -489,19 +515,50 @@ struct PortfolioTransactionSheet: View {
                 }
             }
             .onAppear {
-                if unitPrice.isEmpty { unitPrice = String(prices.prices[code]?.price ?? 0) }
+                if let instrument = prices.prices[code] {
+                    assetKind = instrument.kind
+                    if unitPrice.isEmpty { unitPrice = String(instrument.price) }
+                }
             }
-            .onChange(of: code) { _, newCode in
-                if transaction == nil { unitPrice = String(prices.prices[newCode]?.price ?? 0) }
+            .sheet(isPresented: $showCategoryPicker) {
+                InstrumentCategoryPickerSheet(
+                    instruments: prices.sorted,
+                    selected: selectedCategory
+                ) { category in
+                    assetKind = category.id
+                    code = ""
+                    unitPrice = ""
+                }
+            }
+            .sheet(isPresented: $showInstrumentPicker) {
+                if let category = selectedCategory {
+                    InstrumentPickerSheet(
+                        category: category,
+                        instruments: prices.sorted,
+                        selectedCode: code
+                    ) { instrument in
+                        code = instrument.code
+                        if transaction == nil { unitPrice = String(instrument.price) }
+                    }
+                }
             }
         }
     }
 
+    private var selectedCategory: InstrumentCategory? {
+        InstrumentCategory.all.first(where: { $0.id == assetKind })
+    }
+
+    private var selectedInstrument: InstrumentPrice? {
+        prices.prices[code]
+    }
+
     private var isValid: Bool {
         if type.isTrade {
-            return decimal(quantity) > 0 && decimal(unitPrice) > 0 && decimal(fee) >= 0 && !code.isEmpty
+            return selectedCategory != nil && selectedInstrument != nil
+                && decimal(quantity) > 0 && decimal(unitPrice) > 0 && decimal(fee) >= 0
         }
-        return decimal(amount) > 0 && (!type.usesAsset || !code.isEmpty)
+        return decimal(amount) > 0 && (!type.usesAsset || selectedInstrument != nil)
     }
 
     private func decimal(_ value: String) -> Double {

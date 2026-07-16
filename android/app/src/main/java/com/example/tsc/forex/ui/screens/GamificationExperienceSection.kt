@@ -34,6 +34,7 @@ import com.example.tsc.forex.data.GamificationPrivacy
 import com.example.tsc.forex.data.GamProfile
 import com.example.tsc.forex.data.LessonStatus
 import com.example.tsc.forex.store.AuthStore
+import com.example.tsc.forex.store.PriceStore
 import com.example.tsc.forex.ui.Card
 import com.example.tsc.forex.ui.theme.Th
 import kotlinx.coroutines.launch
@@ -41,6 +42,7 @@ import kotlinx.coroutines.launch
 @Composable
 fun GamificationExperienceSection(
     auth: AuthStore,
+    prices: PriceStore,
     initial: GamificationExperience,
     onExperience: (GamificationExperience) -> Unit,
     onProfile: (GamProfile) -> Unit,
@@ -51,7 +53,8 @@ fun GamificationExperienceSection(
     var tab by remember { mutableIntStateOf(0) }
     var busy by remember { mutableStateOf(false) }
     var risk by remember { mutableStateOf("moderate") }
-    var codes by remember { mutableStateOf("") }
+    var codes by remember { mutableStateOf<List<String>>(emptyList()) }
+    var showInstrumentPicker by remember { mutableStateOf(false) }
     var goal by remember { mutableStateOf(initial.lessons.firstOrNull()?.code.orEmpty()) }
     var reflection by remember { mutableStateOf("") }
     var selectedLesson by remember { mutableStateOf(initial.lessons.firstOrNull()?.code.orEmpty()) }
@@ -87,7 +90,7 @@ fun GamificationExperienceSection(
         exp = initial
         initial.dailyPlan?.let {
             risk = it.riskAppetite
-            codes = it.watchCodes.joinToString(", ")
+            codes = it.watchCodes.take(3)
             goal = it.learningGoal
             reflection = it.reflection
         }
@@ -131,16 +134,24 @@ fun GamificationExperienceSection(
                         Text(if (exp.dailyPlan == null) "BUGÜNÜ PLANLA" else "BUGÜNÜN PLANI",
                             color = Th.textDim, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         ChoiceRow(listOf("low" to "Düşük", "moderate" to "Orta", "high" to "Yüksek"), risk) { risk = it }
-                        GamField(codes, { codes = it }, "İzlenecek kodlar: GRAM_GOLD, USDTRY, AAPL")
+                        Text("İzlenecek varlıklar (${codes.size}/3)", color = Th.textDim, fontSize = 11.sp)
+                        Button(
+                            onClick = { showInstrumentPicker = true },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(containerColor = Th.surfaceAlt, contentColor = Th.text),
+                        ) {
+                            val names = codes.mapNotNull { prices.prices[it]?.displayName }
+                            Text(if (names.isEmpty()) "Varlık seç" else names.joinToString(" · "))
+                        }
                         Text("Öğrenme hedefi", color = Th.textDim, fontSize = 11.sp)
                         ChoiceRow(exp.lessons.map { it.code to it.title }, goal) { goal = it }
                         GamField(reflection, { reflection = it }, "Dünkü plandan kısa not", minLines = 2)
-                        ActionButton("Planı Kaydet ve Seriyi Sürdür", busy || goal.isEmpty()) {
+                        ActionButton("Planı Kaydet ve Seriyi Sürdür", busy || goal.isEmpty() || codes.isEmpty()) {
                             scope.launch {
                                 busy = true
                                 runCatching {
                                     auth.newApiClient().saveDailyPlan(
-                                        risk, codes.split(",").map { it.trim().uppercase() }.filter { it.isNotEmpty() }.take(3),
+                                        risk, codes.take(3),
                                         goal, reflection,
                                     )
                                 }.onSuccess {
@@ -343,6 +354,14 @@ fun GamificationExperienceSection(
                 }
             }
         }
+    }
+    if (showInstrumentPicker) {
+        InstrumentMultiPickerDialog(
+            instruments = prices.all(),
+            initialCodes = codes,
+            maxSelection = 3,
+            onDismiss = { showInstrumentPicker = false },
+        ) { codes = it }
     }
 }
 

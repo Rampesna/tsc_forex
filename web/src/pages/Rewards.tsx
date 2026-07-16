@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/endpoints";
 import type {
+  CatalogItem,
   GamBadge,
   GamificationExperience,
   GamificationPrivacy,
@@ -11,9 +12,11 @@ import type {
   PaperTrade,
 } from "../lib/types";
 import { Button, Card } from "../components/common";
+import { useMarkets } from "../store/markets";
 
 export function Rewards() {
   const qc = useQueryClient();
+  const catalog = useMarkets((state) => state.catalog);
   const [toast, setToast] = useState<string | null>(null);
   const [celebrate, setCelebrate] = useState<GamBadge[]>([]);
   const [showPlan, setShowPlan] = useState(false);
@@ -97,6 +100,7 @@ export function Rewards() {
       {showPlan && (
         <PlanEditor
           experience={experienceQ.data}
+          catalog={catalog}
           onClose={() => setShowPlan(false)}
           onSaved={(res) => {
             qc.setQueryData(["gamification"], res.profile);
@@ -115,11 +119,13 @@ export function Rewards() {
 
 function PlanEditor({
   experience,
+  catalog,
   onClose,
   onSaved,
   flash,
 }: {
   experience?: GamificationExperience;
+  catalog: CatalogItem[];
   onClose: () => void;
   onSaved: (result: Awaited<ReturnType<typeof api.saveDailyPlan>>) => void;
   flash: (message: string) => void;
@@ -128,7 +134,9 @@ function PlanEditor({
   const [risk, setRisk] = useState<"low" | "moderate" | "high">(
     experience?.daily_plan?.risk_appetite ?? "moderate",
   );
-  const [codes, setCodes] = useState((experience?.daily_plan?.watch_codes ?? []).join(", "));
+  const [codes, setCodes] = useState<string[]>(experience?.daily_plan?.watch_codes ?? []);
+  const [assetKind, setAssetKind] = useState("gold");
+  const [assetSearch, setAssetSearch] = useState("");
   const [goal, setGoal] = useState(
     experience?.daily_plan?.learning_goal ?? lessons[0]?.code ?? "risk_budget",
   );
@@ -137,17 +145,34 @@ function PlanEditor({
     mutationFn: () =>
       api.saveDailyPlan({
         risk_appetite: risk,
-        watch_codes: codes
-          .split(",")
-          .map((code) => code.trim().toUpperCase())
-          .filter(Boolean)
-          .slice(0, 3),
+        watch_codes: codes.slice(0, 3),
         learning_goal: goal,
         reflection,
       }),
     onSuccess: onSaved,
     onError: (error: Error) => flash(error.message || "Plan kaydedilemedi"),
   });
+  const selectedAssets = codes
+    .map((code) => catalog.find((item) => item.code === code))
+    .filter((item): item is CatalogItem => Boolean(item));
+  const matchingAssets = catalog
+    .filter((item) => item.kind === assetKind)
+    .filter((item) =>
+      !assetSearch ||
+      item.display_name.toLocaleLowerCase("tr-TR").includes(assetSearch.toLocaleLowerCase("tr-TR")) ||
+      item.code.toLocaleLowerCase("tr-TR").includes(assetSearch.toLocaleLowerCase("tr-TR")),
+    )
+    .sort((a, b) => a.display_name.localeCompare(b.display_name, "tr"))
+    .slice(0, 12);
+
+  const toggleAsset = (code: string) => {
+    setCodes((current) => {
+      if (current.includes(code)) return current.filter((item) => item !== code);
+      if (current.length >= 3) return current;
+      return [...current, code];
+    });
+  };
+
   return (
     <Modal title="Bugünü planla" subtitle="Ödül, butona basmaya değil plan yapmaya bağlıdır." onClose={onClose}>
       <Field label="Risk yaklaşımı">
@@ -158,7 +183,65 @@ function PlanEditor({
         </select>
       </Field>
       <Field label="Bugün izleyeceğim varlıklar (en fazla 3)">
-        <input value={codes} onChange={(event) => setCodes(event.target.value)} placeholder="GRAM_GOLD, USDTRY, AAPL" style={inputStyle} />
+        {selectedAssets.length > 0 && (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 7, marginBottom: 10 }}>
+            {selectedAssets.map((item) => (
+              <button
+                key={item.code}
+                type="button"
+                onClick={() => toggleAsset(item.code)}
+                style={{ ...chipStyle, color: "var(--accent)", borderColor: "var(--accent)" }}
+              >
+                {item.display_name} ×
+              </button>
+            ))}
+          </div>
+        )}
+        <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 9 }}>
+          {PLAN_ASSET_KINDS.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              onClick={() => {
+                setAssetKind(item.id);
+                setAssetSearch("");
+              }}
+              style={{
+                ...chipStyle,
+                color: assetKind === item.id ? "var(--accent)" : "var(--text-dim)",
+                borderColor: assetKind === item.id ? "var(--accent)" : "var(--stroke)",
+              }}
+            >
+              {item.label}
+            </button>
+          ))}
+        </div>
+        <input
+          value={assetSearch}
+          onChange={(event) => setAssetSearch(event.target.value)}
+          placeholder={`${PLAN_ASSET_KINDS.find((item) => item.id === assetKind)?.label ?? "Varlık"} ara`}
+          style={inputStyle}
+        />
+        <div style={{ display: "grid", gap: 5, maxHeight: 230, overflowY: "auto", marginTop: 8 }}>
+          {matchingAssets.map((item) => {
+            const selected = codes.includes(item.code);
+            return (
+              <button
+                key={item.code}
+                type="button"
+                onClick={() => toggleAsset(item.code)}
+                style={{
+                  ...pickerAssetButtonStyle,
+                  borderColor: selected ? "var(--accent)" : "var(--stroke)",
+                  background: selected ? "color-mix(in srgb, var(--accent) 12%, var(--surface-hi))" : "var(--surface-hi)",
+                }}
+              >
+                <b>{item.display_name}</b>
+                <span style={{ color: selected ? "var(--up)" : "var(--text-dim)" }}>{selected ? "✓ Seçildi" : "Seç"}</span>
+              </button>
+            );
+          })}
+        </div>
       </Field>
       <Field label="Öğrenme hedefi">
         <select value={goal} onChange={(event) => setGoal(event.target.value)} style={inputStyle}>
@@ -168,7 +251,7 @@ function PlanEditor({
       <Field label="Dünkü plandan kısa not (isteğe bağlı)">
         <textarea value={reflection} onChange={(event) => setReflection(event.target.value)} rows={3} maxLength={500} style={inputStyle} />
       </Field>
-      <Button variant="primary" full disabled={save.isPending || !goal} onClick={() => save.mutate()}>
+      <Button variant="primary" full disabled={save.isPending || !goal || codes.length === 0} onClick={() => save.mutate()}>
         {save.isPending ? "Kaydediliyor…" : "Planı Kaydet ve Seriyi Sürdür"}
       </Button>
     </Modal>
@@ -542,6 +625,24 @@ function MiniStat({ label, value }: { label: string; value: string }) {
 const inputStyle: React.CSSProperties = {
   width: "100%", boxSizing: "border-box", background: "var(--surface-hi)", color: "var(--text)",
   border: "1px solid var(--stroke)", borderRadius: 10, padding: "10px 11px", font: "inherit",
+};
+const PLAN_ASSET_KINDS = [
+  { id: "gold", label: "Altın" },
+  { id: "currency", label: "Döviz" },
+  { id: "crypto", label: "Kripto Para" },
+  { id: "stock", label: "Hisse Senedi" },
+];
+const pickerAssetButtonStyle: React.CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  alignItems: "center",
+  gap: 10,
+  padding: "10px 11px",
+  border: "1px solid var(--stroke)",
+  borderRadius: 9,
+  color: "var(--text)",
+  cursor: "pointer",
+  textAlign: "left",
 };
 const chipStyle: React.CSSProperties = {
   whiteSpace: "nowrap", background: "var(--surface-hi)", border: "1px solid var(--stroke)",

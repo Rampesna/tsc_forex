@@ -95,7 +95,7 @@ fun RootScaffold(auth: AuthStore, prices: PriceStore, portfolio: PortfolioStore,
             composable("portfolio") {
                 PortfolioScreen(portfolio, prices) { code -> nav.navigate("portfolio-position/$code") }
             }
-            composable("rewards") { RewardsScreen(auth) }
+            composable("rewards") { RewardsScreen(auth, prices) }
             composable("alerts") { AlertsScreen(auth, prices) }
             composable("notifications") { NotificationsScreen(auth, prices) }
             composable("settings") { SettingsScreen(auth, prices, prefs) }

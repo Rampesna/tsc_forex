@@ -41,13 +41,14 @@ import com.example.tsc.forex.data.GamProfile
 import com.example.tsc.forex.data.Leaderboard
 import com.example.tsc.forex.data.LeaderEntry
 import com.example.tsc.forex.store.AuthStore
+import com.example.tsc.forex.store.PriceStore
 import com.example.tsc.forex.ui.Card
 import com.example.tsc.forex.ui.ScreenHeader
 import com.example.tsc.forex.ui.StatTile
 import com.example.tsc.forex.ui.theme.Th
 
 @Composable
-fun RewardsScreen(auth: AuthStore) {
+fun RewardsScreen(auth: AuthStore, prices: PriceStore) {
     var profile by remember { mutableStateOf<GamProfile?>(null) }
     var board by remember { mutableStateOf<Leaderboard?>(null) }
     var experience by remember { mutableStateOf<GamificationExperience?>(null) }
@@ -80,6 +81,7 @@ fun RewardsScreen(auth: AuthStore) {
                 experience?.let { exp ->
                     GamificationExperienceSection(
                         auth = auth,
+                        prices = prices,
                         initial = exp,
                         onExperience = { experience = it },
                         onProfile = { profile = it },

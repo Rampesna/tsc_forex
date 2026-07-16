@@ -358,7 +358,12 @@ export function Portfolio() {
 
       {editor && (
         <TransactionEditor
-          codes={catalog.map((item) => ({ code: item.code, name: item.display_name, currency: item.currency ?? "TRY" }))}
+          codes={catalog.map((item) => ({
+            code: item.code,
+            name: item.display_name,
+            kind: item.kind,
+            currency: item.currency ?? "TRY",
+          }))}
           prices={prices}
           initialCode={editor.code}
           transaction={editor.transaction}
@@ -514,15 +519,21 @@ function TransactionEditor({
   onClose,
   onSave,
 }: {
-  codes: { code: string; name: string; currency: string }[];
+  codes: { code: string; name: string; kind: string; currency: string }[];
   prices: Record<string, { price: number; currency?: string }>;
   initialCode?: string;
   transaction?: PortfolioTransaction;
   onClose: () => void;
   onSave: (draft: TransactionDraft) => Promise<void>;
 }) {
+  const initialAsset = codes.find((item) => item.code === (transaction?.code || initialCode));
   const [type, setType] = useState<PortfolioTransactionType>(transaction?.type ?? "buy");
-  const [code, setCode] = useState(transaction?.code || initialCode || codes[0]?.code || "");
+  const [kind, setKind] = useState(initialAsset?.kind ?? "");
+  const [kindSearch, setKindSearch] = useState(initialAsset ? assetKindLabel(initialAsset.kind) : "");
+  const [kindOpen, setKindOpen] = useState(false);
+  const [code, setCode] = useState(transaction?.code || initialCode || "");
+  const [assetSearch, setAssetSearch] = useState(initialAsset?.name ?? "");
+  const [assetOpen, setAssetOpen] = useState(false);
   const [quantity, setQuantity] = useState(transaction ? String(transaction.quantity) : "");
   const [unitPrice, setUnitPrice] = useState(transaction ? String(transaction.unit_price_native) : String(prices[code]?.price ?? ""));
   const [amount, setAmount] = useState(transaction ? String(transaction.amount_native) : "");
@@ -535,6 +546,18 @@ function TransactionEditor({
   const [error, setError] = useState("");
   const assetType = !["deposit", "withdraw"].includes(type);
   const tradeType = type === "buy" || type === "sell";
+  const matchingKinds = ASSET_KINDS.filter((item) =>
+    item.label.toLocaleLowerCase("tr-TR").includes(kindSearch.toLocaleLowerCase("tr-TR")),
+  );
+  const matchingAssets = codes
+    .filter((item) => item.kind === kind)
+    .filter((item) =>
+      !assetSearch ||
+      item.name.toLocaleLowerCase("tr-TR").includes(assetSearch.toLocaleLowerCase("tr-TR")) ||
+      item.code.toLocaleLowerCase("tr-TR").includes(assetSearch.toLocaleLowerCase("tr-TR")),
+    )
+    .sort((a, b) => a.name.localeCompare(b.name, "tr"))
+    .slice(0, 10);
   const decimal = (value: string) => Number(value.replace(",", "."));
   const valid =
     Boolean(occurredDate) &&
@@ -584,17 +607,83 @@ function TransactionEditor({
         </select>
         {assetType && (
           <>
+            <label style={label}>Varlık türü</label>
+            <div style={{ position: "relative" }}>
+              <input
+                value={kindSearch}
+                onFocus={() => setKindOpen(true)}
+                onBlur={() => setTimeout(() => setKindOpen(false), 120)}
+                onChange={(event) => {
+                  setKindSearch(event.target.value);
+                  setKind("");
+                  setCode("");
+                  setAssetSearch("");
+                  setKindOpen(true);
+                }}
+                placeholder="Varlık türü ara"
+                style={field}
+              />
+              {kindOpen && (
+                <div style={pickerMenu}>
+                  {matchingKinds.map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => {
+                        setKind(item.id);
+                        setKindSearch(item.label);
+                        setCode("");
+                        setAssetSearch("");
+                        setKindOpen(false);
+                      }}
+                      style={pickerOption}
+                    >
+                      <span><b>{item.label}</b><small style={{ display: "block", color: "var(--text-dim)" }}>{item.subtitle}</small></span>
+                      <span style={{ color: "var(--text-dim)" }}>{codes.filter((codeItem) => codeItem.kind === item.id).length}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
             <label style={label}>Varlık</label>
-            <select
-              value={code}
-              onChange={(event) => {
-                setCode(event.target.value);
-                setUnitPrice(String(prices[event.target.value]?.price ?? ""));
-              }}
-              style={field}
-            >
-              {codes.map((item) => <option key={item.code} value={item.code}>{item.code} · {item.name}</option>)}
-            </select>
+            <div style={{ position: "relative" }}>
+              <input
+                value={assetSearch}
+                disabled={!kind}
+                onFocus={() => setAssetOpen(true)}
+                onBlur={() => setTimeout(() => setAssetOpen(false), 120)}
+                onChange={(event) => {
+                  setAssetSearch(event.target.value);
+                  setCode("");
+                  setAssetOpen(true);
+                }}
+                placeholder={kind ? `${assetKindLabel(kind)} ara` : "Önce varlık türünü seç"}
+                style={field}
+              />
+              {assetOpen && kind && (
+                <div style={pickerMenu}>
+                  {matchingAssets.map((item) => (
+                    <button
+                      key={item.code}
+                      type="button"
+                      onMouseDown={(event) => event.preventDefault()}
+                      onClick={() => {
+                        setCode(item.code);
+                        setAssetSearch(item.name);
+                        setUnitPrice(String(prices[item.code]?.price ?? ""));
+                        setAssetOpen(false);
+                      }}
+                      style={pickerOption}
+                    >
+                      <b>{item.name}</b>
+                      {code === item.code && <span style={{ color: "var(--up)" }}>✓</span>}
+                    </button>
+                  ))}
+                  {!matchingAssets.length && <div style={{ padding: 12, color: "var(--text-dim)" }}>Varlık bulunamadı.</div>}
+                </div>
+              )}
+            </div>
           </>
         )}
         {tradeType ? (
@@ -692,6 +781,17 @@ function transactionLabel(type: PortfolioTransactionType) {
   }[type];
 }
 
+const ASSET_KINDS = [
+  { id: "gold", label: "Altın", subtitle: "Gram, çeyrek, tam ve diğer altınlar" },
+  { id: "currency", label: "Döviz", subtitle: "Dolar, euro ve diğer para birimleri" },
+  { id: "crypto", label: "Kripto Para", subtitle: "Bitcoin, Ethereum ve diğer kriptolar" },
+  { id: "stock", label: "Hisse Senedi", subtitle: "BIST ve global şirket hisseleri" },
+];
+
+function assetKindLabel(kind: string) {
+  return ASSET_KINDS.find((item) => item.id === kind)?.label ?? "";
+}
+
 const tone = (value: number) => value >= 0 ? "var(--up)" : "var(--down)";
 const rangeButton = (active: boolean): React.CSSProperties => ({
   border: "1px solid " + (active ? "var(--accent)" : "var(--stroke)"),
@@ -736,6 +836,34 @@ const field: React.CSSProperties = {
   border: "1px solid var(--stroke)",
   borderRadius: 9,
   padding: 11,
+};
+const pickerMenu: React.CSSProperties = {
+  position: "absolute",
+  zIndex: 20,
+  left: 0,
+  right: 0,
+  top: "calc(100% + 4px)",
+  maxHeight: 260,
+  overflowY: "auto",
+  padding: 5,
+  borderRadius: 10,
+  border: "1px solid var(--stroke-strong)",
+  background: "var(--surface)",
+  boxShadow: "0 16px 36px rgba(0,0,0,.38)",
+};
+const pickerOption: React.CSSProperties = {
+  width: "100%",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 12,
+  border: 0,
+  borderRadius: 8,
+  padding: "9px 10px",
+  textAlign: "left",
+  color: "var(--text)",
+  background: "transparent",
+  cursor: "pointer",
 };
 const closeButton: React.CSSProperties = {
   border: "none",
