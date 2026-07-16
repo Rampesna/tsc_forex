@@ -133,6 +133,9 @@ jobs:
           # Roll out the freshly built images (API + web).
           kubectl -n \$NS set image deployment/tsc-forex-app app="$IMAGE_REF"
           kubectl -n \$NS set image deployment/tsc-forex-web web="$WEB_IMAGE_REF"
+          # envFrom Secret updates do not restart existing pods when the image
+          # digest is unchanged (for example during an API-key rotation).
+          kubectl -n \$NS rollout restart deployment/tsc-forex-app
           kubectl -n \$NS patch serviceaccount default -p '{"imagePullSecrets":[{"name":"ghcr-pull"}]}' || true
           kubectl -n \$NS rollout status deployment/tsc-forex-app --timeout=420s
           kubectl -n \$NS rollout status deployment/tsc-forex-web --timeout=180s
