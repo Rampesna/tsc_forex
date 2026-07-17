@@ -98,8 +98,9 @@ jobs:
     needs: build-push
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    # Deployment authenticates only with explicit SSH/GHCR repository secrets;
-    # it neither needs nor persists the ephemeral Actions token.
+    # Deployment authenticates with the explicit SSH repository secret. The
+    # cluster's pre-provisioned, least-privilege ghcr-pull credential remains
+    # cluster-scoped and is never copied back into GitHub Actions.
     permissions: {}
     steps:
       - name: Validate production release secrets
@@ -108,15 +109,12 @@ jobs:
           DEVICE_CHECK_PRIVATE_KEY: ${{ secrets.APP_BILLING_DEVICE_CHECK_PRIVATE_KEY }}
           APPLE_SIGN_IN_KEY_ID: ${{ secrets.APP_OAUTH_APPLE_KEY_ID }}
           APPLE_SIGN_IN_PRIVATE_KEY: ${{ secrets.APP_OAUTH_APPLE_PRIVATE_KEY }}
-          GHCR_PULL_USER: ${{ secrets.GHCR_PULL_USERNAME }}
-          GHCR_PULL_TOKEN: ${{ secrets.GHCR_PULL_TOKEN }}
         run: |
           set -euo pipefail
           missing=0
           for name in \
             DEVICE_CHECK_KEY_ID DEVICE_CHECK_PRIVATE_KEY \
-            APPLE_SIGN_IN_KEY_ID APPLE_SIGN_IN_PRIVATE_KEY \
-            GHCR_PULL_USER GHCR_PULL_TOKEN
+            APPLE_SIGN_IN_KEY_ID APPLE_SIGN_IN_PRIVATE_KEY
           do
             if [ -z "${!name:-}" ]; then
               echo "::error::Required GitHub Actions secret for $name is empty"
@@ -151,8 +149,6 @@ jobs:
           DEVICE_CHECK_PRIVATE_KEY: ${{ secrets.APP_BILLING_DEVICE_CHECK_PRIVATE_KEY }}
           APPLE_SIGN_IN_KEY_ID: ${{ secrets.APP_OAUTH_APPLE_KEY_ID }}
           APPLE_SIGN_IN_PRIVATE_KEY: ${{ secrets.APP_OAUTH_APPLE_PRIVATE_KEY }}
-          GHCR_PULL_USER: ${{ secrets.GHCR_PULL_USERNAME }}
-          GHCR_PULL_TOKEN: ${{ secrets.GHCR_PULL_TOKEN }}
         run: |
           set -euo pipefail
           umask 077
@@ -185,9 +181,6 @@ jobs:
           write_secret devicecheck.p8 "$DEVICE_CHECK_PRIVATE_KEY"
           write_secret APP_OAUTH_APPLE_KEY_ID "$APPLE_SIGN_IN_KEY_ID"
           write_secret sign-in-with-apple.p8 "$APPLE_SIGN_IN_PRIVATE_KEY"
-          write_secret GHCR_PULL_USERNAME "$GHCR_PULL_USER"
-          write_secret GHCR_PULL_TOKEN "$GHCR_PULL_TOKEN"
-
           # Parse both Apple keys without ever echoing their contents. Empty,
           # escaped or malformed .p8 values stop the production deploy here.
           openssl pkey -in "$SECRET_BUNDLE/devicecheck.p8" -noout >/dev/null
@@ -217,6 +210,13 @@ jobs:
           NS=tsc-forex
           kubectl get ns "$NS" >/dev/null 2>&1 || kubectl create ns "$NS"
 
+          # Keep the existing least-privilege registry credential on the
+          # cluster. Never replace it with a broad developer/GitHub token.
+          if ! kubectl -n "$NS" get secret ghcr-pull >/dev/null 2>&1; then
+            echo "required pre-provisioned ghcr-pull secret is missing" >&2
+            exit 1
+          fi
+
           # Real secrets injected from GitHub Actions secrets (never in git).
           app_secret_args=(
             --from-literal=APP_DATABASE_USER=tsc_forex
@@ -240,13 +240,6 @@ jobs:
             --from-file=sign-in-with-apple.p8="$SECRET_BUNDLE/sign-in-with-apple.p8" \
             --dry-run=client -o yaml | kubectl apply -f -
 
-          # Use a durable, least-privilege read:packages credential. A job-scoped
-          # GITHUB_TOKEN expires and cannot safely back future pod reschedules.
-          kubectl -n "$NS" create secret docker-registry ghcr-pull \
-            --docker-server=ghcr.io \
-            --docker-username="$(<"$SECRET_BUNDLE/GHCR_PULL_USERNAME")" \
-            --docker-password="$(<"$SECRET_BUNDLE/GHCR_PULL_TOKEN")" \
-            --dry-run=client -o yaml | kubectl apply -f -
           # ServiceAccount pull credentials must exist before new pods are
           # admitted; patching it afterwards does not update existing pods.
           kubectl -n "$NS" patch serviceaccount default \
