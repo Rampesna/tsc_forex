@@ -4,7 +4,7 @@ Bu doküman TSC Forex'in güncel iOS sürümünü App Store Connect'e hazırlama
 
 > **Garanti sınırı:** Hiç kimse “sıfır red” garantisi veremez; nihai karar Apple App Review'a aittir ve kurallar değişebilir. Aşağıdaki **Gönderim Kapıları** tamamlanmadan build göndermeyin. Bir kapı doğrulanmadıysa dokümandaki “hazır” ifadesi kanıt sayılmaz.
 
-## 0. Mevcut yayın durumu — submit edilmeye hazır değil
+## 0. Mevcut yayın durumu — App Review'da (`Waiting for Review`)
 
 ### App Store Connect'te tamamlananlar
 
@@ -12,30 +12,35 @@ Bu doküman TSC Forex'in güncel iOS sürümünü App Store Connect'e hazırlama
 - App adı `TSC Forex`, subtitle `Piyasa ve Portföy Analizi`, primary category `Finance`, secondary category `News` olarak kaydedildi.
 - Yaş derecelendirme formu mevcut kapsam için dolduruldu; hesaplanan global sonuç `4+`.
 - Subscription group `premium_monthly` oluşturuldu; Group ID `22243838`.
-- Dört aylık ürün Türkiye'de kullanılabilir, fiyatları ve Türkçe localization'ları kayıtlı; durumları `Prepare for Submission`.
+- Dört aylık ürün Türkiye'de kullanılabilir, fiyatları ve Türkçe localization'ları kayıtlı; durumları `Waiting for Review`.
 - App Store Server Notifications V2 için production ve sandbox URL'leri aynı HTTPS endpoint'e kaydedildi.
 - Billing Grace Period bilinçli olarak **OFF** bırakıldı; backend ve test matrisi grace-period entitlement davranışıyla doğrulanmadan açılmamalıdır.
-- Signed `1.0 (3)` archive Apple'a yüklendi, processing tamamlandı, `Ready to Submit` oldu ve sürüm `1.0` için seçildi.
+- Crash düzeltmesini içeren signed `1.0 (4)` archive Apple'a yüklendi, processing tamamlandı ve sürüm `1.0` için seçildi.
+- iOS `1.0 (4)` app version, `premium_monthly` subscription group ve dört auto-renewable subscription aynı submission'a eklendi.
+- Dört subscription'ın **Review Information** görseli Apple'a yüklendi. Bu görsel storefront'ta yayınlanan pazarlama görseli değil, App Review ekibinin satın alma yolunu doğrulaması içindir.
+- Altı öğe 17 Temmuz 2026 16:41'de App Review'a gönderildi. Submission ID: `6fd06822-4ff8-4832-9ab3-5f86bde0173a`. Uygulama sürümü, grup ve dört ürünün her biri Apple ekranında `Waiting for Review` olarak doğrulandı.
 - Uygulama indirme fiyatı Türkiye baz ülke olarak `₺0,00` ayarlandı; ilk sürüm yalnız Türkiye storefront'unda, iPhone/iPad için public dağıtıma açıldı. Apple Silicon Mac, Apple Vision Pro ve Apple School Manager indirimi kapalı bırakıldı.
 - App Review iletişim alanları ve production login'i doğrulanmış ayrı demo hesabı App Store Connect'in güvenli alanlarında kaydedildi.
 - Exact `1284×2778` iPhone 6.5-inch ve `2064×2752` iPad 13-inch screenshot'ları sürüme yüklendi.
-- App Privacy URL'si ile 10 veri türünün amaç/linked/tracking cevapları kaydedildi; son Publish attestation'ı Account Holder'a bırakıldı.
+- App Privacy URL'si ile 10 veri türünün amaç/linked/tracking cevapları kaydedildi; Apple'ın submission validation kontrolü privacy/copyright/content-rights zorunlu alanları için geçti. Bu, beyanların hukuki doğruluğunu Apple'ın onayladığı anlamına gelmez; sorumluluk Account Holder'dadır.
+- DeviceCheck ve Sign in with Apple anahtarları repository dışında GitHub Actions secret'larına kaydedildi; production pod'larında dosya/KID varlığı doğrulandı.
+- Commit `520ffa7db87d2b4a47d34714c7159c8a07fd4a77` CI/CD test, image build, Kubernetes rollout ve production smoke testlerinden geçti. Canlı API aynı commit'i raporluyor; database/Redis `up`, dört App Store planı ve device-based free trial `ready=true`.
 
-### Gönderimi engelleyen açık işler
+### İnceleme ve canlı satış öncesi takip edilecek açık riskler
 
 | Engel | Güncel durum | Kapatma koşulu / yetki sahibi |
 |---|---|---|
-| Paid Apps Agreement | **New** | Account Holder yasal kişi bilgisini doğrular; ücretli uygulamalar sözleşmesini imzalar; vergi ve banka bilgilerini onaylatır. Bu işlem geliştirici tarafından varsayılamaz veya onun adına tasdik edilemez. |
-| Content Rights | Cevap verilmedi; piyasa/haber/veri yeniden dağıtım hakları kanıtlanmadı | Hak sahibi/provider sözleşmeleri doğrulanır ve Account Holder doğru beyanı seçer. |
-| App Privacy | 10 veri türü kod ve archive manifestiyle eşleştirilerek yapılandırıldı; son `Publish Your App Privacy Responses?` attestation'ı bekliyor | Account Holder beyanın doğruluğunu/yasal uygunluğunu onaylayıp `Publish` seçer. |
+| Paid Apps Agreement | Son doğrulanmış durumda **New**; submission'ın kabul edilmesi ücretli sözleşmenin satış için aktif olduğu anlamına gelmez | Account Holder yasal kişi bilgisini doğrular; ücretli uygulamalar sözleşmesini imzalar; vergi ve banka bilgilerini onaylatır. Bu işlem geliştirici tarafından varsayılamaz veya onun adına tasdik edilemez. |
+| Content Rights | Apple'ın zorunlu alan kontrolü geçti; seçilen cevabın dayandığı piyasa/haber/veri yeniden dağıtım kanıtları teknik çalışmada görülmedi | Hak sahibi/provider sözleşmeleri saklanır; reviewer isterse sunulur ve Account Holder beyanın doğruluğunu korur. |
+| App Privacy | 10 veri türü ve privacy URL kayıtlı; submission validation geçti | Production veri akışı değişirse form ve politika release'ten önce yeniden güncellenir. |
 | Review erişimi | İletişim alanları ve production login'i HTTP 200 ile doğrulanmış ayrı demo credentials kaydedildi | Account Holder review süresince iletişim bilgilerini erişilebilir tutar; demo hesabı silmez/değiştirmez. |
-| Copyright / yasal sahip | Tam ve yayınlanabilir yasal unvan doğrulanmadı | Account Holder gerçek hak sahibini/yılı girer; placeholder veya marka varsayımı kullanılmaz. |
-| Screenshots / iPad | Apple'ın minimum alanları için bir exact iPhone ve bir exact iPad görseli yüklendi; kapsamlı 8 görsellik ürün seti ve kritik iPad akış QA'sı tamamlanmadı | Bölüm 8'deki önerilen set üretilir; iPad'de login dışındaki kritik akışlar test edilir. |
-| Signed build | `1.0 (3)` upload edildi, `Ready to Submit` oldu ve sürüme seçildi | Yeni kod değişirse build numarası artırılarak tekrar archive/upload edilir. |
-| Apple anahtarları | DeviceCheck ve Sign in with Apple revoke `.p8`/Key ID production secret'ları doğrulanmadı | İki Apple key seti repository dışında CI/Kubernetes secret olarak yüklenir ve gerçek cihaz/sandbox testleri geçer. |
+| Copyright / yasal sahip | Apple'ın zorunlu alan kontrolü geçti; girilen yasal unvanın dayanağı teknik çalışmada bağımsız doğrulanmadı | Account Holder gerçek hak sahibi/yıl bilgisinin doğruluğunu korur; değişiklik varsa Apple'a bildirilir. |
+| Screenshots / iPad | App version görselleri ve dört subscription Review Information görseli yüklendi | Review görseli Account Holder'ın açık onayıyla yalnız Apple'a gönderildi; repository'ye eklenmez. Gelecek sürümlerde kişisel profil yerine ayrı review/demo hesabı kullanılır. |
+| Signed build | `1.0 (4)` upload edildi, işlendi ve review submission ile gönderildi | Review sürerken bu submission değiştirilmez. Kod değişirse submission geri çekilir, build numarası artırılır ve yeni archive/upload yapılır. |
+| Apple anahtarları | DeviceCheck ve Sign in with Apple `.p8`/Key ID değerleri GitHub Actions ve Kubernetes production secret'larında mevcut; pod içi dosya/KID kontrolleri geçti | Gerçek DeviceCheck free-trial claim ve Sign in with Apple revoke senaryolarının fiziksel cihaz/sandbox kanıtları saklanır. |
 | StoreKit uçtan uca test | Purchase/restore/plan değişimi/refund/revoke matrisi tamamlanmadı | Bölüm 9.1'deki matris kanıtlarıyla PASS olur. |
 
-Bu engeller varken `Add for Review` veya `Submit for Review` seçilmez. Özellikle sözleşme, vergi, banka, içerik hakkı ve yasal kimlik cevapları Account Holder'ın hukuki beyanıdır.
+Submission Apple'a ulaşmıştır; bundan sonraki authoritative durum App Store Connect → App Review ekranıdır. Apple kararı gelmeden “yayında” denmez. Özellikle sözleşme, vergi, banka, içerik hakkı ve yasal kimlik cevapları Account Holder'ın hukuki beyanıdır.
 
 ---
 
@@ -55,13 +60,13 @@ Bu engeller varken `Add for Review` veya `Submit for Review` seçilmez. Özellik
 | İlk storefront | Yalnız Türkiye; public iPhone/iPad dağıtımı |
 | IAP | 4 aylık auto-renewable subscription |
 | Reklam / tracking | Yok |
-| Copyright | **ÇÖZÜLMEDİ:** hak sahibinin doğrulanmış tam yasal unvanı Account Holder tarafından girilecek |
+| Copyright | App Store Connect'in zorunlu alan kontrolü geçti; girilen hak sahibi/yıl bilgisinin hukuki doğruluğu Account Holder sorumluluğunda |
 
 İlk yayın için yalnız hukuki/operasyonel destek verilebilen storefront'ları seçin; Türkçe ürün, destek ve yasal metinlerle Türkiye başlangıcı en düşük riskli seçenektir. Başka ülkelere açılmadan önce fiyat, vergi, tüketici hukuku, privacy ve metadata localization'ı tamamlayın.
 
 ### Content Rights / piyasa verisi
 
-App Store Connect'teki Content Rights cevabı şu anda çözülmemiştir. BIST, kripto, döviz, haber/web kaynakları ve diğer piyasa verilerini uygulamada yeniden göstermeye izin veren sağlayıcı sözleşmesi/lisansı elinizde değilse gönderim yapmayın. “Kamuya açık URL'den erişilebiliyor” yeniden dağıtım hakkı anlamına gelmez. Reviewer isterse veri sağlayıcı adları ve kullanım hakkı kanıtı sunulabilmelidir; marka/logolar için de aynı kontrol geçerlidir. Kanıt görülmeden `Yes` veya `No` seçeneği tahmin edilmez.
+App Store Connect'teki Content Rights zorunlu alanı submission validation'dan geçmiştir; ancak teknik çalışma seçilen cevabın dayandığı lisansları bağımsız olarak doğrulamamıştır. BIST, kripto, döviz, haber/web kaynakları ve diğer piyasa verilerini uygulamada yeniden göstermeye izin veren sağlayıcı sözleşmeleri/lisansları saklanmalıdır. “Kamuya açık URL'den erişilebiliyor” yeniden dağıtım hakkı anlamına gelmez. Reviewer isterse veri sağlayıcı adları ve kullanım hakkı kanıtı sunulabilmelidir; marka/logolar için de aynı kontrol geçerlidir.
 
 ### Yaş derecelendirmesi
 
@@ -98,7 +103,7 @@ Seçtiğiniz varlık için çoklu zaman dilimleri, ilgili piyasalar, makroekonom
 ABONELİKLER
 Başlangıç, Pro, Uzman ve Elite aylık abonelikleri; farklı derin araştırma, alarm, izleme listesi, portföy, sağlık analizi, dışa aktarma ve arşiv kotaları sunar. Kesin yerel fiyat ve dönem satın alma ekranında gösterilir. Abonelik, mevcut dönemin bitiminden en az 24 saat önce iptal edilmezse otomatik yenilenir. Satın almaları uygulama içinden geri yükleyebilir, aboneliğinizi Apple hesabınızdan yönetebilirsiniz.
 
-TSC Forex alım-satım, aracılık veya yatırım danışmanlığı hizmeti sunmaz. Fiyatlar ve AI çıktıları yalnızca bilgilendirme/eğitim amaçlıdır ve yatırım tavsiyesi değildir. Veriler üçüncü taraf kaynaklardan gelir; gecikme veya hata içerebilir.
+TSC Forex alım-satım, aracılık veya yatırım danışmanlığı hizmeti sunmaz. Fiyatlar ve araştırma çıktıları yalnızca bilgilendirme/eğitim amaçlıdır ve yatırım tavsiyesi değildir. Veriler üçüncü taraf kaynaklardan gelir; gecikme veya hata içerebilir.
 
 Kullanım Şartları: https://tsc.talhacan.com/terms
 Gizlilik Politikası: https://tsc.talhacan.com/privacy
@@ -157,16 +162,16 @@ Kullanıcı aynı grupta aynı anda yalnızca bir aktif ürüne sahip olur. Dör
 
 | Level | UI adı | Product ID | Apple ID | Süre | Türkiye fiyatı | Durum |
 |---:|---|---|---:|---|---:|---|
-| 1 — en yüksek | Elite | `talhacan.tscforex.elite.monthly` | `6791924071` | 1 ay | ₺999,99 | Prepare for Submission |
-| 2 | Uzman | `talhacan.tscforex.expert.monthly` | `6791924799` | 1 ay | ₺499,99 | Prepare for Submission |
-| 3 | Pro | `talhacan.tscforex.pro.monthly` | `6791925225` | 1 ay | ₺249,99 | Prepare for Submission |
-| 4 — en düşük | Başlangıç | `talhacan.tscforex.plus.monthly` | `6791925442` | 1 ay | ₺149,99 | Prepare for Submission |
+| 1 — en yüksek | Elite | `talhacan.tscforex.elite.monthly` | `6791924071` | 1 ay | ₺999,99 | Waiting for Review |
+| 2 | Uzman | `talhacan.tscforex.expert.monthly` | `6791924799` | 1 ay | ₺499,99 | Waiting for Review |
+| 3 | Pro | `talhacan.tscforex.pro.monthly` | `6791925225` | 1 ay | ₺249,99 | Waiting for Review |
+| 4 — en düşük | Başlangıç | `talhacan.tscforex.plus.monthly` | `6791925442` | 1 ay | ₺149,99 | Waiting for Review |
 
-Bu tablo hedef değil, App Store Connect'te kayıtlı gerçek price point ve ürün kimliklerini gösterir. Dört ürün şu anda yalnız Türkiye için available ve Türkçe localization'a sahiptir. `Prepare for Submission`, ürünün review'a gönderildiği veya satın alınabilir olduğu anlamına gelmez.
+Bu tablo hedef değil, App Store Connect'te kayıtlı gerçek price point ve ürün kimliklerini gösterir. Dört ürün şu anda yalnız Türkiye için available, Türkçe localization'a sahip ve `Waiting for Review` durumundadır. Bu durum review'ın tamamlandığı veya ürünlerin satışta olduğu anlamına gelmez.
 
 - Fiyatları uygulamada sabit metin olarak göstermeyin; `StoreKit.Product.displayPrice` ve StoreKit dönem bilgisini kullanın.
 - Paywall'da App Store Connect tablosundaki sayılar dahi sabit metin olarak kullanılmaz; her zaman StoreKit'in döndürdüğü yerelleştirilmiş fiyat esas alınır.
-- Dört ürün için Availability, Tax Category ve fiyat kaydedildi. Review Information screenshot'ları hâlâ yüklenmelidir. Türkiye dışına açılmadan önce o storefront'lara uygun localization ve fiyatlandırma tamamlanmalıdır.
+- Dört ürün için Availability, Tax Category, fiyat ve Review Information screenshot kaydedildi. Türkiye dışına açılmadan önce o storefront'lara uygun localization ve fiyatlandırma tamamlanmalıdır.
 - Introductory offer/free trial yapılandırılmadıkça metadata veya paywall'da “ücretsiz deneme” demeyin.
 - İlk sürümle birlikte dört IAP'yi de aynı app version'a **Submit for Review** ile iliştirin. Sadece kodda görünmeleri yetmez.
 
@@ -482,7 +487,7 @@ Grace Period **OFF** olduğu için grace-period erişim satırı ilk release iç
 
 ### Ürün ve UX
 
-- [x] App name, bundle ID, `1.0 (3)` ve ikon archive/App Store Connect'te doğru; Build 3 `Ready to Submit` ve sürüme seçildi.
+- [x] App name, bundle ID, `1.0 (4)` ve ikon archive/App Store Connect'te doğru; Build 4 altı öğeli submission içinde `Waiting for Review`.
 - [x] Uygulama fiyatı Türkiye bazında `₺0,00`; ilk sürüm yalnız Türkiye'de public iPhone/iPad dağıtımına açık, Mac/Vision Pro kapalı.
 - [ ] iPhone ve destek sürüyorsa iPad'de launch, login/logout, cold start ve offline/error durumları çalışıyor.
 - [ ] Production API/WS/CDN erişilebilir; local network izni Release'te yok.
@@ -495,26 +500,26 @@ Grace Period **OFF** olduğu için grace-period erişim satırı ilk release iç
 - [x] `premium_monthly` group (`22243838`) ve dört exact Product ID/Apple ID oluşturuldu.
 - [x] Level sırası Elite → Uzman → Pro → Başlangıç olarak kaydedildi.
 - [x] Her ürünün bir aylık duration, Türkçe localization, Türkiye availability ve exact TRY price point'i kaydedildi.
-- [ ] Dört ürünün Review Information screenshot'ı tamamlandı.
-- [ ] Dört IAP app version ile birlikte review'a eklendi.
+- [x] Dört ürünün Review Information screenshot'ı tamamlandı.
+- [x] Dört IAP app version ile birlikte review'a eklendi; submission ID `6fd06822-4ff8-4832-9ab3-5f86bde0173a`.
 - [ ] Paywall StoreKit fiyatı, ay, auto-renew, Terms, Privacy, Restore ve Manage gösteriyor.
 - [ ] Satın alma yalnız verified transaction/backend entitlement sonrası açılıyor.
 - [ ] Restore, upgrade/downgrade, expiration, refund/revoke ve billing retry testleri geçti.
 - [x] Production + Sandbox Notifications V2 URL aynı HTTPS endpoint'e Version 2 olarak kaydedildi.
 - [ ] Apple test notification, signed JWS doğrulaması ve tekrar teslim idempotency geçti.
 - [x] Billing Grace Period ilk release için OFF bırakıldı.
-- [ ] Server env üçlüsü production podlarında doğrulandı; sandbox yalnız imzalı App Review/TestFlight transaction'ları için kabul ediliyor.
+- [x] Server env ve Apple credential mount'ları production podlarında doğrulandı; sandbox yalnız imzalı App Review/TestFlight transaction'ları için kabul ediliyor.
 - [ ] App, backend ve dokümandaki bütün kotalar birebir aynı.
 
 ### Privacy / legal / account
 
-- [ ] Privacy, Terms ve Support public URL'leri canlı ve 200 dönüyor.
+- [x] Privacy, Terms ve Support public URL'leri canlı ve 200 dönüyor.
 - [ ] Privacy Policy'deki veri sorumlusu, gerçek kişi/şirketin tam yasal unvanı ve geçerli tebligat/iletişim adresiyle tamamlandı; yalnız marka adı bırakılmadı.
 - [ ] Privacy Policy abonelik, purchase ID, portföy, Derin Araştırma/OpenAI, quota, device claim hash ve retention'ı açıklıyor.
 - [ ] App Privacy label Purchases, Other Financial Info, User Content, User ID, Device ID ve Product Interaction dahil kodla eşleşiyor.
 - [ ] İlk Derin Araştırma kullanımında OpenAI için açık izin var; ret ve consent revoke test edildi.
 - [ ] App Attest challenge/register/assertion ve DeviceCheck available/reserved/consumed akışları gerçek cihazda geçti; uygulamayı silip yeniden kurma + yeni hesap denemesi ikinci ücretsiz hak vermiyor.
-- [ ] DeviceCheck KID/`.p8` ve Sign in with Apple revoke KID/`.p8` GitHub/Kubernetes secret'larında mevcut; repository/app bundle/log'da yok.
+- [x] DeviceCheck KID/`.p8` ve Sign in with Apple revoke KID/`.p8` GitHub/Kubernetes secret'larında mevcut; repository/app bundle/log'da yok.
 - [ ] `PrivacyInfo.xcprivacy` + archive privacy report incelendi; SDK manifest/signature uyarısı yok.
 - [ ] Sign in with Apple production'da çalışıyor; hesap silmede token revoke doğrulandı.
 - [ ] Hesap silme aktif abonelik uyarısı + Manage bağlantısı gösteriyor; kullanıcı yine hemen silebiliyor.
