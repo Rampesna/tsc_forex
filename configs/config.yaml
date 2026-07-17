@@ -229,7 +229,7 @@ billing:
   app_attest_team_id: SGQ86WW4J3
   app_attest_environment: development
   app_attest_root_ca_path: ""
-  app_attest_bundle_versions: ["3"]
+  app_attest_bundle_versions: ["3", "4"]
   app_attest_challenge_ttl: 5m
   device_check_enabled: false
   device_check_key_id: ""

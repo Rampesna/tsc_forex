@@ -74,6 +74,7 @@ struct SettingsView: View {
                                     }
                                 }
                                 Button(billing.hasActiveSubscription ? "Planları Gör" : "Planları İncele") {
+                                    billing.message = nil
                                     showPaywall = true
                                 }
                                 .buttonStyle(FilledButtonStyle())
@@ -95,6 +96,12 @@ struct SettingsView: View {
                                     }
                                 }
                                 .font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.accent)
+                                if let error = billing.catalogError {
+                                    billingStatusRow(error, retry: true)
+                                }
+                                if let message = billing.message {
+                                    billingStatusRow(message, retry: false)
+                                }
                             }
                         }
 
@@ -197,20 +204,36 @@ struct SettingsView: View {
         .task(id: auth.userID) {
             acceptedAIDisclosure = AIResearchConsentStore.isAccepted(for: auth.userID)
         }
-        .alert("Abonelik", isPresented: Binding(
-            get: { billing.message != nil },
-            set: { if !$0 { billing.message = nil } }
-        )) {
-            Button("Tamam") { billing.message = nil }
-        } message: {
-            Text(billing.message ?? "")
-        }
         .alert("Hesabını silmek istediğinden emin misin?", isPresented: $confirmDelete) {
             Button("Vazgeç", role: .cancel) {}
             Button("Hesabı Sil", role: .destructive) { Task { await deleteAccount() } }
         } message: {
             Text("Hesabın ve kullanıcıya bağlı içeriklerin kalıcı olarak silinir. Tek ücretsiz araştırma hakkının kötüye kullanılmasını önleyen tek yönlü cihaz kaydı ile aktif aboneliği daha sonra yalnız sana geri bağlamaya yarayan tek yönlü Apple işlem/kurtarma kaydı korunabilir. Ham kurtarma anahtarı sunucuda saklanmaz. Apple aboneliğin iptal olmaz ve sen iptal edene kadar faturalama sürebilir.")
         }
+    }
+
+    private func billingStatusRow(_ text: String, retry: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(text)
+                .font(.system(size: 11))
+                .foregroundStyle(retry ? Theme.down : Theme.textDim)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack {
+                if retry {
+                    Button("Tekrar Dene") {
+                        Task { await billing.refresh(token: auth.accessToken) }
+                    }
+                }
+                Spacer()
+                if !retry {
+                    Button("Kapat") { billing.message = nil }
+                }
+            }
+            .font(.system(size: 11, weight: .bold))
+            .foregroundStyle(Theme.accent)
+        }
+        .padding(10)
+        .background(Theme.bgElevated, in: RoundedRectangle(cornerRadius: 9))
     }
 
     private func deleteAccount() async {

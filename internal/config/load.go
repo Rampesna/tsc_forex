@@ -304,7 +304,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("billing.app_attest_team_id", "")
 	v.SetDefault("billing.app_attest_environment", "development")
 	v.SetDefault("billing.app_attest_root_ca_path", "")
-	v.SetDefault("billing.app_attest_bundle_versions", []string{"3"})
+	v.SetDefault("billing.app_attest_bundle_versions", []string{"3", "4"})
 	v.SetDefault("billing.app_attest_challenge_ttl", "5m")
 	v.SetDefault("billing.device_check_enabled", false)
 	v.SetDefault("billing.device_check_key_id", "")

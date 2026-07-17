@@ -20,12 +20,29 @@ struct PaywallView: View {
 
                     subscriptionDisclosure
 
+                    if let message = billing.message {
+                        inlineStatus(message, isError: false)
+                    }
+
                     if billing.products.isEmpty {
                         Card {
                             VStack(spacing: 10) {
-                                ProgressView().tint(Theme.accent)
-                                Text("App Store seçenekleri yükleniyor…")
-                                    .font(.system(size: 12)).foregroundStyle(Theme.textDim)
+                                if billing.isLoading {
+                                    ProgressView().tint(Theme.accent)
+                                    Text("App Store seçenekleri yükleniyor…")
+                                        .font(.system(size: 12)).foregroundStyle(Theme.textDim)
+                                } else if let error = billing.catalogError {
+                                    Text(error)
+                                        .font(.system(size: 12)).foregroundStyle(Theme.down)
+                                        .multilineTextAlignment(.center)
+                                    Button("Tekrar Dene") {
+                                        Task { await billing.refresh(token: auth.accessToken) }
+                                    }
+                                    .font(.system(size: 12, weight: .bold)).foregroundStyle(Theme.accent)
+                                } else {
+                                    Text("Abonelik seçenekleri bulunamadı.")
+                                        .font(.system(size: 12)).foregroundStyle(Theme.textDim)
+                                }
                             }.frame(maxWidth: .infinity)
                         }
                     } else {
@@ -59,14 +76,22 @@ struct PaywallView: View {
                 if auth.userID == nil { await auth.loadProfile() }
                 await billing.refresh(token: auth.accessToken)
             }
-            .alert("Abonelik", isPresented: Binding(
-                get: { billing.message != nil },
-                set: { if !$0 { billing.message = nil } }
-            )) {
-                Button("Tamam") { billing.message = nil }
-            } message: { Text(billing.message ?? "") }
         }
         .preferredColorScheme(.dark)
+    }
+
+    private func inlineStatus(_ text: String, isError: Bool) -> some View {
+        Card {
+            HStack(alignment: .top, spacing: 10) {
+                Image(systemName: isError ? "exclamationmark.triangle" : "info.circle")
+                    .foregroundStyle(isError ? Theme.down : Theme.accent)
+                Text(text)
+                    .font(.system(size: 11)).foregroundStyle(Theme.textDim)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                Button("Kapat") { billing.message = nil }
+                    .font(.system(size: 11, weight: .bold)).foregroundStyle(Theme.accent)
+            }
+        }
     }
 
     private var subscriptionDisclosure: some View {

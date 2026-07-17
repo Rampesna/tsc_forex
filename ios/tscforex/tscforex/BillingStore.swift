@@ -111,6 +111,7 @@ final class BillingStore: ObservableObject {
     @Published private(set) var catalogPlans: [SubscriptionPlan] = []
     @Published private(set) var freeTrialReady = false
     @Published private(set) var catalogLoaded = false
+    @Published private(set) var catalogError: String?
     @Published private(set) var isLoading = false
     @Published var message: String?
 
@@ -140,6 +141,7 @@ final class BillingStore: ObservableObject {
         syncToken = nil
         serverStatus = nil
         purchasedProductIDs = []
+        catalogError = nil
         message = nil
     }
 
@@ -154,6 +156,7 @@ final class BillingStore: ObservableObject {
     func refresh(token: String? = nil) async {
         if let token { syncToken = token }
         isLoading = true
+        catalogError = nil
         defer { isLoading = false }
         do {
             let catalog = try await APIClient().billingPlans()
@@ -166,7 +169,7 @@ final class BillingStore: ObservableObject {
         } catch {
             catalogLoaded = false
             freeTrialReady = false
-            message = "Abonelik kataloğu şu anda doğrulanamadı. Lütfen daha sonra tekrar deneyin."
+            catalogError = "Abonelik kataloğu şu anda doğrulanamadı. Lütfen tekrar deneyin."
         }
 
         let productIDs = catalogPlans.compactMap(\.productID)
@@ -174,18 +177,24 @@ final class BillingStore: ObservableObject {
             products = productIDs.isEmpty ? [] : try await Product.products(for: productIDs)
                 .sorted { productRank($0.id) < productRank($1.id) }
         } catch {
-            message = "Abonelik seçenekleri şu anda yüklenemedi. Lütfen daha sonra tekrar deneyin."
+            if catalogError == nil {
+                catalogError = "App Store abonelik seçenekleri şu anda yüklenemedi. Lütfen tekrar deneyin."
+            }
         }
 
         if let token {
             let syncError = await syncCurrentEntitlements(token: token)
             do { serverStatus = try await APIClient(token: token).billingStatus() }
             catch {
-                if message == nil { message = "Abonelik durumu sunucudan doğrulanamadı: \(error.localizedDescription)" }
+                if catalogError == nil {
+                    catalogError = "Abonelik durumu sunucudan doğrulanamadı. Lütfen tekrar deneyin."
+                }
             }
             reconcilePurchasedProductIDs()
-            if let syncError {
-                message = "App Store aboneliği sunucuyla doğrulanamadı; işlem yeniden denenecek: \(syncError.localizedDescription)"
+            if syncError != nil {
+                if catalogError == nil {
+                    catalogError = "App Store aboneliği sunucuyla doğrulanamadı; işlem yeniden denenecek."
+                }
             }
         } else {
             await refreshLocalEntitlements()

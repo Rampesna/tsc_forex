@@ -47,7 +47,7 @@ data:
   APP_BILLING_APP_ATTEST_ENABLED: "true"
   APP_BILLING_APP_ATTEST_TEAM_ID: "SGQ86WW4J3"
   APP_BILLING_APP_ATTEST_ENVIRONMENT: "production"
-  APP_BILLING_APP_ATTEST_BUNDLE_VERSIONS: "3"
+  APP_BILLING_APP_ATTEST_BUNDLE_VERSIONS: "3,4"
   APP_BILLING_APP_ATTEST_CHALLENGE_TTL: "5m"
   # DeviceCheck bit 0 is the reinstall-resistant physical-device redemption
   # marker. Submission remains fail-closed until a DeviceCheck-enabled key is
