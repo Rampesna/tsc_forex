@@ -24,7 +24,7 @@ Bu doküman TSC Forex'in güncel iOS sürümünü App Store Connect'e hazırlama
 - Exact `1284×2778` iPhone 6.5-inch ve `2064×2752` iPad 13-inch screenshot'ları sürüme yüklendi.
 - App Privacy URL'si ile 10 veri türünün amaç/linked/tracking cevapları kaydedildi; Apple'ın submission validation kontrolü privacy/copyright/content-rights zorunlu alanları için geçti. Bu, beyanların hukuki doğruluğunu Apple'ın onayladığı anlamına gelmez; sorumluluk Account Holder'dadır.
 - DeviceCheck ve Sign in with Apple anahtarları repository dışında GitHub Actions secret'larına kaydedildi; production pod'larında dosya/KID varlığı doğrulandı.
-- Commit `520ffa7db87d2b4a47d34714c7159c8a07fd4a77` CI/CD test, image build, Kubernetes rollout ve production smoke testlerinden geçti. Canlı API aynı commit'i raporluyor; database/Redis `up`, dört App Store planı ve device-based free trial `ready=true`.
+- Son `main` CI/CD çalışması test, image build, Kubernetes rollout ve production smoke testlerinden geçti. Canlı API deployed commit'i raporluyor; database/Redis `up`, dört App Store planı ve device-based free trial `ready=true`.
 
 ### İnceleme ve canlı satış öncesi takip edilecek açık riskler
 
