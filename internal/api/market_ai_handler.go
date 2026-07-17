@@ -18,10 +18,12 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/google/uuid"
 
 	"github.com/tsc-forex/tsc_forex/internal/config"
 	"github.com/tsc-forex/tsc_forex/internal/domain"
 	"github.com/tsc-forex/tsc_forex/internal/models"
+	"github.com/tsc-forex/tsc_forex/internal/service"
 )
 
 const marketInsightDisclaimer = "Bu içerik yatırım tavsiyesi değildir; eğitim ve karar desteği amaçlıdır."
@@ -44,6 +46,7 @@ type MarketAIHandler struct {
 	prices  MarketPriceReader
 	candles MarketCandleReader
 	client  *http.Client
+	billing *service.SubscriptionService
 	mu      sync.Mutex
 	cache   map[string]cachedMarketInsight
 }
@@ -54,21 +57,28 @@ type cachedMarketInsight struct {
 }
 
 type marketInsightRequest struct {
-	Code  string `json:"code" binding:"required"`
-	JobID string `json:"job_id,omitempty"`
+	Code                   string `json:"code" binding:"required"`
+	JobID                  string `json:"job_id,omitempty"`
+	DeviceID               string `json:"device_id,omitempty"`
+	RequestID              string `json:"request_id,omitempty"`
+	AttestationKeyID       string `json:"attestation_key_id,omitempty"`
+	AttestationChallengeID string `json:"attestation_challenge_id,omitempty"`
+	AttestationAssertion   string `json:"attestation_assertion,omitempty"`
+	DeviceCheckToken       string `json:"device_check_token,omitempty"`
 }
 
 type marketInsightPendingResponse struct {
-	Status string `json:"status"`
-	JobID  string `json:"job_id"`
-	Code   string `json:"code"`
-	Model  string `json:"model"`
+	Status    string `json:"status"`
+	JobID     string `json:"job_id"`
+	Code      string `json:"code"`
+	RequestID string `json:"request_id,omitempty"`
 }
 
 type marketInsightJobClaims struct {
 	ResponseID string `json:"response_id"`
 	Code       string `json:"code"`
 	UserID     string `json:"user_id"`
+	RequestID  string `json:"request_id"`
 	ExpiresAt  int64  `json:"expires_at"`
 }
 
@@ -90,7 +100,6 @@ type MarketInsightResponse struct {
 	Scenarios          []MarketScenario    `json:"scenarios"`
 	DataContext        []MarketDataPoint   `json:"data_context"`
 	Sources            []MarketSource      `json:"sources"`
-	Model              string              `json:"model"`
 	ResearchMode       string              `json:"research_mode"`
 	GeneratedAt        string              `json:"generated_at"`
 	Disclaimer         string              `json:"disclaimer"`
@@ -206,6 +215,11 @@ func NewMarketAIHandler(cfg config.AIConfig, prices MarketPriceReader, candleRea
 	}
 }
 
+func (h *MarketAIHandler) WithSubscriptions(subscription *service.SubscriptionService) *MarketAIHandler {
+	h.billing = subscription
+	return h
+}
+
 // MarketInsight godoc
 // @Summary  Generate an AI-assisted market brief for one instrument
 // @Tags     ai
@@ -238,49 +252,222 @@ func (h *MarketAIHandler) MarketInsight(c *gin.Context) {
 		c.JSON(http.StatusServiceUnavailable, ErrorResponse{Error: "varlık için canlı fiyat henüz hazır değil"})
 		return
 	}
-	if cached, found := h.cached(req.Code); found {
-		c.JSON(http.StatusOK, cached)
-		return
-	}
-
-	dataContext := h.researchContext(c.Request.Context(), price)
-	digest := sha256.Sum256([]byte(uid.String()))
-	safetyID := "tsc_" + hex.EncodeToString(digest[:12])
-	var envelope openAIResponsesEnvelope
-	var err error
-	if strings.TrimSpace(req.JobID) == "" {
-		envelope, err = h.startBackground(c.Request.Context(), price, dataContext, safetyID)
-	} else {
-		claims, verifyErr := h.verifyJobToken(req.JobID, uid.String(), req.Code)
+	initialRequest := strings.TrimSpace(req.JobID) == ""
+	requestID := strings.TrimSpace(req.RequestID)
+	var claims marketInsightJobClaims
+	if !initialRequest {
+		var verifyErr error
+		claims, verifyErr = h.verifyJobToken(req.JobID, uid.String(), req.Code)
 		if verifyErr != nil {
 			c.JSON(http.StatusBadRequest, ErrorResponse{Error: "geçersiz veya süresi dolmuş araştırma işi"})
 			return
 		}
+		requestID = claims.RequestID
+	} else if requestID == "" {
+		requestID = uuid.NewString()
+	}
+
+	ownerToken := ""
+	if h.billing != nil {
+		if initialRequest {
+			proof, proofErr := marketAppAttestProof(req)
+			if proofErr != nil {
+				writeSubscriptionError(c, proofErr, service.FeatureAIResearch)
+				return
+			}
+			job, beginErr := h.billing.BeginAIResearchJob(c.Request.Context(), uid, req.DeviceID, requestID, req.Code, proof)
+			if beginErr != nil {
+				writeSubscriptionError(c, beginErr, service.FeatureAIResearch)
+				return
+			}
+			if !job.Created {
+				if h.writeExistingResearchJob(c, uid, job) {
+					return
+				}
+			}
+			ownerToken = job.OwnerToken
+			if cached, cachedFound := h.cached(req.Code); cachedFound {
+				payload, marshalErr := json.Marshal(cached)
+				if marshalErr != nil || h.billing.CompleteAIResearchJob(c.Request.Context(), uid, requestID, ownerToken, "", payload) != nil {
+					_ = h.billing.ReleaseAIResearchJob(c.Request.Context(), uid, requestID, ownerToken, "cache_persist_failed")
+					c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "araştırma sonucu kaydedilemedi"})
+					return
+				}
+				h.archiveResearch(c.Request.Context(), uid, requestID, req.Code, cached)
+				c.JSON(http.StatusOK, cached)
+				return
+			}
+		} else {
+			job, jobErr := h.billing.AIResearchJob(c.Request.Context(), uid, requestID, req.Code)
+			if jobErr != nil {
+				c.JSON(http.StatusBadRequest, ErrorResponse{Error: "araştırma işi bulunamadı"})
+				return
+			}
+			if job.Status == service.ResearchJobCompleted {
+				h.writeResearchResult(c, job.ResultPayload)
+				return
+			}
+			if job.Status == service.ResearchJobFailed {
+				c.JSON(http.StatusBadGateway, ErrorResponse{Error: "Derin piyasa araştırması tamamlanamadı; yeni bir istek başlatın"})
+				return
+			}
+			if job.Status == service.ResearchJobReserved {
+				leased, leaseErr := h.billing.LeaseAIResearchJob(c.Request.Context(), uid, requestID, req.Code)
+				if leaseErr != nil {
+					writeSubscriptionError(c, leaseErr, service.FeatureAIResearch)
+					return
+				}
+				if !leased.Created {
+					c.JSON(http.StatusAccepted, marketInsightPendingResponse{Status: "queued", JobID: req.JobID, Code: req.Code, RequestID: requestID})
+					return
+				}
+				// The original creator died before attaching a provider response.
+				// This request now owns the rotated durable lease and restarts with
+				// the same provider idempotency key and no additional quota spend.
+				ownerToken = leased.OwnerToken
+				initialRequest = true
+				req.JobID = ""
+			} else if job.ProviderResponseID == "" {
+				c.JSON(http.StatusAccepted, marketInsightPendingResponse{Status: "queued", JobID: req.JobID, Code: req.Code, RequestID: requestID})
+				return
+			} else {
+				claims.ResponseID = job.ProviderResponseID
+			}
+		}
+	} else if initialRequest {
+		if cached, cachedFound := h.cached(req.Code); cachedFound {
+			c.JSON(http.StatusOK, cached)
+			return
+		}
+	}
+
+	dataContext := h.researchContext(c.Request.Context(), price)
+	digest := sha256.Sum256([]byte(uid.String()))
+	safetyID := "market_research_" + hex.EncodeToString(digest[:12])
+	var envelope openAIResponsesEnvelope
+	var err error
+	if initialRequest {
+		envelope, err = h.startBackground(
+			c.Request.Context(), price, dataContext, safetyID,
+			providerIdempotencyKey(uid, requestID, req.Code),
+		)
+	} else {
 		envelope, err = h.retrieveBackground(c.Request.Context(), claims.ResponseID)
 	}
 	if err != nil {
+		// The request may have reached the provider even when its response was
+		// lost. Keep the durable reservation; the same request can reclaim its
+		// lease and reuse the provider idempotency key without another quota use.
 		c.JSON(http.StatusBadGateway, ErrorResponse{Error: "Derin piyasa araştırması şu anda tamamlanamadı"})
 		return
 	}
 	if envelope.Status == "queued" || envelope.Status == "in_progress" {
 		jobID := req.JobID
 		if jobID == "" {
-			jobID, err = h.signJobToken(envelope.ID, req.Code, uid.String())
+			if h.billing != nil {
+				if err := h.billing.AttachAIResearchProvider(c.Request.Context(), uid, requestID, ownerToken, envelope.ID); err != nil {
+					c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "araştırma işi kaydedilemedi"})
+					return
+				}
+			}
+			jobID, err = h.signJobToken(envelope.ID, req.Code, uid.String(), requestID)
 			if err != nil {
 				c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "araştırma işi oluşturulamadı"})
 				return
 			}
 		}
-		c.JSON(http.StatusAccepted, marketInsightPendingResponse{Status: envelope.Status, JobID: jobID, Code: req.Code, Model: h.model()})
+		c.JSON(http.StatusAccepted, marketInsightPendingResponse{Status: envelope.Status, JobID: jobID, Code: req.Code, RequestID: requestID})
 		return
 	}
 	result, err := h.finalizeResponse(envelope, price, dataContext)
 	if err != nil {
+		if h.billing != nil {
+			if initialRequest && ownerToken != "" {
+				_ = h.billing.MarkAIResearchReservationFailed(c.Request.Context(), uid, requestID, ownerToken, "provider_invalid_result")
+			} else if claims.ResponseID != "" {
+				_ = h.billing.MarkAIResearchProviderFailed(c.Request.Context(), uid, requestID, claims.ResponseID, "provider_invalid_result")
+			}
+		}
 		c.JSON(http.StatusBadGateway, ErrorResponse{Error: "Derin piyasa araştırması tamamlanamadı; yeniden deneyin"})
 		return
 	}
 	h.store(req.Code, result)
+	if h.billing != nil {
+		payload, marshalErr := json.Marshal(result)
+		providerID := claims.ResponseID
+		if initialRequest {
+			providerID = ""
+		}
+		if marshalErr != nil || h.billing.CompleteAIResearchJob(c.Request.Context(), uid, requestID, ownerToken, providerID, payload) != nil {
+			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "araştırma sonucu kaydedilemedi"})
+			return
+		}
+	}
+	h.archiveResearch(c.Request.Context(), uid, requestID, req.Code, result)
 	c.JSON(http.StatusOK, result)
+}
+
+func marketAppAttestProof(req marketInsightRequest) (service.AppAttestProof, error) {
+	if strings.TrimSpace(req.AttestationChallengeID) == "" && strings.TrimSpace(req.AttestationAssertion) == "" && strings.TrimSpace(req.AttestationKeyID) == "" {
+		return service.AppAttestProof{}, nil
+	}
+	challengeID, err := uuid.Parse(strings.TrimSpace(req.AttestationChallengeID))
+	if err != nil {
+		return service.AppAttestProof{}, service.ErrInvalidDeviceAttestation
+	}
+	assertion, err := service.DecodeAppAttestObject(req.AttestationAssertion)
+	if err != nil {
+		return service.AppAttestProof{}, err
+	}
+	return service.AppAttestProof{
+		KeyID: strings.TrimSpace(req.AttestationKeyID), ChallengeID: challengeID,
+		Assertion: assertion, DeviceCheckToken: strings.TrimSpace(req.DeviceCheckToken),
+	}, nil
+}
+
+func (h *MarketAIHandler) writeExistingResearchJob(c *gin.Context, userID uuid.UUID, job service.AIResearchJob) bool {
+	switch job.Status {
+	case service.ResearchJobCompleted:
+		h.writeResearchResult(c, job.ResultPayload)
+		return true
+	case service.ResearchJobFailed:
+		c.JSON(http.StatusBadGateway, ErrorResponse{Error: "Derin piyasa araştırması tamamlanamadı; yeni bir istek kimliği kullanın"})
+		return true
+	case service.ResearchJobReserved, service.ResearchJobPending:
+		jobID, err := h.signJobToken(job.ProviderResponseID, job.Code, userID.String(), job.RequestKey)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "araştırma işi yüklenemedi"})
+			return true
+		}
+		status := "queued"
+		if job.Status == service.ResearchJobPending {
+			status = "in_progress"
+		}
+		c.JSON(http.StatusAccepted, marketInsightPendingResponse{Status: status, JobID: jobID, Code: job.Code, RequestID: job.RequestKey})
+		return true
+	default:
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "araştırma işi geçersiz durumda"})
+		return true
+	}
+}
+
+func (h *MarketAIHandler) writeResearchResult(c *gin.Context, payload json.RawMessage) {
+	var result MarketInsightResponse
+	if !json.Valid(payload) || json.Unmarshal(payload, &result) != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "araştırma sonucu okunamadı"})
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+func (h *MarketAIHandler) archiveResearch(ctx context.Context, userID uuid.UUID, requestID, code string, result MarketInsightResponse) {
+	if h.billing == nil || requestID == "" {
+		return
+	}
+	payload, err := json.Marshal(result)
+	if err == nil {
+		_ = h.billing.ArchiveResearch(ctx, userID, requestID, code, payload)
+	}
 }
 
 func (h *MarketAIHandler) generate(ctx context.Context, p domain.InstrumentPrice, dataContext []MarketDataPoint, safetyID string) (MarketInsightResponse, error) {
@@ -288,19 +475,24 @@ func (h *MarketAIHandler) generate(ctx context.Context, p domain.InstrumentPrice
 	if err != nil {
 		return MarketInsightResponse{}, err
 	}
-	envelope, err := h.createResponse(ctx, baseURL, payload)
+	envelope, err := h.createResponse(ctx, baseURL, payload, "")
 	if err != nil {
 		return MarketInsightResponse{}, err
 	}
 	return h.finalizeResponse(envelope, p, dataContext)
 }
 
-func (h *MarketAIHandler) startBackground(ctx context.Context, p domain.InstrumentPrice, dataContext []MarketDataPoint, safetyID string) (openAIResponsesEnvelope, error) {
+func (h *MarketAIHandler) startBackground(
+	ctx context.Context,
+	p domain.InstrumentPrice,
+	dataContext []MarketDataPoint,
+	safetyID, idempotencyKey string,
+) (openAIResponsesEnvelope, error) {
 	payload, baseURL, err := h.buildPayload(p, dataContext, safetyID, true)
 	if err != nil {
 		return openAIResponsesEnvelope{}, err
 	}
-	return h.createResponse(ctx, baseURL, payload)
+	return h.createResponse(ctx, baseURL, payload, idempotencyKey)
 }
 
 func (h *MarketAIHandler) buildPayload(p domain.InstrumentPrice, dataContext []MarketDataPoint, safetyID string, background bool) (openAIResponsesPayload, string, error) {
@@ -323,7 +515,13 @@ func (h *MarketAIHandler) buildPayload(p domain.InstrumentPrice, dataContext []M
 	}
 	maxToolCalls := h.cfg.MaxToolCalls
 	if maxToolCalls <= 0 {
-		maxToolCalls = 4
+		maxToolCalls = 6
+	}
+	// The report needs enough searches to cover macro, cross-asset and
+	// geopolitical evidence, but an operator typo must not create unbounded
+	// provider spend for a single quota unit.
+	if maxToolCalls > 8 {
+		maxToolCalls = 8
 	}
 
 	contextJSON, err := json.Marshal(dataContext)
@@ -331,17 +529,17 @@ func (h *MarketAIHandler) buildPayload(p domain.InstrumentPrice, dataContext []M
 		return openAIResponsesPayload{}, "", err
 	}
 	prompt := fmt.Sprintf(
-		"Araştırma zamanı: %s\nSeçili varlık: %s (%s), tür=%s\nSon fiyat: %.8f %s; TRY karşılığı: %.4f; alış: %.8f; satış: %.8f; günlük değişim: %.4f%%\nTSC'nin güvenilir çok-zaman-dilimli ve çapraz-varlık verisi (JSON):\n%s\n\nBu veriyi güncel web araştırmasıyla birleştir. Seçili varlığın fiyat aktarım mekanizmasını, bir haftadan bir yıla eğilimini, ilgili döviz/altın/kripto/hisse ilişkilerini, merkez bankası ve faiz-enflasyon dinamiklerini, güncel jeopolitik çatışma ve ülkeler arası gerilimleri araştır. Yalnızca fiyatı gerçekten etkileyebilecek gelişmeleri dahil et. En az üç farklı güvenilir ve güncel kaynak kullan; araştırmayı en fazla %d araç çağrısında tamamla.",
+		"Araştırma zamanı: %s\nSeçili varlık: %s (%s), tür=%s\nSon fiyat: %.8f %s; TRY karşılığı: %.4f; alış: %.8f; satış: %.8f; günlük değişim: %.4f%%\nSunucu tarafından doğrulanan çok-zaman-dilimli ve çapraz-varlık verisi (JSON):\n%s\n\nBu veriyi güncel web araştırmasıyla birleştir. Bir hafta, bir ay, üç ay ve bir yıllık eğilimleri ayrı değerlendir. Fiyat aktarım mekanizmasını; ilgili döviz sepetlerini, dolar endeksini, tahvil/faiz ve reel getiri dinamiklerini, emtia/kripto/hisse ilişkilerini, merkez bankası kararlarını, enflasyonu ve yaklaşan veri takvimini varlıkla ilgisi ölçüsünde incele. Güncel jeopolitik çatışma, yaptırım ve ülkeler arası gerilimlerde yalnızca fiyatı etkileyebilecek kanıtlı gelişmeleri dahil et. Resmî ve birincil kaynaklara öncelik ver, en az dört güncel kaynak kullan, olay tarihi ile yayın tarihini ayır ve araştırmayı en fazla %d araç çağrısında tamamla.",
 		time.Now().UTC().Format(time.RFC3339), p.DisplayName, p.Code, p.Kind, p.Price, p.Currency, p.PriceTRY, p.Bid, p.Ask, p.ChangePct, string(contextJSON), maxToolCalls,
 	)
 	payload := openAIResponsesPayload{
 		Model:        model,
-		Instructions: "Türkçe yazan, kanıta dayalı kıdemli bir makro ve çapraz-varlık araştırma analistisin. TSC tarafından verilen fiyat ve tarihsel değişim verilerini sayısal gerçek olarak kabul et; web'i yalnızca güncel makroekonomi, merkez bankaları, emtia aktarımı ve jeopolitik gelişmeler için kullan. Resmî kurumları, merkez bankalarını, borsaları ve güçlü finans haber kaynaklarını önceliklendir. Güncelliği ve olay tarihini kontrol et. Bir iddiayı kaynakla destekleyemiyorsan çıkar. Korelasyonu nedensellik gibi sunma. Kesin fiyat tahmini, al/sat emri veya garanti verme. Boğa, dengeli ve ayı senaryolarını tetik ve sonuçlarıyla ayır. Sonuç ayrıntılı ama tekrarsız olsun.",
+		Instructions: "Türkçe yazan, kanıta dayalı kıdemli bir makro ve çapraz-varlık araştırma analistisin. Sunucunun sağladığı fiyat ve tarihsel değişim verilerini sayısal gerçek olarak kabul et; web'i güncel makroekonomi, merkez bankaları, emtia aktarımı, veri takvimi ve jeopolitik gelişmeler için kullan. Resmî kurumları, merkez bankalarını, borsaları ve güçlü finans haber kaynaklarını önceliklendir. Güncelliği ve olay tarihini kontrol et. Bir iddiayı kaynakla destekleyemiyorsan çıkar. Korelasyonu nedensellik gibi sunma. Kesin fiyat tahmini, al/sat emri veya garanti verme. Boğa, dengeli ve ayı senaryolarını tetik ve sonuçlarıyla ayır. Sonuç ayrıntılı ama tekrarsız olsun. Son kullanıcı metninde sağlayıcı, model, altyapı veya iç ürün/marka adı anma.",
 		Input:        prompt, MaxOutputTokens: maxTokens, MaxToolCalls: maxToolCalls,
 		SafetyID: safetyID, Store: false, Background: background,
 		Reasoning: openAIReasoningSpec{Effort: reasoningEffort},
 		Text: openAITextSpec{Format: openAIFormatSpec{
-			Type: "json_schema", Name: "tsc_market_research", Strict: true,
+			Type: "json_schema", Name: "market_research", Strict: true,
 			Schema: map[string]any{
 				"type": "object", "additionalProperties": false,
 				"properties": map[string]any{
@@ -393,7 +591,7 @@ func (h *MarketAIHandler) buildPayload(p domain.InstrumentPrice, dataContext []M
 	return payload, baseURL, nil
 }
 
-func (h *MarketAIHandler) createResponse(ctx context.Context, baseURL string, payload openAIResponsesPayload) (openAIResponsesEnvelope, error) {
+func (h *MarketAIHandler) createResponse(ctx context.Context, baseURL string, payload openAIResponsesPayload, idempotencyKey string) (openAIResponsesEnvelope, error) {
 	body, err := json.Marshal(payload)
 	if err != nil {
 		return openAIResponsesEnvelope{}, err
@@ -404,6 +602,9 @@ func (h *MarketAIHandler) createResponse(ctx context.Context, baseURL string, pa
 	}
 	req.Header.Set("Authorization", "Bearer "+h.cfg.APIKey)
 	req.Header.Set("Content-Type", "application/json")
+	if strings.TrimSpace(idempotencyKey) != "" {
+		req.Header.Set("Idempotency-Key", idempotencyKey)
+	}
 	res, err := h.client.Do(req)
 	if err != nil {
 		return openAIResponsesEnvelope{}, err
@@ -474,7 +675,6 @@ func (h *MarketAIHandler) finalizeResponse(envelope openAIResponsesEnvelope, p d
 	insight.Code = p.Code
 	insight.DataContext = dataContext
 	insight.Sources = extractMarketSources(envelope)
-	insight.Model = h.model()
 	insight.ResearchMode = "market_data"
 	if len(insight.Sources) > 0 {
 		insight.ResearchMode = "web+market_data"
@@ -492,9 +692,14 @@ func (h *MarketAIHandler) model() string {
 	return model
 }
 
-func (h *MarketAIHandler) signJobToken(responseID, code, userID string) (string, error) {
+func providerIdempotencyKey(userID uuid.UUID, requestID, code string) string {
+	digest := sha256.Sum256([]byte(userID.String() + ":" + strings.TrimSpace(requestID) + ":" + strings.ToUpper(strings.TrimSpace(code))))
+	return "market-research-" + hex.EncodeToString(digest[:])
+}
+
+func (h *MarketAIHandler) signJobToken(responseID, code, userID, requestID string) (string, error) {
 	claimsJSON, err := json.Marshal(marketInsightJobClaims{
-		ResponseID: responseID, Code: code, UserID: userID, ExpiresAt: time.Now().Add(15 * time.Minute).Unix(),
+		ResponseID: responseID, Code: code, UserID: userID, RequestID: requestID, ExpiresAt: time.Now().Add(15 * time.Minute).Unix(),
 	})
 	if err != nil {
 		return "", err
@@ -527,7 +732,7 @@ func (h *MarketAIHandler) verifyJobToken(token, userID, code string) (marketInsi
 	if err := json.Unmarshal(claimsJSON, &claims); err != nil {
 		return marketInsightJobClaims{}, err
 	}
-	if claims.ResponseID == "" || claims.UserID != userID || claims.Code != code || time.Now().Unix() > claims.ExpiresAt {
+	if claims.UserID != userID || claims.Code != code || claims.RequestID == "" || time.Now().Unix() > claims.ExpiresAt {
 		return marketInsightJobClaims{}, errors.New("invalid job claims")
 	}
 	return claims, nil

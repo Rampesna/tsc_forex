@@ -134,27 +134,32 @@ func run() error {
 
 	// --- Postgres (optional; degrade gracefully) ---
 	var (
-		db          *gorm.DB
-		goldRepo    repository.GoldRepository
-		priceRepo   repository.PriceRepository
-		authSvc     *service.AuthService
-		authH       *api.AuthHandler
-		userH       *api.UserHandler
-		passkeyH    *api.PasskeyHandler
-		gamH        *api.GamificationHandler
-		portfolioH  *api.PortfolioHandler
-		instrRepo   repository.PriceRepository
-		histWriter  *service.HistoryWriter
-		instrWriter *service.InstrumentWriter
-		alertEngine *service.AlertEngine
+		db              *gorm.DB
+		dbStartupErr    error
+		goldRepo        repository.GoldRepository
+		priceRepo       repository.PriceRepository
+		authSvc         *service.AuthService
+		authH           *api.AuthHandler
+		userH           *api.UserHandler
+		passkeyH        *api.PasskeyHandler
+		gamH            *api.GamificationHandler
+		portfolioH      *api.PortfolioHandler
+		billingH        *api.BillingHandler
+		subscriptionSvc *service.SubscriptionService
+		instrRepo       repository.PriceRepository
+		histWriter      *service.HistoryWriter
+		instrWriter     *service.InstrumentWriter
+		alertEngine     *service.AlertEngine
 	)
 	if gdb, err := database.New(ctx, cfg.Database); err != nil {
-		log.Warn("postgres unavailable — running without history/auth", zap.Error(err))
+		dbStartupErr = fmt.Errorf("postgres startup: %w", err)
+		log.Error("postgres unavailable — pod will remain unready", zap.Error(err))
+	} else if err := database.Migrate(gdb); err != nil {
+		dbStartupErr = fmt.Errorf("database migration: %w", err)
+		log.Error("database migration failed — pod will remain unready", zap.Error(err))
+		_ = database.Close(gdb)
 	} else {
 		db = gdb
-		if err := database.Migrate(db); err != nil {
-			log.Warn("migrate failed", zap.Error(err))
-		}
 		goldRepo = repository.NewGoldRepository(db, m)
 		priceRepo = repository.NewPriceRepository(db, m)
 		instrRepo = priceRepo
@@ -225,9 +230,28 @@ func run() error {
 		}
 		userH = api.NewUserHandler(watchRepo, alertRepo, notifRepo, deviceRepo, userRepo, avatarStore, log)
 
+		var appleVerifier service.AppleSignedDataVerifier
+		if cfg.Billing.Enabled {
+			verifier, verifierErr := service.NewAppleJWSVerifier()
+			if verifierErr != nil {
+				log.Error("app store JWS verifier unavailable", zap.Error(verifierErr))
+			} else {
+				appleVerifier = verifier
+			}
+		}
+		subscriptionSvc = service.NewSubscriptionService(db, cfg.Billing, appleVerifier)
+		billingH = api.NewBillingHandler(subscriptionSvc)
+
 		portfolioRepo := repository.NewPortfolioRepository(db, m)
 		portfolioSvc := service.NewPortfolioService(portfolioRepo, engine).WithHistory(candleStore)
+		if cfg.Billing.Enabled {
+			portfolioSvc.WithSubscriptions(subscriptionSvc)
+		}
 		portfolioH = api.NewPortfolioHandler(portfolioSvc)
+		userH.WithAuthService(authSvc)
+		if cfg.Billing.Enabled {
+			userH.WithSubscriptions(subscriptionSvc)
+		}
 
 		// Push senders, routed by device platform (ios → APNs, android → FCM).
 		senders := map[string]service.PushSender{}
@@ -274,6 +298,12 @@ func run() error {
 		}
 		log.Info("postgres connected", zap.String("host", cfg.Database.Host))
 	}
+	if dbStartupErr != nil && cfg.App.Environment == "production" {
+		// There is no in-process reconnect path for a database that was absent
+		// during boot. Exit so Kubernetes restarts the container until Postgres
+		// and the serialized migration are actually available.
+		return dbStartupErr
+	}
 
 	// Candle flush + retention loops (no-op without a DB, but the in-memory
 	// aggregation for live charts/sparklines/stats runs regardless).
@@ -283,15 +313,17 @@ func run() error {
 	go metricsUpdater(ctx, m, hub, pm, calc)
 
 	// --- HTTP ---
-	dbPing := func(ctx context.Context) error {
-		if db == nil {
-			return fmt.Errorf("db not configured")
+	readinessCheck := func(ctx context.Context) error {
+		if dbStartupErr != nil {
+			return dbStartupErr
 		}
-		sqlDB, err := db.DB()
-		if err != nil {
+		if err := database.CheckReady(ctx, db); err != nil {
 			return err
 		}
-		return sqlDB.PingContext(ctx)
+		if subscriptionSvc != nil {
+			return subscriptionSvc.ReadinessError()
+		}
+		return nil
 	}
 	var redisPinger api.Pinger
 	if redisCache != nil {
@@ -310,6 +342,10 @@ func run() error {
 		}))
 	}
 
+	aiHandler := api.NewMarketAIHandler(cfg.AI, engine, candleStore)
+	if subscriptionSvc != nil && cfg.Billing.Enabled {
+		aiHandler.WithSubscriptions(subscriptionSvc)
+	}
 	engine2 := routes.NewEngine(routes.Deps{
 		Config:     cfg,
 		Hub:        hub,
@@ -321,7 +357,7 @@ func run() error {
 			Provider:  pm,
 			Calc:      calc,
 			Redis:     redisPinger,
-			DBPing:    dbPingOrNil(db, dbPing),
+			DBPing:    readinessCheck,
 			ClientsFn: hub.ClientCount,
 		}),
 		Auth:         authH,
@@ -329,8 +365,10 @@ func run() error {
 		Passkey:      passkeyH,
 		Gamification: gamH,
 		Portfolio:    portfolioH,
-		AI:           api.NewMarketAIHandler(cfg.AI, engine, candleStore),
+		AI:           aiHandler,
+		Billing:      billingH,
 		AuthService:  authSvc,
+		Ready:        readinessCheck,
 	})
 
 	srv := &http.Server{
@@ -382,13 +420,6 @@ func run() error {
 		zap.Int64("gold_publishes", calc.PublishCount()),
 	)
 	return nil
-}
-
-func dbPingOrNil(db *gorm.DB, fn func(ctx context.Context) error) func(ctx context.Context) error {
-	if db == nil {
-		return nil
-	}
-	return fn
 }
 
 // fanInRedis applies price updates published by OTHER instances to this hub.

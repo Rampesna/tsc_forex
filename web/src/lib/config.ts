@@ -16,7 +16,7 @@ export const GOOGLE_WEB_CLIENT_ID =
 // Apple "Services ID" for Sign in with Apple on the web (NOT the app bundle id).
 // Create one in the Apple Developer portal bound to tsc.talhacan.com, then add
 // it to APP_OAUTH_APPLE_BUNDLE_IDS on the backend so the aud is accepted.
-export const APPLE_SERVICE_ID = "talhacan.tscforex.web";
+export const APPLE_SERVICE_ID = "tscforex";
 export const APPLE_REDIRECT_URI = "https://tsc.talhacan.com/auth/apple/callback";
 
 export const BRAND = {

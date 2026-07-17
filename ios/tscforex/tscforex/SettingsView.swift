@@ -8,10 +8,14 @@ import SwiftUI
 struct SettingsView: View {
     @EnvironmentObject var auth: AuthStore
     @EnvironmentObject var prices: PriceStore
+    @EnvironmentObject var billing: BillingStore
     @State private var showProfile = false
     @State private var confirmDelete = false
     @State private var deleting = false
     @State private var deleteError: String?
+    @State private var showPaywall = false
+    @State private var showResearchArchive = false
+    @State private var acceptedAIDisclosure = false
 
     private let privacyURL = URL(string: "https://tsc.talhacan.com/privacy")!
     private let termsURL = URL(string: "https://tsc.talhacan.com/terms")!
@@ -42,11 +46,78 @@ struct SettingsView: View {
                                     }
                                 }
                                 Button(role: .destructive) {
-                                    prices.disconnect(); auth.logout()
+                                    prices.disconnect(); billing.clearSession(); auth.logout()
                                 } label: {
                                     Label("Çıkış Yap", systemImage: "arrow.right.square")
                                 }
                                 .buttonStyle(FilledButtonStyle(color: Theme.down.opacity(0.16), textColor: Theme.down))
+                            }
+                        }
+
+                        Card {
+                            VStack(alignment: .leading, spacing: 12) {
+                                sectionLabel("ABONELİK")
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(billing.hasActiveSubscription ? "Abonelik etkin" : "Ücretsiz plan")
+                                            .font(.system(size: 15, weight: .semibold)).foregroundStyle(Theme.text)
+                                        Text(billing.serverStatus?.plan.name ?? "AI araştırma kullanımını planına göre yönet")
+                                            .font(.system(size: 11)).foregroundStyle(Theme.textDim)
+                                    }
+                                    Spacer()
+                                    if billing.serverStatus?.plan.code == "free" && !billing.freeTrialReady {
+                                        Text("Doğrulama bekleniyor")
+                                            .font(.system(size: 10, weight: .bold)).foregroundStyle(Theme.textDim)
+                                    } else if let remaining = billing.aiRemaining {
+                                        Text("\(remaining) hak")
+                                            .font(.system(size: 11, weight: .bold)).foregroundStyle(Theme.accent)
+                                    }
+                                }
+                                Button(billing.hasActiveSubscription ? "Planları Gör" : "Planları İncele") {
+                                    showPaywall = true
+                                }
+                                .buttonStyle(FilledButtonStyle())
+                                Button("Aboneliği Apple'da Yönet") {
+                                    Task { await billing.manageSubscriptions() }
+                                }
+                                .font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.accent)
+                                Button("Satın Almaları Geri Yükle") {
+                                    Task { await billing.restore(token: auth.accessToken) }
+                                }
+                                .font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.accent)
+                                Button {
+                                    showResearchArchive = true
+                                } label: {
+                                    HStack {
+                                        Label("Araştırma Arşivi", systemImage: "archivebox")
+                                        Spacer()
+                                        Image(systemName: "chevron.right")
+                                    }
+                                }
+                                .font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.accent)
+                            }
+                        }
+
+                        Card {
+                            VStack(alignment: .leading, spacing: 10) {
+                                sectionLabel("AI VE VERİ KULLANIMI")
+                                Text("AI araştırmasında piyasa verileri, açık web kaynakları ve tek yönlü türetilen takma adlı güvenlik kimliği analiz ve kötüye kullanım önleme için OpenAI'a gönderilir; kişisel profil ve portföy tutarları gönderilmez.")
+                                    .font(.system(size: 12)).foregroundStyle(Theme.textDim)
+                                HStack {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text("AI araştırma onayı").font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
+                                        Text(acceptedAIDisclosure ? "Onay verildi" : "Onay verilmedi")
+                                            .font(.system(size: 11)).foregroundStyle(Theme.textDim)
+                                    }
+                                    Spacer()
+                                    if acceptedAIDisclosure {
+                                        Button("Onayı Geri Çek") {
+                                            AIResearchConsentStore.setAccepted(false, for: auth.userID)
+                                            acceptedAIDisclosure = false
+                                        }
+                                            .font(.system(size: 11, weight: .bold)).foregroundStyle(Theme.down)
+                                    }
+                                }
                             }
                         }
 
@@ -75,8 +146,12 @@ struct SettingsView: View {
                         Card {
                             VStack(alignment: .leading, spacing: 10) {
                                 sectionLabel("TEHLİKELİ BÖLGE")
-                                Text("Hesabını silersen izleme listen, alarmların, portföyün, bildirimlerin ve ödül verilerin kalıcı olarak kaldırılır. Bu işlem geri alınamaz.")
+                                Text("Hesabını silersen izleme listen, alarmların, portföyün, bildirimlerin ve ödül verilerin kalıcı olarak kaldırılır. Apple aboneliğin otomatik iptal edilmez; iptal etmezsen faturalama sürebilir.")
                                     .font(.system(size: 12)).foregroundStyle(Theme.textDim)
+                                Button("Önce Aboneliği Apple'da Yönet") {
+                                    Task { await billing.manageSubscriptions() }
+                                }
+                                .font(.system(size: 12, weight: .bold)).foregroundStyle(Theme.accent)
                                 Button(role: .destructive) {
                                     confirmDelete = true
                                 } label: {
@@ -105,19 +180,64 @@ struct SettingsView: View {
         .sheet(isPresented: $showProfile) {
             NavigationStack { ProfileView() }.preferredColorScheme(.dark)
         }
+        .sheet(isPresented: $showPaywall) {
+            PaywallView()
+                .environmentObject(auth)
+                .environmentObject(billing)
+        }
+        .sheet(isPresented: $showResearchArchive) {
+            ResearchArchiveView()
+                .environmentObject(auth)
+                .environmentObject(billing)
+        }
+        .task {
+            await billing.refresh(token: auth.accessToken)
+            await auth.loadLinkedProviders()
+        }
+        .task(id: auth.userID) {
+            acceptedAIDisclosure = AIResearchConsentStore.isAccepted(for: auth.userID)
+        }
+        .alert("Abonelik", isPresented: Binding(
+            get: { billing.message != nil },
+            set: { if !$0 { billing.message = nil } }
+        )) {
+            Button("Tamam") { billing.message = nil }
+        } message: {
+            Text(billing.message ?? "")
+        }
         .alert("Hesabını silmek istediğinden emin misin?", isPresented: $confirmDelete) {
             Button("Vazgeç", role: .cancel) {}
             Button("Hesabı Sil", role: .destructive) { Task { await deleteAccount() } }
         } message: {
-            Text("Tüm verilerin kalıcı olarak silinecek. Bu işlem geri alınamaz.")
+            Text("Hesabın ve kullanıcıya bağlı içeriklerin kalıcı olarak silinir. Tek ücretsiz araştırma hakkının kötüye kullanılmasını önleyen tek yönlü cihaz kaydı ile aktif aboneliği daha sonra yalnız sana geri bağlamaya yarayan tek yönlü Apple işlem/kurtarma kaydı korunabilir. Ham kurtarma anahtarı sunucuda saklanmaz. Apple aboneliğin iptal olmaz ve sen iptal edene kadar faturalama sürebilir.")
         }
     }
 
     private func deleteAccount() async {
         deleting = true; deleteError = nil
         do {
-            try await APIClient(token: auth.accessToken).deleteAccount()
+            if auth.userID == nil { await auth.loadProfile() }
+            await auth.loadLinkedProviders()
+            var authorizationCode: String?
+            if auth.linkedProviders.contains("apple") {
+                do {
+                    authorizationCode = try await AppleAuth.shared.signIn().authorizationCode
+                } catch AppleAuthError.cancelled {
+                    deleteError = "Hesap silme iptal edildi. Apple ile yeniden doğrulama tamamlanmadan hesap silinemez."
+                    deleting = false
+                    return
+                }
+            }
+            guard let userID = auth.userID else { throw APIError.invalidResponse }
+            let recoveryToken = try await billing.recoveryTokenForAccountDeletion(userID: userID)
+            try await APIClient(token: auth.accessToken)
+                .deleteAccount(
+                    appleAuthorizationCode: authorizationCode,
+                    subscriptionRecoveryToken: recoveryToken
+                )
+            PendingOperationStore.clearAll(userID: userID)
             prices.disconnect()
+            billing.clearSession()
             auth.logout()
             Haptics.success()
         } catch {

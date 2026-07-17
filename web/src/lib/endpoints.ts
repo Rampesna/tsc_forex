@@ -1,6 +1,9 @@
-import { request, uploadForm } from "./api";
+import { ApiError, request, uploadForm } from "./api";
+import { WEB_ABUSE_ID_KEY } from "./privacy";
 import type {
   Alert,
+  BillingPlansResponse,
+  BillingStatus,
   Candle,
   CatalogItem,
   GamCheckInResult,
@@ -13,6 +16,7 @@ import type {
   Leaderboard,
   Notification,
   PortfolioOverview,
+  PortfolioHealth,
   PortfolioPerformancePoint,
   PortfolioTransaction,
   PaperTrade,
@@ -57,19 +61,37 @@ export const api = {
   },
   detail: (code: string) => request<InstrumentDetail>(`/instruments/${code}/detail`),
   marketInsight: async (code: string) => {
+    const deviceId = stableDeviceID();
+    const pendingKey = `ai-research:${code}`;
+    const requestId = pendingRequestID(pendingKey);
     let jobId = "";
-    for (let attempt = 0; attempt < 120; attempt += 1) {
-      const result = await request<MarketInsight | { status: string; job_id: string }>("/me/ai/market-insight", {
-        method: "POST",
-        auth: true,
-        body: jobId ? { code, job_id: jobId } : { code },
-      });
-      if (!("job_id" in result)) return result;
-      jobId = result.job_id;
-      await new Promise((resolve) => window.setTimeout(resolve, 3000));
+    try {
+      for (let attempt = 0; attempt < 120; attempt += 1) {
+        const result = await request<MarketInsight | { status: string; job_id: string }>("/me/ai/market-insight", {
+          method: "POST",
+          auth: true,
+          body: jobId
+            ? { code, job_id: jobId, device_id: deviceId, request_id: requestId }
+            : { code, device_id: deviceId, request_id: requestId },
+        });
+        if (!("job_id" in result)) {
+          clearPendingRequestID(pendingKey);
+          return result;
+        }
+        jobId = result.job_id;
+        await new Promise((resolve) => window.setTimeout(resolve, 3000));
+      }
+    } catch (error) {
+      if (isTerminalOperationError(error)) clearPendingRequestID(pendingKey);
+      throw error;
     }
     throw new Error("Derin araştırma beklenenden uzun sürdü; biraz sonra yeniden deneyin.");
   },
+
+  // --- server-verified App Store entitlement (web is read-only) ---
+  billingStatus: () => request<BillingStatus>("/me/billing/status", { auth: true }),
+  billingPlans: () => request<BillingPlansResponse>("/billing/plans"),
+  researchHistory: () => request<{ items: Array<{ id: string; code: string; payload: MarketInsight; generated_at: string; expires_at: string }> }>("/me/ai/research-history", { auth: true }),
 
   // --- profile ---
   profile: () => request<Profile>("/me/profile", { auth: true }),
@@ -232,4 +254,64 @@ export const api = {
       `/me/portfolios/${id}/performance?range=${range}&points=${points}`,
       { auth: true },
     ),
+  portfolioHealth: async (id: string) => {
+    const pendingKey = `portfolio-health:${id}`;
+    try {
+      const result = await request<PortfolioHealth>(`/me/portfolios/${id}/health-check`, {
+        method: "POST", auth: true, body: { request_id: pendingRequestID(pendingKey) },
+      });
+      clearPendingRequestID(pendingKey);
+      return result;
+    } catch (error) {
+      if (isTerminalOperationError(error)) clearPendingRequestID(pendingKey);
+      throw error;
+    }
+  },
+  exportPortfolio: async (id: string) => {
+    const pendingKey = `portfolio-export:${id}`;
+    try {
+      const result = await request<Response>(`/me/portfolios/${id}/export`, {
+        method: "POST", auth: true, raw: true, body: { request_id: pendingRequestID(pendingKey) },
+      });
+      clearPendingRequestID(pendingKey);
+      return result;
+    } catch (error) {
+      if (isTerminalOperationError(error)) clearPendingRequestID(pendingKey);
+      throw error;
+    }
+  },
 };
+
+function makeRequestID(): string {
+  return globalThis.crypto?.randomUUID?.() ?? `web-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+}
+
+const PENDING_REQUEST_PREFIX = "tsc_pending_operation:";
+
+function pendingRequestID(scope: string): string {
+  const key = `${PENDING_REQUEST_PREFIX}${scope}`;
+  const existing = localStorage.getItem(key);
+  if (existing) return existing;
+  const created = makeRequestID();
+  localStorage.setItem(key, created);
+  return created;
+}
+
+function clearPendingRequestID(scope: string) {
+  localStorage.removeItem(`${PENDING_REQUEST_PREFIX}${scope}`);
+}
+
+function isTerminalOperationError(error: unknown): boolean {
+  if (!(error instanceof ApiError)) return false;
+  if (error.status === 402) return true;
+  if ([400, 401, 403, 404].includes(error.status)) return true;
+  return error.code === "quota_exhausted" || error.code === "subscription_required";
+}
+
+function stableDeviceID(): string {
+  const existing = localStorage.getItem(WEB_ABUSE_ID_KEY);
+  if (existing) return existing;
+  const created = `web-${makeRequestID()}`;
+  localStorage.setItem(WEB_ABUSE_ID_KEY, created);
+  return created;
+}

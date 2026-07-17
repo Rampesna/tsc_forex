@@ -5,24 +5,69 @@
 
 import Foundation
 
+struct APIErrorDetails: Decodable, Equatable {
+    let code: String?
+    let feature: String?
+    let limit: Int?
+    let used: Int?
+}
+
 enum APIError: Error, LocalizedError {
-    case http(Int, String)
+    case http(Int, String, APIErrorDetails?)
     case decoding
     case invalidResponse
     case network(URLError.Code, String)
 
+    var statusCode: Int? {
+        guard case .http(let status, _, _) = self else { return nil }
+        return status
+    }
+
+    var serverCode: String? {
+        guard case .http(_, _, let details) = self else { return nil }
+        return details?.code
+    }
+
+    var feature: String? {
+        guard case .http(_, _, let details) = self else { return nil }
+        return details?.feature
+    }
+
+    var limit: Int? {
+        guard case .http(_, _, let details) = self else { return nil }
+        return details?.limit
+    }
+
+    var used: Int? {
+        guard case .http(_, _, let details) = self else { return nil }
+        return details?.used
+    }
+
+    /// A retry with the same request identifier is safe and required for these
+    /// failures because the server may already have reserved quota or output.
+    var shouldRetainRequestID: Bool {
+        switch self {
+        case .network, .invalidResponse, .decoding:
+            return true
+        case .http(let status, _, let details):
+            if status == 409 { return details?.code == "operation_in_progress" }
+            return status == 408 || status == 429 || status == 500 ||
+                status == 503 || status == 504
+        }
+    }
+
     var errorDescription: String? {
         switch self {
-        case .http(let code, let msg):
+        case .http(let code, let msg, _):
             return msg.isEmpty ? "Sunucu isteği tamamlanamadı (\(code))" : msg
         case .decoding: return "Yanıt çözümlenemedi"
         case .invalidResponse: return "Geçersiz yanıt"
         case .network(let code, let host):
             switch code {
             case .timedOut:
-                return "Sunucuya ulaşılamadı (zaman aşımı): \(host). Aynı Wi-Fi'da mısınız ve backend açık mı?"
+                return "Bağlantı zaman aşımına uğradı. İnternet bağlantınızı kontrol edip tekrar deneyin. (\(host))"
             case .cannotConnectToHost, .cannotFindHost, .networkConnectionLost, .notConnectedToInternet:
-                return "Sunucuya bağlanılamadı: \(host). IP'yi Ayarlar'dan kontrol edin."
+                return "Hizmete ulaşılamadı. İnternet bağlantınızı kontrol edip tekrar deneyin. (\(host))"
             default:
                 return "Ağ hatası (\(code.rawValue)): \(host)"
             }
@@ -42,8 +87,8 @@ struct APIClient {
     // error) instead of spinning forever when the backend is unreachable.
     private static let session: URLSession = {
         let cfg = URLSessionConfiguration.default
-        cfg.timeoutIntervalForRequest = 70
-        cfg.timeoutIntervalForResource = 75
+        cfg.timeoutIntervalForRequest = 90
+        cfg.timeoutIntervalForResource = 100
         cfg.waitsForConnectivity = false
         cfg.requestCachePolicy = .reloadIgnoringLocalCacheData
         return URLSession(configuration: cfg)
@@ -88,15 +133,34 @@ struct APIClient {
                 }
             }
             guard (200..<300).contains(http.statusCode) else {
-                let msg = (try? JSONDecoder().decode(APIErrorEnvelope.self, from: data).error)
-                    ?? String(data: data, encoding: .utf8)
-                    ?? ""
-                throw APIError.http(http.statusCode, msg)
+                let envelope = try? JSONDecoder().decode(APIErrorEnvelope.self, from: data)
+                let msg = envelope?.error ?? String(data: data, encoding: .utf8) ?? ""
+                throw APIError.http(http.statusCode, msg, envelope?.details)
             }
             return data
         } catch let err as URLError {
             throw APIError.network(err.code, AppConfig.host)
         }
+    }
+
+    /// Retries only the server's explicit in-progress response and always uses
+    /// the caller-supplied request ID unchanged. Other failures are surfaced so
+    /// the UI can preserve that ID across user retries and process restarts.
+    private func requestIdempotentOperation(
+        _ path: String, body: Encodable, timeout: TimeInterval
+    ) async throws -> Data {
+        for attempt in 0..<5 {
+            do {
+                return try await request(
+                    path, method: "POST", body: body, authed: true, timeout: timeout
+                )
+            } catch let error as APIError where
+                error.statusCode == 409 && error.serverCode == "operation_in_progress" {
+                guard attempt < 4 else { throw error }
+                try await Task.sleep(nanoseconds: 1_000_000_000)
+            }
+        }
+        throw APIError.invalidResponse
     }
 
     // MARK: Auth
@@ -217,7 +281,9 @@ struct APIClient {
                 return try await APIClient(token: newToken).uploadAvatar(imageData: imageData, filename: filename, contentType: contentType)
             }
             guard (200..<300).contains(http.statusCode) else {
-                throw APIError.http(http.statusCode, String(data: data, encoding: .utf8) ?? "")
+                let envelope = try? JSONDecoder().decode(APIErrorEnvelope.self, from: data)
+                let message = envelope?.error ?? String(data: data, encoding: .utf8) ?? ""
+                throw APIError.http(http.statusCode, message, envelope?.details)
             }
             struct Resp: Decodable { let avatar_url: String }
             guard let url = try? JSONDecoder().decode(Resp.self, from: data).avatar_url else {
@@ -269,23 +335,78 @@ struct APIClient {
         return try makeDecoder().decode(InstrumentDetail.self, from: data)
     }
 
-    func marketInsight(code: String) async throws -> MarketInsight {
-        var jobID: String?
-        for _ in 0..<120 {
-            var body = ["code": code]
-            if let jobID { body["job_id"] = jobID }
-            let data = try await request(
-                "me/ai/market-insight", method: "POST",
-                body: body, authed: true, timeout: 30
-            )
-            if let job = try? makeDecoder().decode(MarketInsightJob.self, from: data), !job.jobID.isEmpty {
-                jobID = job.jobID
-                try await Task.sleep(nanoseconds: 3_000_000_000)
-                continue
+    func marketInsight(code: String, userID: String) async throws -> MarketInsight {
+        let operation = PendingOperationStore.loadOrCreate(
+            userID: userID, operation: "ai-research", resource: code.uppercased()
+        )
+        var jobID = operation.jobID
+        let requestID = operation.requestID
+        var proof: AppAttestProofPayload?
+        var requestedAttestation = false
+        do {
+            for _ in 0..<120 {
+                var body = [
+                    "code": code,
+                    "device_id": DeviceIdentity.identifier,
+                    "request_id": requestID,
+                ]
+                if let jobID { body["job_id"] = jobID }
+                if jobID == nil, let proof {
+                    body["attestation_key_id"] = proof.keyID
+                    body["attestation_challenge_id"] = proof.challengeID
+                    body["attestation_assertion"] = proof.assertion
+                    body["device_check_token"] = proof.deviceCheckToken
+                }
+                let data: Data
+                do {
+                    data = try await request(
+                        "me/ai/market-insight", method: "POST",
+                        body: body, authed: true, timeout: 75
+                    )
+                } catch let error as APIError where
+                    error.statusCode == 403 &&
+                    error.serverCode == "device_attestation_required" &&
+                    jobID == nil && !requestedAttestation {
+                    guard let token, !token.isEmpty else { throw APIError.invalidResponse }
+                    requestedAttestation = true
+                    proof = try await AppAttestClient.shared.proof(
+                        token: token, code: code, requestID: requestID
+                    )
+                    continue
+                } catch let error as APIError where
+                    error.statusCode == 409 && error.serverCode == "operation_in_progress" {
+                    try await Task.sleep(nanoseconds: 1_500_000_000)
+                    continue
+                }
+                if let job = try? makeDecoder().decode(MarketInsightJob.self, from: data), !job.jobID.isEmpty {
+                    jobID = job.jobID
+                    PendingOperationStore.updateJobID(
+                        job.jobID, userID: userID, operation: "ai-research", resource: code.uppercased()
+                    )
+                    try await Task.sleep(nanoseconds: 3_000_000_000)
+                    continue
+                }
+                let result = try makeDecoder().decode(MarketInsight.self, from: data)
+                PendingOperationStore.clear(
+                    userID: userID, operation: "ai-research", resource: code.uppercased()
+                )
+                return result
             }
-            return try makeDecoder().decode(MarketInsight.self, from: data)
+            throw APIError.http(
+                504, "Derin araştırma beklenenden uzun sürdü; biraz sonra yeniden deneyin.", nil
+            )
+        } catch let error as APIError {
+            if !error.shouldRetainRequestID {
+                PendingOperationStore.clear(
+                    userID: userID, operation: "ai-research", resource: code.uppercased()
+                )
+            }
+            throw error
+        } catch {
+            // Unknown transport/decoding failures can happen after the backend
+            // accepted the operation, so retain the identifier for a safe retry.
+            throw error
         }
-        throw APIError.http(504, "Derin araştırma beklenenden uzun sürdü; biraz sonra yeniden deneyin.")
     }
 
     // MARK: Watchlist
@@ -341,6 +462,17 @@ struct APIClient {
         return try makeDecoder().decode(CloudPortfolioOverview.self, from: data)
     }
 
+    func updatePortfolio(id: String, name: String) async throws -> CloudPortfolio {
+        let data = try await request(
+            "me/portfolios/\(id)", method: "PATCH", body: ["name": name], authed: true
+        )
+        return try makeDecoder().decode(CloudPortfolio.self, from: data)
+    }
+
+    func deletePortfolio(id: String) async throws {
+        _ = try await request("me/portfolios/\(id)", method: "DELETE", authed: true)
+    }
+
     func portfolioPosition(id: String, code: String) async throws -> PortfolioPositionDetail {
         let safeCode = code.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? code
         let data = try await request("me/portfolios/\(id)/positions/\(safeCode)", authed: true)
@@ -388,6 +520,21 @@ struct APIClient {
         return try makeDecoder().decode(Response.self, from: data).points
     }
 
+    func portfolioHealth(id: String, requestID: String) async throws -> PortfolioHealth {
+        let data = try await requestIdempotentOperation(
+            "me/portfolios/\(id)/health-check",
+            body: ["request_id": requestID], timeout: 30
+        )
+        return try makeDecoder().decode(PortfolioHealth.self, from: data)
+    }
+
+    func exportPortfolio(id: String, requestID: String) async throws -> Data {
+        try await requestIdempotentOperation(
+            "me/portfolios/\(id)/export",
+            body: ["request_id": requestID], timeout: 30
+        )
+    }
+
     // MARK: Notifications
 
     func notifications() async throws -> [AppNotification] {
@@ -407,15 +554,89 @@ struct APIClient {
 
     func registerDevice(token deviceToken: String) async throws {
         _ = try await request("me/devices", method: "POST",
-                              body: ["platform": "ios", "token": deviceToken], authed: true)
+                              body: [
+                                "platform": "ios",
+                                "token": deviceToken,
+                                "device_id": DeviceIdentity.identifier,
+                              ], authed: true)
+    }
+
+    // MARK: App Attest
+
+    func deviceAttestationChallenge(deviceID: String, keyID: String?, purpose: String,
+                                    requestID: String, code: String) async throws -> DeviceAttestationChallenge {
+        let body = DeviceAttestationChallengeBody(
+            deviceID: deviceID, keyID: keyID, purpose: purpose,
+            requestID: requestID, code: code
+        )
+        let data = try await request(
+            "me/device-attestation/challenge", method: "POST", body: body,
+            authed: true, timeout: 20
+        )
+        return try makeDecoder().decode(DeviceAttestationChallenge.self, from: data)
+    }
+
+    func registerDeviceAttestationKey(deviceID: String, keyID: String, challengeID: String,
+                                      attestationObject: String) async throws {
+        let body = DeviceAttestationRegistrationBody(
+            deviceID: deviceID, keyID: keyID, challengeID: challengeID,
+            attestationObject: attestationObject
+        )
+        _ = try await request(
+            "me/device-attestation/register", method: "POST", body: body,
+            authed: true, timeout: 30
+        )
+    }
+
+    // MARK: Billing
+
+    func billingPlans() async throws -> BillingPlansResponse {
+        let data = try await request("billing/plans")
+        return try makeDecoder().decode(BillingPlansResponse.self, from: data)
+    }
+
+    func billingStatus() async throws -> BillingStatus {
+        let id = DeviceIdentity.identifier.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)
+            ?? DeviceIdentity.identifier
+        let data = try await request("me/billing/status?device_id=\(id)", authed: true)
+        return try makeDecoder().decode(BillingStatus.self, from: data)
+    }
+
+    func researchHistory(limit: Int = 50) async throws -> [ResearchArchiveItem] {
+        struct Response: Decodable { let items: [ResearchArchiveItem] }
+        let bounded = min(max(limit, 1), 100)
+        let data = try await request("me/ai/research-history?limit=\(bounded)", authed: true)
+        return try makeDecoder().decode(Response.self, from: data).items
+    }
+
+    func syncApplePurchase(productID: String, transactionID: String,
+                           originalTransactionID: String, signedTransaction: String,
+                           deviceID: String, subscriptionRecoveryToken: String) async throws -> BillingStatus {
+        let body = ApplePurchaseSyncBody(
+            productID: productID,
+            transactionID: transactionID,
+            originalTransactionID: originalTransactionID,
+            signedTransaction: signedTransaction,
+            deviceID: deviceID,
+            subscriptionRecoveryToken: subscriptionRecoveryToken
+        )
+        let data = try await request(
+            "me/billing/apple/sync", method: "POST", body: body, authed: true, timeout: 30
+        )
+        return try makeDecoder().decode(BillingStatus.self, from: data)
     }
 
     // MARK: Account
 
     /// Permanently deletes the signed-in user and all their data. Required for
     /// App Store in-app account-deletion compliance.
-    func deleteAccount() async throws {
-        _ = try await request("me/account", method: "DELETE", authed: true)
+    func deleteAccount(appleAuthorizationCode: String? = nil,
+                       subscriptionRecoveryToken: String? = nil) async throws {
+        let body = AccountDeletionBody(
+            appleAuthorizationCode: appleAuthorizationCode,
+            subscriptionRecoveryToken: subscriptionRecoveryToken
+        )
+        _ = try await request("me/account", method: "DELETE", body: body, authed: true)
     }
 
     // MARK: Gamification
@@ -505,6 +726,15 @@ struct APIClient {
 
 private struct APIErrorEnvelope: Decodable {
     let error: String
+    let code: String?
+    let feature: String?
+    let limit: Int?
+    let used: Int?
+
+    var details: APIErrorDetails? {
+        guard code != nil || feature != nil || limit != nil || used != nil else { return nil }
+        return APIErrorDetails(code: code, feature: feature, limit: limit, used: used)
+    }
 }
 
 private struct DailyPlanBody: Encodable {
@@ -563,6 +793,63 @@ private struct PaperTradeReviewBody: Encodable {
 
 private struct PaperTradeEnvelope: Decodable {
     let trade: PaperTrade
+}
+
+private struct ApplePurchaseSyncBody: Encodable {
+    let productID: String
+    let transactionID: String
+    let originalTransactionID: String
+    let signedTransaction: String
+    let deviceID: String
+    let subscriptionRecoveryToken: String
+
+    enum CodingKeys: String, CodingKey {
+        case productID = "product_id"
+        case transactionID = "transaction_id"
+        case originalTransactionID = "original_transaction_id"
+        case signedTransaction = "signed_transaction"
+        case deviceID = "device_id"
+        case subscriptionRecoveryToken = "subscription_recovery_token"
+    }
+}
+
+private struct AccountDeletionBody: Encodable {
+    let appleAuthorizationCode: String?
+    let subscriptionRecoveryToken: String?
+
+    enum CodingKeys: String, CodingKey {
+        case appleAuthorizationCode = "apple_authorization_code"
+        case subscriptionRecoveryToken = "subscription_recovery_token"
+    }
+}
+
+private struct DeviceAttestationChallengeBody: Encodable {
+    let deviceID: String
+    let keyID: String?
+    let purpose: String
+    let requestID: String
+    let code: String
+
+    enum CodingKeys: String, CodingKey {
+        case purpose, code
+        case deviceID = "device_id"
+        case keyID = "key_id"
+        case requestID = "request_id"
+    }
+}
+
+private struct DeviceAttestationRegistrationBody: Encodable {
+    let deviceID: String
+    let keyID: String
+    let challengeID: String
+    let attestationObject: String
+
+    enum CodingKeys: String, CodingKey {
+        case deviceID = "device_id"
+        case keyID = "key_id"
+        case challengeID = "challenge_id"
+        case attestationObject = "attestation_object"
+    }
 }
 
 struct PaperTradeReviewResponse: Decodable {

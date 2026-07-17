@@ -27,7 +27,27 @@ type Config struct {
 	WebAuthn  WebAuthnConfig  `mapstructure:"webauthn"`
 	Storage   StorageConfig   `mapstructure:"storage"`
 	AI        AIConfig        `mapstructure:"ai"`
+	Billing   BillingConfig   `mapstructure:"billing"`
 	Log       LogConfig       `mapstructure:"log" validate:"required"`
+}
+
+// BillingConfig controls App Store entitlement verification. No App Store
+// secret is required for the StoreKit 2 sync path: Apple signs each JWS and the
+// backend validates its certificate chain, bundle and product identifiers.
+type BillingConfig struct {
+	Enabled                   bool          `mapstructure:"enabled"`
+	BundleID                  string        `mapstructure:"bundle_id"`
+	AllowSandbox              bool          `mapstructure:"allow_sandbox"`
+	SandboxMaxLifetime        time.Duration `mapstructure:"sandbox_max_lifetime"`
+	AppAttestEnabled          bool          `mapstructure:"app_attest_enabled"`
+	AppAttestTeamID           string        `mapstructure:"app_attest_team_id"`
+	AppAttestEnvironment      string        `mapstructure:"app_attest_environment"`
+	AppAttestRootCAPath       string        `mapstructure:"app_attest_root_ca_path"`
+	AppAttestBundleVersions   []string      `mapstructure:"app_attest_bundle_versions"`
+	AppAttestChallengeTTL     time.Duration `mapstructure:"app_attest_challenge_ttl"`
+	DeviceCheckEnabled        bool          `mapstructure:"device_check_enabled"`
+	DeviceCheckKeyID          string        `mapstructure:"device_check_key_id"`
+	DeviceCheckPrivateKeyPath string        `mapstructure:"device_check_private_key_path"`
 }
 
 // AIConfig controls the server-side OpenAI integration. The API key must stay
@@ -68,6 +88,11 @@ type OAuthConfig struct {
 	// AppleTeamID is the Apple Developer Team ID, used to build the
 	// apple-app-site-association (AASA) webcredentials for passkeys.
 	AppleTeamID string `mapstructure:"apple_team_id"`
+	// Apple account-deletion token revocation (Sign in with Apple). The private
+	// key stays in a mounted Secret; it is never stored in source/config maps.
+	AppleRevokeClientID string `mapstructure:"apple_revoke_client_id"`
+	AppleKeyID          string `mapstructure:"apple_key_id"`
+	ApplePrivateKeyPath string `mapstructure:"apple_private_key_path"`
 	// AndroidSHA256 fingerprints for Digital Asset Links (assetlinks.json).
 	AndroidPackageName string   `mapstructure:"android_package_name"`
 	AndroidSHA256      []string `mapstructure:"android_sha256"`

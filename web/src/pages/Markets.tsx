@@ -1,9 +1,12 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "../auth/AuthContext";
 import { useMarkets } from "../store/markets";
 import { money, tl } from "../lib/format";
 import { api } from "../lib/endpoints";
+import { ApiError, describeApiError } from "../lib/api";
+import { grantAIConsent, hasCurrentAIConsent } from "../lib/privacy";
 import { ChangePill, AssetBadge } from "../components/common";
 import { Icon } from "../components/Icon";
 import { Sparkline } from "../components/Sparkline";
@@ -78,7 +81,30 @@ export function Markets() {
   const [insight, setInsight] = useState<MarketInsight | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState("");
+  const [aiPaywalled, setAiPaywalled] = useState(false);
+  const [consentOpen, setConsentOpen] = useState(false);
   const nav = useNavigate();
+  const billingQ = useQuery({
+    queryKey: ["billing-entitlement"],
+    queryFn: api.billingStatus,
+    enabled: authed,
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
+  const billingUnavailable = billingQ.isError || billingQ.isRefetchError;
+  const paidWebAccess = Boolean(
+    !billingUnavailable &&
+    billingQ.data &&
+    billingQ.data.plan.code !== "free" &&
+    billingQ.data.entitlement?.status === "active",
+  );
+  const historyQ = useQuery({
+    queryKey: ["ai-research-history"],
+    queryFn: api.researchHistory,
+    enabled: authed,
+    retry: false,
+    refetchOnWindowFocus: false,
+  });
 
   const allPrices = useMemo(
     () => order.map((code) => prices[code]).filter(Boolean) as InstrumentPrice[],
@@ -126,7 +152,20 @@ export function Markets() {
     });
   }, [allPrices, movers, spark]);
 
-  async function askAI() {
+  async function runAI() {
+    if (billingQ.isLoading) {
+      setAiError("Plan ve kullanım hakkın doğrulanıyor. Birkaç saniye sonra yeniden dene.");
+      return;
+    }
+    if (billingUnavailable || !billingQ.data) {
+      setAiError("Plan ve kullanım bilgisi şu anda doğrulanamıyor; yanlış kota göstermemek için analiz başlatılmadı.");
+      return;
+    }
+    if (!paidWebAccess) {
+      setAiPaywalled(true);
+      setAiError("Tek seferlik ücretsiz araştırma yalnız App Attest ile doğrulanan fiziksel iOS uygulamasında kullanılabilir. Web'de araştırma için etkin bir ücretli plan gerekir.");
+      return;
+    }
     if (!authed) {
       nav("/login");
       return;
@@ -134,13 +173,39 @@ export function Markets() {
     if (!selectedCode) return;
     setAiLoading(true);
     setAiError("");
+    setAiPaywalled(false);
     try {
       setInsight(await api.marketInsight(selectedCode));
+      void historyQ.refetch();
     } catch (error) {
-      setAiError(error instanceof Error ? error.message : "AI yorumu şu anda alınamadı.");
+      if (error instanceof ApiError && error.status === 402) {
+        setAiPaywalled(true);
+        setAiError(describeApiError(error, "Analiz hakkın kullanılamıyor."));
+      } else {
+        setAiError(describeApiError(error, "Analiz şu anda alınamadı."));
+      }
     } finally {
       setAiLoading(false);
     }
+  }
+
+  async function askAI() {
+    if (!authed) {
+      nav("/login");
+      return;
+    }
+    if (!selectedCode) return;
+    setAiError("");
+    setAiPaywalled(false);
+    if (billingQ.isLoading || billingUnavailable || !paidWebAccess) {
+      await runAI();
+      return;
+    }
+    if (!hasCurrentAIConsent()) {
+      setConsentOpen(true);
+      return;
+    }
+    await runAI();
   }
 
   const loading = order.length === 0;
@@ -205,9 +270,9 @@ export function Markets() {
           <div className="ai-core"><Icon name="sparkles" size={24} /></div>
         </div>
         <div className="ai-copy">
-          <div className="ai-label"><Icon name="sparkles" size={14} /> TSC DERİN ARAŞTIRMA <span>{insight?.model || "GPT-5.6 SOL"}</span></div>
+          <div className="ai-label"><Icon name="sparkles" size={14} /> KAYNAKLI PİYASA ANALİZİ</div>
           <h2>{insight?.title || "Piyasayı tek fiyatla değil, bütün bağlantılarıyla araştır"}</h2>
-          <p>{insight?.summary || "Çok zaman dilimli TSC verisini; döviz, ons altın ve ilişkili piyasalarla karşılaştırır. Gerektiğinde güncel makroekonomik ve jeopolitik gelişmeleri web üzerinden kaynaklı biçimde araştırır."}</p>
+          <p>{insight?.summary || "Çok zaman dilimli piyasa verisini; döviz, ons altın ve ilişkili varlıklarla karşılaştırır. Gerektiğinde güncel makroekonomik ve jeopolitik gelişmeleri web üzerinden kaynaklı biçimde araştırır."}</p>
           {insight && (
             <>
               <div className="ai-result-meta">
@@ -219,7 +284,10 @@ export function Markets() {
               </div>}
             </>
           )}
-          {aiError && <div className="ai-error">{aiError}</div>}
+          {aiError && <div className={`ai-error${aiPaywalled ? " ai-paywall-message" : ""}`}>
+            <span>{aiError}</span>
+            {aiPaywalled && <button type="button" onClick={() => nav("/settings")}>Planımı ve kotamı gör</button>}
+          </div>}
         </div>
         <div className="ai-action">
           <label htmlFor="ai-asset">İncelenecek varlık</label>
@@ -229,13 +297,13 @@ export function Markets() {
           <button onClick={askAI} disabled={aiLoading || !selectedCode}>
             {aiLoading ? <><span className="spinner light" /> Kaynaklar araştırılıyor</> : <><Icon name="sparkles" size={16} /> {authed ? "Derin araştırmayı başlat" : "Giriş yap ve dene"}</>}
           </button>
-          <small>GPT-5.6 Sol · çok zaman dilimli veri · canlı web araştırması · kaynaklı sonuç</small>
+          <small>Çok zaman dilimli veri · güncel web araştırması · kaynaklı sonuç</small>
         </div>
       </section>
 
       {insight && <section className="dashboard-card ai-research-report">
         <div className="section-title-row">
-          <div><span className="card-kicker">Kaynaklı rapor</span><h2>{insight.code} için derin piyasa analizi</h2></div>
+          <div><span className="card-kicker">Kaynaklı piyasa raporu</span><h2>{insight.code} için derin piyasa analizi</h2></div>
           <span className={`stance-chip ${insight.stance}`}>{insight.stance_label} · güven {insight.confidence}</span>
         </div>
         <div className="ai-report-grid">
@@ -258,6 +326,47 @@ export function Markets() {
         </div>
         <div className="ai-report-risk">⚠ {insight.risk_note}<small>{insight.disclaimer}</small></div>
       </section>}
+
+      {authed && (
+        <section className="dashboard-card research-archive-card">
+          <div className="section-title-row">
+            <div>
+              <span className="card-kicker">Üyelik arşivi</span>
+              <h2>Geçmiş araştırmalar</h2>
+            </div>
+            <span className="research-archive-count">{historyQ.data?.items.length ?? 0} rapor</span>
+          </div>
+          {historyQ.isLoading && <div className="research-archive-state">Araştırma arşivi yükleniyor…</div>}
+          {historyQ.isError && <div className="research-archive-state error">Arşiv şu anda yüklenemiyor.</div>}
+          {!historyQ.isLoading && !historyQ.isError && !historyQ.data?.items.length && (
+            <div className="research-archive-state">Henüz arşivlenmiş bir araştırman yok.</div>
+          )}
+          {!!historyQ.data?.items.length && (
+            <div className="research-archive-list">
+              {historyQ.data.items.map((item) => (
+                <button
+                  type="button"
+                  key={item.id}
+                  onClick={() => {
+                    setAiCode(item.code);
+                    setInsight(item.payload);
+                    window.setTimeout(() => document.querySelector(".ai-research-report")?.scrollIntoView({ behavior: "smooth", block: "start" }), 0);
+                  }}
+                >
+                  <span>
+                    <strong>{item.payload.title || `${item.code} araştırması`}</strong>
+                    <small>{item.payload.summary}</small>
+                  </span>
+                  <span className="research-archive-date">
+                    {new Date(item.generated_at).toLocaleDateString("tr-TR", { day: "numeric", month: "short", year: "numeric" })}
+                    <Icon name="chevron-right" size={14} />
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </section>
+      )}
 
       <section className="dashboard-card instruments-card">
         <div className="instruments-toolbar">
@@ -295,6 +404,45 @@ export function Markets() {
           ))}
         </div>
       </section>
+
+      {consentOpen && (
+        <div className="ai-consent-backdrop" onMouseDown={() => setConsentOpen(false)}>
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="ai-consent-title"
+            className="ai-consent-dialog"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div className="ai-label"><Icon name="sparkles" size={14} /> AI VERİ PAYLAŞIM İZNİ</div>
+            <h2 id="ai-consent-title">Araştırmayı OpenAI ile oluşturmak ister misin?</h2>
+            <p>
+              Onay verirsen seçtiğin varlık kodu ile sunucunun hazırladığı güncel/geçmiş piyasa,
+              çapraz varlık ve makro bağlamı rapor üretmek üzere OpenAI'a gönderilir. Araştırma,
+              kamuya açık güncel web kaynaklarını da kullanabilir.
+            </p>
+            <p>
+              E-posta adresin, profilin, parolan, ödeme bilgilerin ve portföy pozisyonların bu
+              isteğe eklenmez. Rapor ile kota kaydı planındaki arşiv süresi boyunca hesabında
+              saklanabilir. İzni Ayarlar'dan geri çekerek gelecekteki paylaşımları durdurabilirsin.
+            </p>
+            <div className="ai-consent-actions">
+              <button type="button" className="secondary" onClick={() => setConsentOpen(false)}>Şimdi değil</button>
+              <button
+                type="button"
+                onClick={() => {
+                  grantAIConsent();
+                  setConsentOpen(false);
+                  void runAI();
+                }}
+              >
+                Onayla ve araştırmayı başlat
+              </button>
+            </div>
+            <small>Bu izin yalnız bu sürümde açıklanan veri paylaşımı için geçerlidir.</small>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

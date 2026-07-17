@@ -28,6 +28,10 @@ type portfolioRequest struct {
 	Name string `json:"name" binding:"required,max=80"`
 }
 
+type premiumPortfolioRequest struct {
+	RequestID string `json:"request_id" binding:"required,max=80"`
+}
+
 type portfolioTransactionRequest struct {
 	ClientID        string          `json:"client_id" binding:"required,max=80"`
 	Code            string          `json:"code"`
@@ -293,6 +297,43 @@ func (h *PortfolioHandler) Performance(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"count": len(series), "points": series})
 }
 
+func (h *PortfolioHandler) HealthCheck(c *gin.Context) {
+	userID, portfolioID, ok := portfolioIDs(c)
+	if !ok {
+		return
+	}
+	var request premiumPortfolioRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "request_id gerekli"})
+		return
+	}
+	result, err := h.service.HealthCheck(c.Request.Context(), userID, portfolioID, request.RequestID)
+	if err != nil {
+		writePortfolioError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+func (h *PortfolioHandler) Export(c *gin.Context) {
+	userID, portfolioID, ok := portfolioIDs(c)
+	if !ok {
+		return
+	}
+	var request premiumPortfolioRequest
+	if err := c.ShouldBindJSON(&request); err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "request_id gerekli"})
+		return
+	}
+	payload, filename, err := h.service.ExportCSV(c.Request.Context(), userID, portfolioID, request.RequestID)
+	if err != nil {
+		writePortfolioError(c, err)
+		return
+	}
+	c.Header("Content-Disposition", `attachment; filename="`+filename+`"`)
+	c.Data(http.StatusOK, "text/csv; charset=utf-8", payload)
+}
+
 func performanceStart(value string, to time.Time) time.Time {
 	switch value {
 	case "1m":
@@ -330,7 +371,10 @@ func portfolioIDs(c *gin.Context) (uuid.UUID, uuid.UUID, bool) {
 }
 
 func writePortfolioError(c *gin.Context, err error) {
+	var quota *service.QuotaError
 	switch {
+	case errors.As(err, &quota), errors.Is(err, service.ErrRequestConflict), errors.Is(err, service.ErrSubscriptionRequired):
+		writeSubscriptionError(c, err, quotaFeature(quota))
 	case errors.Is(err, repository.ErrPortfolioNotFound),
 		errors.Is(err, repository.ErrTransactionNotFound),
 		errors.Is(err, service.ErrPortfolioPositionNotFound):
@@ -345,4 +389,11 @@ func writePortfolioError(c *gin.Context, err error) {
 	default:
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "portföy işlemi başarısız"})
 	}
+}
+
+func quotaFeature(quota *service.QuotaError) string {
+	if quota == nil {
+		return ""
+	}
+	return quota.Feature
 }

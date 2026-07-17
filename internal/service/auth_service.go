@@ -188,6 +188,32 @@ func (s *AuthService) LinkedProviders(ctx context.Context, userID uuid.UUID) []s
 	return out
 }
 
+// HasAppleIdentity is the fail-closed policy lookup used before destructive
+// account deletion. Unlike LinkedProviders (display-only), repository errors
+// are returned so an outage can never silently skip Apple's token revocation.
+func (s *AuthService) HasAppleIdentity(ctx context.Context, userID uuid.UUID) (bool, error) {
+	user, err := s.users.ByID(ctx, userID)
+	if err != nil {
+		return false, err
+	}
+	if user.Provider == "apple" {
+		return true, nil
+	}
+	if s.identities == nil {
+		return false, nil
+	}
+	identities, err := s.identities.ListByUser(ctx, userID)
+	if err != nil {
+		return false, err
+	}
+	for _, identity := range identities {
+		if identity.Provider == "apple" {
+			return true, nil
+		}
+	}
+	return false, nil
+}
+
 func normalizeEmail(e string) string { return strings.ToLower(strings.TrimSpace(e)) }
 
 // IssueSession mints a fresh access+refresh pair for a known user. Used by

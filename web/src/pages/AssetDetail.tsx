@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/endpoints";
+import { describeApiError } from "../lib/api";
 import { useAuth } from "../auth/AuthContext";
 import { useMarkets } from "../store/markets";
 import { compact, dateShort, money, price as priceFmt, signed, tl, usd, usdCompact } from "../lib/format";
@@ -156,6 +157,15 @@ export function AssetDetail() {
           </button>
         </div>
       </div>
+
+      {toggleFav.isError && (
+        <Card style={{ padding: 12, color: "var(--down)", fontSize: 12 }}>
+          {describeApiError(toggleFav.error, "Favori durumu güncellenemedi.")}{" "}
+          {describeApiError(toggleFav.error, "").includes("Ayarlar") && (
+            <button type="button" onClick={() => nav("/settings")} style={{ padding: 0, border: 0, borderBottom: "1px solid currentColor", color: "inherit", background: "transparent", cursor: "pointer", fontWeight: 700 }}>Planı gör</button>
+          )}
+        </Card>
+      )}
 
       {/* Chart */}
       <Card style={{ padding: 14 }}>
@@ -385,7 +395,7 @@ function AlertModal({ code, price: cur, onClose }: { code: string; price: number
         />
         {create.isError && (
           <div style={{ color: "var(--down)", fontSize: 13, marginBottom: 10 }}>
-            {(create.error as Error).message}
+            {describeApiError(create.error, "Alarm oluşturulamadı.")}
           </div>
         )}
         <div style={{ display: "flex", gap: 10 }}>

@@ -2,16 +2,28 @@ package database
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"time"
 
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 	gormlogger "gorm.io/gorm/logger"
 
 	"github.com/tsc-forex/tsc_forex/internal/config"
 	"github.com/tsc-forex/tsc_forex/internal/models"
 )
+
+const currentSchemaVersion int64 = 2026071701
+
+type schemaState struct {
+	Component string    `gorm:"type:varchar(64);primaryKey"`
+	Version   int64     `gorm:"not null"`
+	UpdatedAt time.Time `gorm:"not null"`
+}
+
+func (schemaState) TableName() string { return "app_schema_state" }
 
 // New opens a GORM Postgres connection, configures the pool, and pings.
 func New(ctx context.Context, cfg config.DatabaseConfig) (*gorm.DB, error) {
@@ -67,6 +79,7 @@ func Migrate(db *gorm.DB) error {
 
 func migrateSchema(db *gorm.DB) error {
 	if err := db.AutoMigrate(
+		&schemaState{},
 		&models.GoldPrice{},
 		&models.User{},
 		&models.PriceTick{},
@@ -94,18 +107,68 @@ func migrateSchema(db *gorm.DB) error {
 		&models.Portfolio{},
 		&models.PortfolioPosition{},
 		&models.PortfolioTransaction{},
+		&models.SubscriptionEntitlement{},
+		&models.AppleTransaction{},
+		&models.FeatureUsage{},
+		&models.FreeResearchClaim{},
+		&models.MarketResearchArchive{},
+		&models.MarketResearchJob{},
+		&models.FeatureArtifact{},
+		&models.BillingCapacityLock{},
+		&models.AppAttestChallenge{},
+		&models.AppAttestKey{},
+		&models.DeviceCheckRedemption{},
+		&models.SubscriptionRestoreTombstone{},
 	); err != nil {
 		return err
 	}
 
 	if db.Dialector.Name() == "postgres" {
 		if err := enablePgVector(db); err != nil {
-			// Non-fatal: AI features are optional; log-and-continue is done by caller.
+			// The production image includes pgvector; failure means this schema
+			// migration did not complete and the readiness marker must not advance.
 			return fmt.Errorf("pgvector setup: %w", err)
 		}
 		if err := addProductionIndexes(db); err != nil {
 			return fmt.Errorf("index setup: %w", err)
 		}
+	}
+	return recordSchemaReady(db)
+}
+
+func recordSchemaReady(db *gorm.DB) error {
+	state := schemaState{Component: "core", Version: currentSchemaVersion, UpdatedAt: time.Now().UTC()}
+	if err := db.Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "component"}},
+		DoUpdates: clause.Assignments(map[string]any{
+			"version": currentSchemaVersion, "updated_at": state.UpdatedAt,
+		}),
+	}).Create(&state).Error; err != nil {
+		return fmt.Errorf("schema readiness marker: %w", err)
+	}
+	return nil
+}
+
+// CheckReady verifies both live database connectivity and the durable marker
+// written only after every required migration/index step succeeds. It is kept
+// deliberately cheap because Kubernetes calls it every few seconds.
+func CheckReady(ctx context.Context, db *gorm.DB) error {
+	if db == nil {
+		return errors.New("database unavailable")
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		return fmt.Errorf("database handle: %w", err)
+	}
+	if err := sqlDB.PingContext(ctx); err != nil {
+		return fmt.Errorf("database ping: %w", err)
+	}
+	var state schemaState
+	if err := db.WithContext(ctx).Where("component = ?", "core").Take(&state).Error; err != nil {
+		return fmt.Errorf("schema readiness state: %w", err)
+	}
+	if state.Version < currentSchemaVersion {
+		return fmt.Errorf("schema version %d is older than required %d", state.Version, currentSchemaVersion)
 	}
 	return nil
 }
@@ -162,6 +225,15 @@ func addProductionIndexes(db *gorm.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_portfolio_positions_portfolio ON portfolio_positions (portfolio_id, code)`,
 		`CREATE INDEX IF NOT EXISTS idx_portfolio_transactions_time ON portfolio_transactions (portfolio_id, occurred_at DESC, id)`,
 		`CREATE UNIQUE INDEX IF NOT EXISTS idx_portfolio_transactions_client ON portfolio_transactions (portfolio_id, client_id)`,
+
+		// Billing/quota hot paths: entitlement expiry checks, monthly usage and
+		// research retention cleanup all run on authenticated feature requests.
+		`CREATE INDEX IF NOT EXISTS idx_entitlements_status_expiry ON subscription_entitlements (status, expires_at)`,
+		`CREATE INDEX IF NOT EXISTS idx_apple_transactions_original_expiry ON apple_transactions (original_transaction_id, expires_at DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_feature_usage_period ON feature_usages (user_id, feature, period_key)`,
+		`CREATE INDEX IF NOT EXISTS idx_research_archive_expiry ON market_research_archives (expires_at)`,
+		`CREATE INDEX IF NOT EXISTS idx_research_jobs_provider ON market_research_jobs (provider_response_id) WHERE provider_response_id <> ''`,
+		`CREATE INDEX IF NOT EXISTS idx_app_attest_challenges_expiry ON app_attest_challenges (expires_at)`,
 	}
 	for _, s := range stmts {
 		if err := db.Exec(s).Error; err != nil {

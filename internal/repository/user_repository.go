@@ -2,11 +2,15 @@ package repository
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"github.com/tsc-forex/tsc_forex/internal/metrics"
 	"github.com/tsc-forex/tsc_forex/internal/models"
@@ -14,6 +18,7 @@ import (
 
 // ErrUserNotFound indicates no user matched the query.
 var ErrUserNotFound = errors.New("user not found")
+var ErrSubscriptionRecoveryRequired = errors.New("subscription recovery token required before account deletion")
 
 // UserRepository manages authentication users.
 type UserRepository interface {
@@ -25,7 +30,7 @@ type UserRepository interface {
 	// (watchlist, alerts, notifications, devices, identities, sessions,
 	// passkeys, gamification). Required for App Store / Play Store account
 	// deletion compliance.
-	DeleteUser(ctx context.Context, id uuid.UUID) error
+	DeleteUser(ctx context.Context, id uuid.UUID, subscriptionRecoveryToken ...string) error
 }
 
 type userRepository struct {
@@ -87,9 +92,79 @@ func (r *userRepository) ByID(ctx context.Context, id uuid.UUID) (models.User, e
 
 // DeleteUser removes the user and every row they own, in a single transaction
 // so a partial failure cannot leave orphaned personal data behind.
-func (r *userRepository) DeleteUser(ctx context.Context, id uuid.UUID) error {
+func (r *userRepository) DeleteUser(ctx context.Context, id uuid.UUID, subscriptionRecoveryToken ...string) error {
 	start := time.Now()
 	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		deletedAt := time.Now().UTC()
+		var identities []models.AuthIdentity
+		if err := tx.Where("user_id = ?", id).Find(&identities).Error; err != nil {
+			return err
+		}
+		var recoveryProvider, recoverySubjectHash string
+		for _, provider := range []string{"apple", "google"} {
+			for _, identity := range identities {
+				if identity.Provider == provider && strings.TrimSpace(identity.Subject) != "" {
+					recoveryProvider = provider
+					recoverySubjectHash = subscriptionRestoreHash(provider+"-subject", identity.Subject)
+					break
+				}
+			}
+			if recoveryProvider != "" {
+				break
+			}
+		}
+		recoveryToken := ""
+		if len(subscriptionRecoveryToken) > 0 {
+			recoveryToken = strings.TrimSpace(subscriptionRecoveryToken[0])
+		}
+		recoveryTokenHash := ""
+		if len(recoveryToken) >= 32 && len(recoveryToken) <= 256 {
+			recoveryTokenHash = subscriptionRestoreHash("recovery-token", recoveryToken)
+		}
+		var appleTransactions []models.AppleTransaction
+		if err := tx.Where("user_id = ?", id).Find(&appleTransactions).Error; err != nil {
+			return err
+		}
+		if len(appleTransactions) > 0 && recoverySubjectHash == "" && recoveryTokenHash == "" {
+			return ErrSubscriptionRecoveryRequired
+		}
+		if recoverySubjectHash != "" || recoveryTokenHash != "" {
+			for _, transaction := range appleTransactions {
+				if strings.TrimSpace(transaction.OriginalTransactionID) == "" || strings.TrimSpace(transaction.AppAccountToken) == "" {
+					continue
+				}
+				tombstone := models.SubscriptionRestoreTombstone{
+					OriginalTransactionID:       transaction.OriginalTransactionID,
+					PreviousAppAccountTokenHash: subscriptionRestoreHash("app-account-token", transaction.AppAccountToken),
+					IdentityProvider:            recoveryProvider,
+					ProviderSubjectHash:         recoverySubjectHash,
+					RecoveryTokenHash:           recoveryTokenHash,
+					DeletedAt:                   deletedAt,
+				}
+				if err := tx.Clauses(clause.OnConflict{
+					Columns: []clause.Column{{Name: "original_transaction_id"}},
+					DoUpdates: clause.Assignments(map[string]any{
+						"previous_app_account_token_hash": tombstone.PreviousAppAccountTokenHash,
+						"identity_provider":               tombstone.IdentityProvider, "provider_subject_hash": tombstone.ProviderSubjectHash,
+						"recovery_token_hash": tombstone.RecoveryTokenHash, "deleted_at": deletedAt,
+						"rebound_user_id": nil, "rebound_at": nil,
+					}),
+				}).Create(&tombstone).Error; err != nil {
+					return err
+				}
+			}
+		}
+		// Keep only purpose-limited, de-linked anti-fraud/transaction records.
+		// The device claim prevents repeated free-trial abuse after account
+		// recreation; the App Store transaction shell supports refunds/restores.
+		if err := tx.Model(&models.FreeResearchClaim{}).Where("user_id = ?", id).
+			Updates(map[string]any{"user_id": nil, "account_deleted_at": deletedAt}).Error; err != nil {
+			return err
+		}
+		if err := tx.Model(&models.AppleTransaction{}).Where("user_id = ?", id).
+			Updates(map[string]any{"user_id": nil, "app_account_token": ""}).Error; err != nil {
+			return err
+		}
 		portfolioIDs := tx.Model(&models.Portfolio{}).
 			Select("id").
 			Where("user_id = ?", id)
@@ -129,14 +204,31 @@ func (r *userRepository) DeleteUser(ctx context.Context, id uuid.UUID) error {
 			&models.StudyGroupMember{},
 			&models.PortfolioTransaction{},
 			&models.Portfolio{},
+			&models.SubscriptionEntitlement{},
+			&models.FeatureUsage{},
+			&models.MarketResearchArchive{},
+			&models.MarketResearchJob{},
+			&models.FeatureArtifact{},
+			&models.AppAttestChallenge{},
+			&models.DeviceCheckRedemption{},
+			&models.BillingCapacityLock{},
 		}
 		for _, m := range owned {
 			if err := tx.Where("user_id = ?", id).Delete(m).Error; err != nil {
 				return err
 			}
 		}
+		if err := tx.Model(&models.AppAttestKey{}).Where("registered_user_id = ?", id).
+			Update("registered_user_id", nil).Error; err != nil {
+			return err
+		}
 		return tx.Where("id = ?", id).Delete(&models.User{}).Error
 	})
 	r.observe(start, err)
 	return err
+}
+
+func subscriptionRestoreHash(purpose, value string) string {
+	digest := sha256.Sum256([]byte("tsc-subscription-restore-v1:" + purpose + ":" + strings.TrimSpace(value)))
+	return hex.EncodeToString(digest[:])
 }

@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -31,7 +32,19 @@ type UserHandler struct {
 	users   repository.UserRepository
 	store   storage.Store       // may be nil when object storage is disabled
 	gam     GamificationAwarder // may be nil when gamification is disabled
+	billing *service.SubscriptionService
+	auth    *service.AuthService
 	log     *zap.Logger
+}
+
+func (h *UserHandler) WithSubscriptions(billing *service.SubscriptionService) *UserHandler {
+	h.billing = billing
+	return h
+}
+
+func (h *UserHandler) WithAuthService(auth *service.AuthService) *UserHandler {
+	h.auth = auth
+	return h
 }
 
 // WithGamification wires the XP awarder so favorites/alerts grant engagement
@@ -58,13 +71,77 @@ func (h *UserHandler) DeleteAccount(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, ErrorResponse{Error: "unauthorized"})
 		return
 	}
-	if err := h.users.DeleteUser(c.Request.Context(), uid); err != nil {
+	var request struct {
+		AppleAuthorizationCode    string `json:"apple_authorization_code"`
+		SubscriptionRecoveryToken string `json:"subscription_recovery_token"`
+	}
+	if err := c.ShouldBindJSON(&request); err != nil && !errors.Is(err, io.EOF) {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "geçersiz hesap silme isteği"})
+		return
+	}
+	if h.auth != nil {
+		appleLinked, identityErr := h.auth.HasAppleIdentity(c.Request.Context(), uid)
+		if identityErr != nil {
+			h.log.Error("apple identity lookup failed", zap.String("user", uid.String()), zap.Error(identityErr))
+			c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Hesap bağlantıları güvenle doğrulanamadı; hesap silinmedi", "code": "identity_lookup_unavailable"})
+			return
+		}
+		if appleLinked {
+			if strings.TrimSpace(request.AppleAuthorizationCode) == "" {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Apple ile yeniden doğrulama gerekli", "code": "apple_reauthentication_required"})
+				return
+			}
+			if err := h.auth.RevokeAppleAuthorizationCode(c.Request.Context(), uid, request.AppleAuthorizationCode); err != nil {
+				h.log.Error("apple token revocation failed", zap.String("user", uid.String()), zap.Error(err))
+				switch {
+				case errors.Is(err, service.ErrAppleRevocationNotConfigured):
+					c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Apple hesap bağlantısı şu anda güvenle kaldırılamıyor", "code": "apple_revocation_unavailable"})
+				case errors.Is(err, service.ErrAppleAuthorizationMismatch):
+					c.JSON(http.StatusForbidden, gin.H{"error": "Apple doğrulaması bu hesapla eşleşmedi", "code": "apple_account_mismatch"})
+				default:
+					c.JSON(http.StatusBadGateway, gin.H{"error": "Apple hesap bağlantısı kaldırılamadı; hesap silinmedi", "code": "apple_revocation_failed"})
+				}
+				return
+			}
+		}
+	}
+	if err := h.users.DeleteUser(c.Request.Context(), uid, request.SubscriptionRecoveryToken); err != nil {
+		if errors.Is(err, repository.ErrSubscriptionRecoveryRequired) {
+			c.JSON(http.StatusConflict, gin.H{
+				"error": "Aktif App Store aboneliğini daha sonra güvenle geri yüklemek için iOS kurtarma anahtarı gerekli",
+				"code":  "subscription_recovery_token_required",
+			})
+			return
+		}
 		h.log.Error("account deletion failed", zap.String("user", uid.String()), zap.Error(err))
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "delete failed"})
 		return
 	}
 	h.log.Info("account deleted", zap.String("user", uid.String()))
 	c.JSON(http.StatusOK, gin.H{"deleted": true})
+}
+
+func (h *UserHandler) AccountDeletionReadiness(c *gin.Context) {
+	uid, ok := currentUserID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, ErrorResponse{Error: "unauthorized"})
+		return
+	}
+	if h.auth == nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"ready": false, "code": "account_deletion_unavailable"})
+		return
+	}
+	appleLinked, err := h.auth.HasAppleIdentity(c.Request.Context(), uid)
+	if err != nil {
+		c.JSON(http.StatusServiceUnavailable, gin.H{"ready": false, "code": "identity_lookup_unavailable"})
+		return
+	}
+	revocationReady := h.auth.AppleRevocationReady()
+	ready := !appleLinked || revocationReady
+	c.JSON(http.StatusOK, gin.H{
+		"ready": ready, "apple_linked": appleLinked,
+		"apple_revocation_ready": revocationReady,
+	})
 }
 
 // NewUserHandler builds the user handler.
@@ -288,7 +365,12 @@ func (h *UserHandler) AddWatchlist(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "unknown instrument code"})
 		return
 	}
-	if _, err := h.watch.Add(c.Request.Context(), uid, req.Code); err != nil {
+	if h.billing != nil {
+		if _, _, err := h.billing.AddWatchlistWithinCapacity(c.Request.Context(), uid, req.Code); err != nil {
+			writeSubscriptionError(c, err, service.FeatureWatchlist)
+			return
+		}
+	} else if _, err := h.watch.Add(c.Request.Context(), uid, req.Code); err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "add failed"})
 		return
 	}
@@ -364,7 +446,17 @@ func (h *UserHandler) CreateAlert(c *gin.Context) {
 		Threshold: req.Threshold,
 		Active:    true,
 	}
-	if err := h.alerts.Create(c.Request.Context(), alert); err != nil {
+	var createErr error
+	if h.billing != nil {
+		createErr = h.billing.CreateAlertWithinCapacity(c.Request.Context(), alert)
+	} else {
+		createErr = h.alerts.Create(c.Request.Context(), alert)
+	}
+	if createErr != nil {
+		if h.billing != nil {
+			writeSubscriptionError(c, createErr, service.FeatureActiveAlerts)
+			return
+		}
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "create failed"})
 		return
 	}

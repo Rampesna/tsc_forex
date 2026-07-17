@@ -1,245 +1,577 @@
 # TSC Forex — App Store Yayın Dokümanı (iOS)
 
-Bu doküman, TSC Forex iOS uygulamasını App Store'a **ilk seferde, red yemeden** göndermek için gereken tüm metinleri, gizlilik beyanlarını, izin açıklamalarını, App Review notlarını ve adım adım kontrol listesini içerir.
+Bu doküman TSC Forex'in güncel iOS sürümünü App Store Connect'e hazırlamak, otomatik yenilenen abonelikleri göndermek ve App Review risklerini en aza indirmek için tek kaynak olarak kullanılmalıdır. Durum bilgileri 17 Temmuz 2026 tarihindeki App Store Connect kaydını yansıtır; Apple ekranında sonradan yapılan her değişiklik bu dokümana da işlenmelidir.
 
-> Amaç: App Store Review Guidelines'a tam uyum. Aşağıdaki metinler App Store Connect alanlarına birebir kopyalanabilir.
+> **Garanti sınırı:** Hiç kimse “sıfır red” garantisi veremez; nihai karar Apple App Review'a aittir ve kurallar değişebilir. Aşağıdaki **Gönderim Kapıları** tamamlanmadan build göndermeyin. Bir kapı doğrulanmadıysa dokümandaki “hazır” ifadesi kanıt sayılmaz.
+
+## 0. Mevcut yayın durumu — submit edilmeye hazır değil
+
+### App Store Connect'te tamamlananlar
+
+- Uygulama kaydı: Apple ID `6790740484`, bundle ID `talhacan.tscforex`, sürüm `1.0`.
+- App adı `TSC Forex`, subtitle `Piyasa ve Portföy Analizi`, primary category `Finance`, secondary category `News` olarak kaydedildi.
+- Yaş derecelendirme formu mevcut kapsam için dolduruldu; hesaplanan global sonuç `4+`.
+- Subscription group `premium_monthly` oluşturuldu; Group ID `22243838`.
+- Dört aylık ürün Türkiye'de kullanılabilir, fiyatları ve Türkçe localization'ları kayıtlı; durumları `Prepare for Submission`.
+- App Store Server Notifications V2 için production ve sandbox URL'leri aynı HTTPS endpoint'e kaydedildi.
+- Billing Grace Period bilinçli olarak **OFF** bırakıldı; backend ve test matrisi grace-period entitlement davranışıyla doğrulanmadan açılmamalıdır.
+- Signed `1.0 (3)` archive Apple'a yüklendi, processing tamamlandı, `Ready to Submit` oldu ve sürüm `1.0` için seçildi.
+- Uygulama indirme fiyatı Türkiye baz ülke olarak `₺0,00` ayarlandı; ilk sürüm yalnız Türkiye storefront'unda, iPhone/iPad için public dağıtıma açıldı. Apple Silicon Mac, Apple Vision Pro ve Apple School Manager indirimi kapalı bırakıldı.
+- App Review iletişim alanları ve production login'i doğrulanmış ayrı demo hesabı App Store Connect'in güvenli alanlarında kaydedildi.
+- Exact `1284×2778` iPhone 6.5-inch ve `2064×2752` iPad 13-inch screenshot'ları sürüme yüklendi.
+- App Privacy URL'si ile 10 veri türünün amaç/linked/tracking cevapları kaydedildi; son Publish attestation'ı Account Holder'a bırakıldı.
+
+### Gönderimi engelleyen açık işler
+
+| Engel | Güncel durum | Kapatma koşulu / yetki sahibi |
+|---|---|---|
+| Paid Apps Agreement | **New** | Account Holder yasal kişi bilgisini doğrular; ücretli uygulamalar sözleşmesini imzalar; vergi ve banka bilgilerini onaylatır. Bu işlem geliştirici tarafından varsayılamaz veya onun adına tasdik edilemez. |
+| Content Rights | Cevap verilmedi; piyasa/haber/veri yeniden dağıtım hakları kanıtlanmadı | Hak sahibi/provider sözleşmeleri doğrulanır ve Account Holder doğru beyanı seçer. |
+| App Privacy | 10 veri türü kod ve archive manifestiyle eşleştirilerek yapılandırıldı; son `Publish Your App Privacy Responses?` attestation'ı bekliyor | Account Holder beyanın doğruluğunu/yasal uygunluğunu onaylayıp `Publish` seçer. |
+| Review erişimi | İletişim alanları ve production login'i HTTP 200 ile doğrulanmış ayrı demo credentials kaydedildi | Account Holder review süresince iletişim bilgilerini erişilebilir tutar; demo hesabı silmez/değiştirmez. |
+| Copyright / yasal sahip | Tam ve yayınlanabilir yasal unvan doğrulanmadı | Account Holder gerçek hak sahibini/yılı girer; placeholder veya marka varsayımı kullanılmaz. |
+| Screenshots / iPad | Apple'ın minimum alanları için bir exact iPhone ve bir exact iPad görseli yüklendi; kapsamlı 8 görsellik ürün seti ve kritik iPad akış QA'sı tamamlanmadı | Bölüm 8'deki önerilen set üretilir; iPad'de login dışındaki kritik akışlar test edilir. |
+| Signed build | `1.0 (3)` upload edildi, `Ready to Submit` oldu ve sürüme seçildi | Yeni kod değişirse build numarası artırılarak tekrar archive/upload edilir. |
+| Apple anahtarları | DeviceCheck ve Sign in with Apple revoke `.p8`/Key ID production secret'ları doğrulanmadı | İki Apple key seti repository dışında CI/Kubernetes secret olarak yüklenir ve gerçek cihaz/sandbox testleri geçer. |
+| StoreKit uçtan uca test | Purchase/restore/plan değişimi/refund/revoke matrisi tamamlanmadı | Bölüm 9.1'deki matris kanıtlarıyla PASS olur. |
+
+Bu engeller varken `Add for Review` veya `Submit for Review` seçilmez. Özellikle sözleşme, vergi, banka, içerik hakkı ve yasal kimlik cevapları Account Holder'ın hukuki beyanıdır.
 
 ---
 
-## 1. Uygulama Kimliği
+## 1. Uygulama kimliği ve sınıflandırma
 
 | Alan | Değer |
-|------|-------|
-| Uygulama adı (App Name) | **TSC Forex** |
-| Alt başlık (Subtitle, max 30 karakter) | Canlı altın, döviz & kripto |
+|---|---|
+| App Name | **TSC Forex** |
+| Apple ID | `6790740484` |
+| Subtitle (en fazla 30 karakter) | **Piyasa ve Portföy Analizi** |
+| Primary Language | Turkish |
+| SKU | `tscforex` |
 | Bundle ID | `talhacan.tscforex` |
-| Kategori (Primary) | Finance (Finans) |
-| Kategori (Secondary) | Utilities |
-| Yaş sınırı (Age Rating) | 4+ (kumar/alkol vb. içerik yok) |
-| Fiyat | Ücretsiz |
-| Uygulama içi satın alma | Yok |
+| Primary Category | Finance |
+| Secondary Category | News |
+| Fiyat | Ücretsiz indirme; uygulama içi otomatik yenilenen abonelikler var |
+| İlk storefront | Yalnız Türkiye; public iPhone/iPad dağıtımı |
+| IAP | 4 aylık auto-renewable subscription |
+| Reklam / tracking | Yok |
+| Copyright | **ÇÖZÜLMEDİ:** hak sahibinin doğrulanmış tam yasal unvanı Account Holder tarafından girilecek |
 
-> **Görünen ad** cihaz ana ekranında `TSC Forex` olarak çıkar (`INFOPLIST_KEY_CFBundleDisplayName = "TSC Forex"`).
+İlk yayın için yalnız hukuki/operasyonel destek verilebilen storefront'ları seçin; Türkçe ürün, destek ve yasal metinlerle Türkiye başlangıcı en düşük riskli seçenektir. Başka ülkelere açılmadan önce fiyat, vergi, tüketici hukuku, privacy ve metadata localization'ı tamamlayın.
+
+### Content Rights / piyasa verisi
+
+App Store Connect'teki Content Rights cevabı şu anda çözülmemiştir. BIST, kripto, döviz, haber/web kaynakları ve diğer piyasa verilerini uygulamada yeniden göstermeye izin veren sağlayıcı sözleşmesi/lisansı elinizde değilse gönderim yapmayın. “Kamuya açık URL'den erişilebiliyor” yeniden dağıtım hakkı anlamına gelmez. Reviewer isterse veri sağlayıcı adları ve kullanım hakkı kanıtı sunulabilmelidir; marka/logolar için de aynı kontrol geçerlidir. Kanıt görülmeden `Yes` veya `No` seçeneği tahmin edilmez.
+
+### Yaş derecelendirmesi
+
+App Store Connect'in yaş derecelendirme formu mevcut kapsamla tamamlandı ve global sonuç `4+` hesaplandı. Bu, ürünün çocuklara yönelik olduğu anlamına gelmez. Derin araştırma, finansal içerik veya kullanıcı etkileşimi değişirse sorular yeniden cevaplanmalı; sonucu elle sabit tutmaya çalışılmamalıdır.
 
 ---
 
-## 2. Mağaza Metinleri (App Store Connect → App Information / Version)
+## 2. App Store metadata — kopyalanabilir metinler
 
-### 2.1 Promosyon Metni (Promotional Text — max 170 karakter, sürüm olmadan güncellenebilir)
-```
-Altın, döviz, kripto ve BIST hisselerini canlı takip et. Fiyat alarmları kur, favorilerini izle, portföyünü yönet. Bilgilendirme amaçlıdır, yatırım tavsiyesi değildir.
+### 2.1 Promotional Text — en fazla 170 karakter
+
+```text
+Piyasaları tek ekranda izle; alarm, portföy ve kaynaklı derin araştırmayla bağlamı gör. Bilgilendirme amaçlıdır, yatırım tavsiyesi değildir.
 ```
 
-### 2.2 Açıklama (Description)
-```
-TSC Forex; altın, döviz, kripto para ve BIST hisse senetlerini tek uygulamada canlı olarak takip etmenizi sağlar. Fiyatlar saniyeler içinde güncellenir; interaktif grafiklerle piyasayı yakından izlersiniz.
+### 2.2 Description
 
-TSC Forex bir bilgilendirme uygulamasıdır. Alım-satım, aracılık veya yatırım danışmanlığı hizmeti sunmaz. Görüntülenen fiyatlar yalnızca bilgi amaçlıdır ve yatırım tavsiyesi niteliği taşımaz.
+```text
+TSC Forex; altın, döviz, kripto para ve BIST hisselerini tek uygulamada takip etmenizi sağlar. Canlı fiyatları ve geçmiş grafikleri inceleyebilir, fiyat alarmı kurabilir, favorilerinizi ve portföylerinizi yönetebilirsiniz.
+
+DERİN ARAŞTIRMA
+Seçtiğiniz varlık için çoklu zaman dilimleri, ilgili piyasalar, makroekonomik gelişmeler ve jeopolitik riskleri kapsayan kaynaklı araştırma oluşturun. Üretilen çıktılar olasılıksaldır; yanlış, eksik veya güncelliğini yitirmiş olabilir.
 
 ÖNE ÇIKAN ÖZELLİKLER
+• Altın, döviz, kripto ve BIST için canlı fiyatlar
+• Yakınlaştırılabilir geçmiş fiyat grafikleri
+• Favoriler ve fiyat alarmları
+• Çoklu portföy, kâr/zarar ve portföy sağlık görünümü
+• Kaynak bağlantılı derin piyasa araştırması ve araştırma arşivi
+• Günlük plan, öğrenme, XP, seviye, rozet ve süreç odaklı paper-trade özellikleri
+• Bildirim merkezi ve ana ekran widget'ı
+• E-posta, Apple, Google ve Passkey ile güvenli giriş
 
-• Canlı fiyatlar: Gram/çeyrek/yarım/tam altın, ons ve ayarlı altınlar; onlarca döviz kuru; popüler kripto paralar ve BIST hisseleri.
-• Gerçek zamanlı akış: WebSocket ile fiyatlar anında ekranınıza düşer.
-• İnteraktif grafikler: Yakınlaştırılabilir, kaydırılabilir, dokunmatik imleçli mum ve çizgi grafikleri.
-• Fiyat alarmları: Seçtiğiniz seviyenin üstüne/altına gelince anlık bildirim.
-• Favoriler: İzlemek istediğiniz varlıkları kişisel listenizde sıralayın.
-• Portföy: Varlıklarınızı ekleyin, güncel değer ve kâr/zararı görün.
-• Günün kazananları: En çok yükselen varlıkları hızlıca keşfedin.
-• Ödüller: Günlük giriş serileri, XP, seviyeler ve rozetlerle takipte kalın.
-• Güvenli giriş: E-posta, Google, Apple ile Giriş ve Passkey desteği.
+ABONELİKLER
+Başlangıç, Pro, Uzman ve Elite aylık abonelikleri; farklı derin araştırma, alarm, izleme listesi, portföy, sağlık analizi, dışa aktarma ve arşiv kotaları sunar. Kesin yerel fiyat ve dönem satın alma ekranında gösterilir. Abonelik, mevcut dönemin bitiminden en az 24 saat önce iptal edilmezse otomatik yenilenir. Satın almaları uygulama içinden geri yükleyebilir, aboneliğinizi Apple hesabınızdan yönetebilirsiniz.
 
-GİZLİLİK
-Yalnızca hizmeti sunmak için gereken asgari veriyi toplarız. Reklam kimliği kullanmaz, verilerinizi satmayız. Hesabınızı ve tüm verilerinizi uygulama içinden tek dokunuşla kalıcı olarak silebilirsiniz.
+TSC Forex alım-satım, aracılık veya yatırım danışmanlığı hizmeti sunmaz. Fiyatlar ve AI çıktıları yalnızca bilgilendirme/eğitim amaçlıdır ve yatırım tavsiyesi değildir. Veriler üçüncü taraf kaynaklardan gelir; gecikme veya hata içerebilir.
 
-Fiyat verileri üçüncü taraf kaynaklardan alınır; gecikme veya hata içerebilir.
+Kullanım Şartları: https://tsc.talhacan.com/terms
+Gizlilik Politikası: https://tsc.talhacan.com/privacy
 ```
 
-### 2.3 Anahtar Kelimeler (Keywords — max 100 karakter, virgülle)
-```
-altın,döviz,kur,dolar,euro,kripto,bitcoin,borsa,bist,hisse,gram altın,fiyat,alarm,portföy,finans
+### 2.3 Keywords — en fazla 100 karakter
+
+```text
+altın,döviz,dolar,euro,kripto,bitcoin,borsa,bist,hisse,alarm,portföy,finans,AI,kur
 ```
 
-### 2.4 Yenilikler (What's New — bu sürüm)
-```
-• İlk sürüm: canlı altın, döviz, kripto ve BIST hisse fiyatları
-• İnteraktif grafikler ve fiyat alarmları
-• Favoriler, portföy ve günlük ödül sistemi
-• Google, Apple ve Passkey ile güvenli giriş
+### 2.4 What's New
+
+```text
+• Kaynak bağlantılı, çoklu zaman dilimli Derin Araştırma
+• Çoklu portföy ve portföy sağlık analizi
+• Gelişmiş öğrenme, görev, sezon ve paper-trade deneyimi
+• Aylık Başlangıç, Pro, Uzman ve Elite planları
+• Satın alma geri yükleme ve abonelik yönetimi
+• Performans ve güvenlik iyileştirmeleri
 ```
 
-### 2.5 Destek & Pazarlama URL'leri
-| Alan | URL |
-|------|-----|
+### 2.5 URL'ler ve iletişim
+
+| Metadata/yayın alanı | Değer |
+|---|---|
 | Support URL | `https://tsc.talhacan.com/support` |
 | Marketing URL | `https://tsc.talhacan.com` |
 | Privacy Policy URL | `https://tsc.talhacan.com/privacy` |
+| Description + paywall Terms of Use | `https://tsc.talhacan.com/terms` |
+| Support email | `destek@talhacan.com` |
+| Privacy email | `gizlilik@talhacan.com` |
+
+Tüm URL'ler giriş yapmadan, geçerli TLS sertifikasıyla, mobil Safari'de ve App Review ağı üzerinden erişilebilir olmalıdır. Boş sayfa, SPA 404'ü, bot engeli, ülke/IP engeli veya giriş duvarı red riskidir.
+
+App Store Connect → App Information → License Agreement alanında Apple Standard EULA kullanılabilir; ayrıca yukarıdaki Kullanım Şartları bağlantısı description ve paywall'da kalmalıdır. Özel EULA girilecekse hukukçu onayı ve bütün storefront'larla uyum gerekir.
 
 ---
 
-## 3. App Privacy (Gizlilik Beslenme Etiketi) — App Store Connect → App Privacy
+## 3. Auto-renewable subscriptions — kesin App Store Connect kurulumu
 
-App Store Connect'te "App Privacy" bölümünde aşağıdaki gibi doldurun. **Doğru doldurmak red sebebini ortadan kaldırır.**
+### 3.1 Subscription group
 
-### Genel
-- **Do you or your third-party partners collect data from this app?** → **Yes**
-- Reklam/izleme (Tracking) yapıyor musunuz? → **No** (IDFA kullanmıyoruz, `AppTrackingTransparency` gerektirmez).
-
-### Toplanan Veri Türleri ve Amaçları
-
-| Veri Türü (Apple kategorisi) | Toplanıyor mu | Kullanım Amacı | Kimliğe bağlı mı? | Takip için mi? |
-|------------------------------|:-------------:|----------------|:-----------------:|:--------------:|
-| Contact Info → **Email Address** | Evet | App Functionality (hesap, giriş) | Evet | Hayır |
-| User Content → **Photos** (profil fotoğrafı, isteğe bağlı) | Evet | App Functionality | Evet | Hayır |
-| User Content → **Other User Content** (favori/alarm/portföy) | Evet | App Functionality | Evet | Hayır |
-| Identifiers → **User ID** | Evet | App Functionality | Evet | Hayır |
-| Identifiers → **Device ID** (push jetonu) | Evet | App Functionality (bildirim) | Evet | Hayır |
-| Diagnostics → **Crash / Performance / Other Diagnostic** | Evet | App Functionality, güvenlik | Hayır | Hayır |
-
-> **Name** ve **Photos** yalnızca kullanıcı profilini doldurursa toplanır (isteğe bağlı).
-> **Location, Contacts, Health, Financials (banka/kart), Browsing History, Search History, Purchases, Sensitive Info, Advertising Data → HİÇBİRİ toplanmaz.**
-
-### Data Not Linked / Linked
-- E-posta, User ID, Device ID, User Content → **Linked to identity** (hesaba bağlı).
-- Diagnostics → **Not linked to identity**.
-
----
-
-## 4. İzin Açıklama Metinleri (Info.plist Usage Strings)
-
-Aşağıdaki metinler `Info.plist` içinde tanımlıdır; App Review bunları izin isteminde görür.
-
-| Anahtar | Metin | Neden gerekli |
-|---------|-------|---------------|
-| `NSLocalNetworkUsageDescription` | "TSC Forex canlı fiyatları yerel ağdaki sunucudan alır." | Yalnızca DEBUG derlemesinde aynı Wi-Fi'daki geliştirme sunucusuna bağlanmak için. Yayın sürümü HTTPS uzak sunucu kullanır. |
-| Push Notifications (izin istemi) | Sistem metni | Fiyat alarmı ve önemli uyarıları bildirim olarak göndermek. Kullanıcı reddedebilir; uygulama çalışmaya devam eder. |
-
-> **Kamera / Fotoğraf kütüphanesi:** Profil fotoğrafı `PHPickerViewController` (kullanıcı tarafından seçilen tek görsel) ile alınır; bu API **izin dizesi gerektirmez**. Kamera erişimi istenmez.
-> **Konum, mikrofon, kişiler, takvim:** Kullanılmaz, izin istenmez.
-
-### Push Notification Kullanımı (Review notu)
-- `aps-environment` entitlement mevcuttur.
-- Bildirimler yalnızca kullanıcının **kendi kurduğu fiyat alarmları** ve hesap/güvenlik uyarıları için gönderilir. Pazarlama/spam bildirimi gönderilmez (Guideline 4.5.4 uyumu).
-
----
-
-## 5. Sign in with Apple Zorunluluğu (Guideline 4.8) — KRİTİK
-
-Uygulama Google ile Giriş sunduğu için, Apple **Sign in with Apple** (veya eşdeğer gizlilik dostu bir seçenek) sunmayı zorunlu kılar.
-
-✅ Uygulamada **Apple ile Giriş** mevcut ve çalışır durumda.
-✅ Ayrıca e-posta ile giriş de sunulur (üçüncü taraf gerektirmeyen seçenek).
-
-> Bu zorunluluk karşılanmazsa **kesin red** gelir. Build göndermeden önce Apple ile Giriş butonunun görünür ve çalışır olduğunu doğrulayın.
-
----
-
-## 6. Hesap Silme (Guideline 5.1.1(v)) — KRİTİK
-
-Hesap oluşturmayı destekleyen uygulamalar, **uygulama içinden hesap silme** sunmak zorundadır.
-
-✅ **Ayarlar → Tehlikeli Bölge → "Hesabı Sil"** akışı mevcuttur.
-✅ Silme, sunucuda tüm kullanıcı verisini (izleme listesi, alarmlar, bildirimler, cihaz jetonları, kimlik eşlemeleri, passkey'ler, oyunlaştırma) **tek işlemde kalıcı olarak** kaldırır (`DELETE /me/account`).
-✅ Silme sonrası kullanıcı otomatik çıkış yapar.
-
-App Review notuna şu cümleyi ekleyin (bkz. Bölüm 9).
-
----
-
-## 7. Demo Hesap (App Review Bilgileri)
-
-App Review'ın tüm özellikleri test edebilmesi için hazır bir hesap verin:
+Tek grup oluşturun:
 
 | Alan | Değer |
-|------|-------|
-| Sign-in required? | **Yes** (bazı özellikler için) |
-| Demo e-posta | `review@tscforex.app` (yayından önce oluşturun) |
-| Demo parola | `Review!2026` (yayından önce belirleyin) |
+|---|---|
+| Reference Name | `premium_monthly` |
+| Group ID | `22243838` |
+| Display Name (TR) | `TSC Forex Premium Planları` |
+| App Store Connect durumu | Oluşturuldu |
 
-> Not: Piyasa listesi ve varlık detayları **giriş yapılmadan** da görüntülenebilir. Favoriler, portföy, alarmlar ve ödüller için giriş gerekir. Demo hesabı bu özellikleri test etmek içindir.
+Kullanıcı aynı grupta aynı anda yalnızca bir aktif ürüne sahip olur. Dört ürün aynı grup içinde, sundukları erişim miktarına göre farklı seviyelerde sıralanmalıdır.
 
----
+### 3.2 Oluşturulan ürünler, Apple kimlikleri ve seviye sırası
 
-## 8. Export Compliance (İhracat Uyumu)
-- Uygulama yalnızca **standart HTTPS/TLS** kullanır; özel/patentli şifreleme içermez.
-- App Store Connect'te sorulduğunda: **"Uses encryption? Yes"** → **"Only standard encryption (HTTPS/TLS)"** → İstisna kapsamındadır.
-- `Info.plist`'e `ITSAppUsesNonExemptEncryption = NO` eklenmesi önerilir (böylece her sürümde soru tekrar sorulmaz).
+| Level | UI adı | Product ID | Apple ID | Süre | Türkiye fiyatı | Durum |
+|---:|---|---|---:|---|---:|---|
+| 1 — en yüksek | Elite | `talhacan.tscforex.elite.monthly` | `6791924071` | 1 ay | ₺999,99 | Prepare for Submission |
+| 2 | Uzman | `talhacan.tscforex.expert.monthly` | `6791924799` | 1 ay | ₺499,99 | Prepare for Submission |
+| 3 | Pro | `talhacan.tscforex.pro.monthly` | `6791925225` | 1 ay | ₺249,99 | Prepare for Submission |
+| 4 — en düşük | Başlangıç | `talhacan.tscforex.plus.monthly` | `6791925442` | 1 ay | ₺149,99 | Prepare for Submission |
 
----
+Bu tablo hedef değil, App Store Connect'te kayıtlı gerçek price point ve ürün kimliklerini gösterir. Dört ürün şu anda yalnız Türkiye için available ve Türkçe localization'a sahiptir. `Prepare for Submission`, ürünün review'a gönderildiği veya satın alınabilir olduğu anlamına gelmez.
 
-## 9. App Review Notları (Review Notes'a birebir yapıştırın)
+- Fiyatları uygulamada sabit metin olarak göstermeyin; `StoreKit.Product.displayPrice` ve StoreKit dönem bilgisini kullanın.
+- Paywall'da App Store Connect tablosundaki sayılar dahi sabit metin olarak kullanılmaz; her zaman StoreKit'in döndürdüğü yerelleştirilmiş fiyat esas alınır.
+- Dört ürün için Availability, Tax Category ve fiyat kaydedildi. Review Information screenshot'ları hâlâ yüklenmelidir. Türkiye dışına açılmadan önce o storefront'lara uygun localization ve fiyatlandırma tamamlanmalıdır.
+- Introductory offer/free trial yapılandırılmadıkça metadata veya paywall'da “ücretsiz deneme” demeyin.
+- İlk sürümle birlikte dört IAP'yi de aynı app version'a **Submit for Review** ile iliştirin. Sadece kodda görünmeleri yetmez.
 
+App Store Connect'te kayıtlı Türkçe localization metinleri:
+
+| Product ID | Display Name | Description |
+|---|---|---|
+| `talhacan.tscforex.plus.monthly` | Başlangıç Aylık | 15 AI araştırması ve temel premium kotalar |
+| `talhacan.tscforex.pro.monthly` | Pro Aylık | 25 AI araştırması ve gelişmiş premium kotalar |
+| `talhacan.tscforex.expert.monthly` | Uzman Aylık | 50 AI araştırması ve yüksek premium kotalar |
+| `talhacan.tscforex.elite.monthly` | Elite Aylık | 100 AI araştırması ve maksimum premium kota |
+
+### 3.3 Plan hakları ve sunucu sözleşmesi
+
+| Hak | Free | Başlangıç | Pro | Uzman | Elite |
+|---|---:|---:|---:|---:|---:|
+| Derin araştırma | Kullanıcı **ve** cihaz başına ömür boyu 1 | 15/ay | 25/ay | 50/ay | 100/ay |
+| Aktif alarm | 2 | 10 | 25 | 60 | 150 |
+| İzleme listesi | 10 | 30 | 75 | 200 | 500 |
+| Portföy | 1 | 2 | 5 | 15 | 50 |
+| Portföy sağlık raporu | 0 | 2/ay | 5/ay | 15/ay | 40/ay |
+| Dışa aktarma | 0 | 2/ay | 10/ay | 30/ay | 100/ay |
+| Derin araştırma arşivi | Yok | 30 gün | 90 gün | 180 gün | 365 gün |
+
+Kotalar hem paywall'da hem backend catalog'unda aynı olmalıdır. Plan adı tek başına yeterli değildir; kullanıcı satın almadan önce hangi değerin/kotanın açıldığını görmelidir. Aylık kullanım kotaları abonelik dönemiyle yenilenir; kullanılmayan haklar devretmez.
+
+### 3.4 Paywall zorunlu içerik ve davranış
+
+Satın alma düğmesinden **önce ve aynı ekranda** okunabilir biçimde gösterin:
+
+- Seçili planın adı, tüm esas kotaları ve bir aylık erişim verdiği.
+- StoreKit'ten gelen yerelleştirilmiş fiyat ve “aylık / otomatik yenilenir” ifadesi.
+- Ödemenin Apple hesabından tahsil edileceği.
+- Mevcut dönemin bitiminden en az 24 saat önce iptal edilmezse otomatik yenileneceği ve yenileme ücretinin Apple hesabından alınacağı.
+- `Kullanım Şartları` ve `Gizlilik Politikası` için tıklanabilir bağlantılar.
+- Görünür `Satın Almaları Geri Yükle` düğmesi.
+- Görünür `Aboneliği Yönet` düğmesi veya Apple yönetim ekranı bağlantısı.
+- Satın alma sürerken ilerleme; pending, cancelled, failed, verified ve unverified durumları için dürüst mesaj.
+- Satın alma tamamlanmadan premium özellikleri açmama; yalnız doğrulanmış StoreKit 2 JWS/transaction + backend entitlement sonucuna güvenme.
+
+Satın alma düğmesi yanıltıcı hiyerarşi, önceden seçilmiş trial, sahte geri sayım, kapatılamayan paywall veya satın almaya zorlayan sistem izni kullanmamalıdır. Ücretsiz piyasa görüntüleme ve mevcut ücretsiz haklar paywall tarafından kilitlenmemelidir.
+
+### 3.5 Restore / manage / cancel / refund
+
+- Restore: kullanıcı etkileşimiyle `AppStore.sync()`/StoreKit restore; uygulama açılışında otomatik credential prompt'u yok.
+- Manage: StoreKit manage-subscriptions sheet veya `https://apps.apple.com/account/subscriptions`.
+- Cancel: TSC Forex doğrudan Apple aboneliğini iptal etmez; Apple yönetim ekranına götürür.
+- Refund: StoreKit refund request sheet veya `https://reportaproblem.apple.com/`; uygunluğa Apple karar verir.
+- Plan değişimi: aynı group ranking nedeniyle yükseltme/düşürme/crossgrade Apple kurallarına göre gerçekleşir. Backend notification ve transaction state ile aynı sonuca ulaşmalıdır.
+
+### 3.6 App Store Server Notifications V2
+
+App Store Connect → App Information → App Store Server Notifications alanlarında:
+
+| Ortam | URL |
+|---|---|
+| Production Server URL | `https://tsc-api.talhacan.com/api/v1/billing/apple/notifications` |
+| Sandbox Server URL | `https://tsc-api.talhacan.com/api/v1/billing/apple/notifications` |
+| Version | Version 2 |
+
+Production deployment:
+
+```text
+APP_BILLING_ENABLED=true
+APP_BILLING_BUNDLE_ID=talhacan.tscforex
+APP_BILLING_ALLOW_SANDBOX=true
 ```
-TSC Forex, altın/döviz/kripto/BIST hisse fiyatlarını gösteren bir bilgilendirme uygulamasıdır. Alım-satım, aracılık veya yatırım danışmanlığı YAPMAZ; uygulama içi satın alma yoktur.
 
-GİRİŞ: Piyasa listesi ve varlık detayları giriş olmadan görüntülenebilir. Favoriler, portföy, alarmlar ve ödüller için giriş gerekir.
-Demo hesap: review@tscforex.app / Review!2026
+`ALLOW_SANDBOX=true`, TestFlight ve App Review sandbox işlemleri için gereklidir. Sunucu signed JWS zincirini/imzasını doğrulamalı; bundle ID ve environment bilgisini kaydetmeli; aynı notification'ı idempotent işlemeli; yalnız istemciden gelen plan adına güvenmemelidir. Apple API key gerekmemesi, imza/bundle/environment doğrulamasını atlama izni değildir. Notification URL `200` dönmeli ve tekrar teslimlerde yan etki üretmemelidir.
 
-GİRİŞ YÖNTEMLERİ: E-posta, Sign in with Apple, Google ve Passkey desteklenir (Guideline 4.8 uyumu için Sign in with Apple mevcuttur).
+17 Temmuz 2026 durumu: production ve sandbox alanlarının ikisinde de yukarıdaki URL, Version 2 olarak yapılandırıldı. Dashboard'a URL yazılması tek başına doğrulama değildir; Apple'ın test bildirimi, imza doğrulama ve tekrar teslim idempotency testi ayrıca PASS olmalıdır.
 
-HESAP SİLME (5.1.1(v)): Ayarlar > "Hesabı Sil" ile kullanıcı hesabını ve tüm verilerini kalıcı olarak silebilir.
+### 3.7 Billing Grace Period
 
-BİLDİRİMLER: Yalnızca kullanıcının kendi kurduğu fiyat alarmları ve güvenlik uyarıları için gönderilir; pazarlama bildirimi yoktur.
+App Store Connect'te Billing Grace Period **OFF** durumundadır ve ilk gönderimde böyle kalacaktır. Backend, StoreKit UI ve Server Notifications akışı grace-period sırasında yetkiyi koruma davranışıyla uçtan uca doğrulanmadan bu ayar açılmaz. Bu nedenle ilk release test matrisinde `GRACE_PERIOD` zorunlu bir production entitlement senaryosu değildir; `DID_FAIL_TO_RENEW`/billing retry ve süre sonu davranışı yine test edilmelidir. Daha sonra grace period açılırsa privacy/terms/paywall değişmese bile entitlement testleri ve bu doküman yeniden güncellenir.
 
-VERİ KAYNAĞI: Fiyatlar üçüncü taraf piyasa veri sağlayıcılarından alınır ve yalnızca bilgi amaçlıdır.
+---
+
+## 4. App Privacy / Privacy Nutrition Label
+
+**Güncel durum:** Privacy Policy URL `https://tsc.talhacan.com/privacy` kaydedildi. Aşağıdaki 10 veri türü için amaçlar, kimliğe bağlantı ve tracking cevapları App Store Connect'te dolduruldu; Product Page Preview yalnız **Data Linked to You** gösteriyor ve tracking yok. Son `Publish` ekranındaki doğruluk/yasal uygunluk attestation'ı Account Holder tarafından verilmelidir.
+
+### Genel cevaplar
+
+- **Do you or your third-party partners collect data from this app?** → **Yes**
+- **Data Used to Track You / Tracking** → **No**
+- ATT istemi → Gerekmez; IDFA/reklam/ölçüm için çapraz uygulama-site takibi yoktur.
+
+App Store Connect'te yalnız mevcut uygulama ve backend'in gerçekten topladığı verileri işaretleyin. Aşağıdaki tablo güncel ürün sözleşmesidir; kod/altyapı farklıysa formu koda göre düzeltmeden göndermeyin.
+
+| Apple veri türü | Örnek | Amaç | Kimliğe bağlı | Tracking |
+|---|---|---|:---:|:---:|
+| Contact Info → Name | İsteğe bağlı görünen ad | App Functionality; Product Personalization | Evet | Hayır |
+| Contact Info → Email Address | Hesap/giriş | App Functionality | Evet | Hayır |
+| User Content → Photos or Videos | İsteğe bağlı profil fotoğrafı | App Functionality | Evet | Hayır |
+| User Content → Other User Content | Alarm, favori, paper-trade tez/retrospektif, çalışma grubu takma adı | App Functionality; Product Personalization | Evet | Hayır |
+| Financial Info → Other Financial Info | Kullanıcının girdiği varlık, miktar, maliyet ve portföy verisi | App Functionality | Evet | Hayır |
+| Purchases → Purchase History | Ürün/plan, subscription/transaction state | App Functionality (entitlement, security/fraud prevention) | Evet | Hayır |
+| Identifiers → User ID | TSC kullanıcı kimliği, sosyal giriş eşlemesi | App Functionality | Evet | Hayır |
+| Identifiers → Device ID | APNs token ve tek yönlü cihaz claim hash'i | App Functionality (bildirim, security/fraud prevention) | Evet/takma adlı | Hayır |
+| Usage Data → Product Interaction | Kota tüketimi, seçilen derin araştırma ve özellik kullanımı | App Functionality, Analytics* | Evet | Hayır |
+| Diagnostics → Other Diagnostic Data | Hata, performans ve erişim günlükleri | App Functionality (service/security) | Evet (bazı güvenlik kayıtları hesap/istekle ilişkilendirilebilir) | Hayır |
+
+`Analytics` yalnız veri gerçekten ürün analitiği için kullanılıyorsa işaretlenmelidir; yalnız quota/fonksiyon yürütme ise App Functionality seçin. Apple ödeme kartı/banka bilgisi geliştiriciye ulaşmıyorsa `Payment Info` geliştirici tarafından collected değildir. OpenAI'a seçilen varlık/piyasa bağlamı aktarımı uygulamanın/üçüncü taraf partnerin veri uygulamasına dahildir; kullanım ve saklama gerçeği App Privacy formuyla uyumlu olmalıdır.
+
+### Derin araştırma veri paylaşımı — Guideline 5.1.2(i)
+
+- İlk derin araştırmadan önce ayrı, anlaşılır ve zorlamasız açık izin alın.
+- Ekran; üçüncü tarafın **OpenAI** olduğunu, gönderilen veriyi (seçilen varlık + ilgili piyasa bağlamı + hesaptan tek yönlü türetilen takma adlı güvenlik kimliği), amacı ve privacy/consent yönetimini belirtmelidir.
+- Reddetmek piyasa izleme gibi AI dışı işlevleri engellememelidir.
+- İzin Ayarlar'dan geri çekilebilmeli; geri çekme yeni AI aktarımlarını durdurmalıdır.
+- AI isteğine e-posta, ad, avatar, parola, ödeme bilgisi veya kişisel portföy pozisyonu eklenmemelidir.
+- AI raporunda kaynak bağlantıları ve “yatırım tavsiyesi değildir / hata içerebilir” uyarısı görünür kalmalıdır.
+
+### Cihaz claim hash'i ve saklama
+
+Ücretsiz derin araştırma hakkı kullanıcı **ve cihaz** başına ömür boyu birdir. Uygulamanın Keychain'de ürettiği rastgele, uygulamaya özel kurulum kimliği sunucuda tek yönlü özetlenir; donanım kimliği veya IDFA kullanılmaz. Takma adlı claim hash'i yalnız tekrar ücretsiz hak suistimalini önlemek için kullanılır; reklam, profil çıkarma veya cihazlar arası pazarlama takibi için kullanılmaz. Hesap silmede kullanıcı bağlantısı hemen kaldırılır. Hash, ücretsiz kullanım programı devam ettiği sürece amaçla sınırlı tutulur ve program sona erdiğinde silinir. Bu tek saklama açıklaması Privacy Policy, hesap silme ekranı ve Review Notes'ta aynı anlamla kullanılmalıdır.
+
+### Üçüncü taraflar
+
+Privacy Policy en az şunları açıklar: OpenAI (kullanıcı başlattığında AI), Apple StoreKit/App Store (ödeme ve abonelik), APNs/FCM (bildirim), Google/Apple (seçilirse giriş), barındırma/obje depolama ve piyasa veri sağlayıcıları. Her partner aynı/eşdeğer veri koruması sunacak sözleşmesel ve teknik tedbirlere tabi olmalıdır.
+
+---
+
+## 5. İzinler, entitlements ve Privacy Manifest
+
+| Yetki/izin | Gerekçe | Gönderim kapısı |
+|---|---|---|
+| Push Notifications / `aps-environment` | Kullanıcının fiyat alarmı, hesap/güvenlik ve açıkça seçtiği öğrenme bildirimi | Sistem izni bağlam içinde istenir; ret halinde uygulama çalışır |
+| Sign in with Apple | Google/social login sunulduğu için eşdeğer gizlilik dostu giriş | Capability, Service ID/key ve production callback doğrulanır |
+| App Attest + DeviceCheck | Bir kullanıcı ve bir fiziksel cihaz için ömür boyu tek ücretsiz derin araştırma; sahte istemci ve yeniden kurulum suistimalini azaltma | App ID capability, Debug/Release environment, sunucu doğrulaması ve DeviceCheck key uçtan uca test edilir |
+| Associated Domains | Passkey ve gerekiyorsa universal link | AASA production domain'de doğrulanır |
+| App Groups | Widget ile gerekli veri paylaşımı | App ve widget entitlement aynı group olmalı |
+| Photo picker | Kullanıcının seçtiği tek avatar | PHPicker kullanılıyorsa geniş Photos usage string gerekmez |
+| Local Network | Yalnız geliştirme sunucusu | **Release build'de kaldırılmalı**; production kullanıcıya local network prompt'u çıkmamalı |
+
+- Kamera, mikrofon, konum, kişiler, takvim ve tracking kullanılmıyorsa usage string/capability eklemeyin.
+- Bildirimler yalnız kullanıcının alarmı, hesap/güvenlik ve açık seçtiği öğrenme bildirimleri içindir; pazarlama bildirimi açık opt-in olmadan gönderilmez.
+- `PrivacyInfo.xcprivacy` hem app hem kullanılan üçüncü taraf SDK'lar/required-reason API'ler bakımından Archive üzerinde doğrulanmalıdır. Organizer → Generate Privacy Report çıktısını App Privacy formuyla karşılaştırın.
+- App Attest entitlement'ı Debug'da `development`, TestFlight/App Store Release'te `production` olmalıdır. Apple Developer portalındaki `talhacan.tscforex` App ID için App Attest/DeviceCheck etkin değilse signed archive göndermeyin.
+- Ücretsiz derin araştırma hakkı yalnız meşru iOS uygulamasından gelen App Attest assertion'ı ve Apple DeviceCheck cihaz durumu doğrulandıktan sonra açılır. Web/localStorage kimliği fiziksel cihaz kanıtı sayılmaz; web yalnız doğrulanmış ücretli entitlement'ı kullanır.
+- Release archive'da ATS arbitrary load olmamalı; bütün production istekleri HTTPS olmalı.
+- `ITSAppUsesNonExemptEncryption = NO` yalnız gerçekten standart/istisna kapsamındaki HTTPS/TLS kullanılıyorsa archive Info.plist'inde bulunmalıdır.
+
+### 5.1 Apple `.p8` anahtarları ve production secret kapısı
+
+İki ayrı sunucu anahtarı gerekir; ikisi de Git'e, Xcode target'ına, uygulama bundle'ına, log'a veya dokümana konmaz:
+
+| Amaç | Apple bilgisi | GitHub Actions secret | Pod içi yol / config |
+|---|---|---|---|
+| DeviceCheck sunucu doğrulaması | DeviceCheck yetkili Key ID + `.p8` | `APP_BILLING_DEVICE_CHECK_KEY_ID`, `APP_BILLING_DEVICE_CHECK_PRIVATE_KEY` | `APP_BILLING_DEVICE_CHECK_PRIVATE_KEY_PATH=/etc/apple-auth/devicecheck.p8` |
+| Sign in with Apple token revoke | Sign in with Apple yetkili Key ID + `.p8` | `APP_OAUTH_APPLE_KEY_ID`, `APP_OAUTH_APPLE_PRIVATE_KEY` | `APP_OAUTH_APPLE_PRIVATE_KEY_PATH=/etc/apple-auth/sign-in-with-apple.p8` |
+
+Deployment'ta ayrıca `APP_BILLING_DEVICE_CHECK_ENABLED=true`, `APP_OAUTH_APPLE_REVOKE_CLIENT_ID=talhacan.tscforex` ve doğru Apple Team ID doğrulanır. CI secret değerleri satır sonları korunmuş gerçek `.p8` içeriği olmalıdır; base64/kaçış yöntemi workflow'un beklediği formatla aynı değilse pod içindeki dosya geçersiz olur. Secret adını görmek PASS sayılmaz: rollout sonrası pod'da dosyanın varlığı/izinleri, KID eşleşmesi, gerçek DeviceCheck çağrısı ve Apple token revoke yanıtı hassas değeri yazdırmadan doğrulanır.
+
+---
+
+## 6. Giriş, hesap ve hesap silme
+
+### Sign in with Apple — Guideline 4.8
+
+Google ile giriş sunulduğu için Apple ile Giriş görünür, eşdeğer ve çalışır olmalıdır. E-posta ve Passkey ayrıca sunulabilir. Apple private relay e-postaları desteklenmeli; hesap bağlama aynı kişiye istemeden ikinci hesap açmamalıdır.
+
+### Hesap silme — Guideline 5.1.1(v)
+
+- Ayarlar → Tehlikeli Bölge → `Hesabı Sil` kolay bulunur olmalıdır.
+- Silme bütün hesabı kaldırır; yalnız deaktivasyon yeterli değildir.
+- Son onay ekranı silinecek verileri, geri alınamazlığı ve Bölüm 4'te tek kez tanımlanan cihaz claim saklama istisnasını açıklar.
+- **Aktif auto-renewable subscription varsa:** “Hesabı silmek aboneliği iptal etmez; Apple faturalandırması sürebilir” uyarısı ve `Aboneliği Yönet` bağlantısı silmeden önce gösterilir. Kullanıcı isterse yine hemen silebilir.
+- Silme; favori, alarm, portföy, derin araştırma arşivi, bildirim, cihaz push tokenı, avatar, kimlik/passkey eşlemeleri ve oyunlaştırma verilerini kaldırır.
+- Sign in with Apple hesabı için Apple token revoke işlemi uygulanmalıdır.
+
+#### Sign in with Apple revoke sunucu kurulumu — gönderimden önce zorunlu
+
+Hesap silme endpoint'i Apple ile bağlı hesaplarda iOS'un yeniden doğrulama sırasında aldığı tek kullanımlık authorization code'u Apple token endpoint'inde değiştirir, dönen refresh token'ı revoke eder ve ancak bundan sonra hesabı siler. Private key uygulamaya veya Git'e konmaz.
+
+1. Apple Developer → Certificates, Identifiers & Profiles → Keys altında **Sign in with Apple** yetkili bir key oluşturun; Key ID'yi güvenli envantere kaydedin ve `.p8` dosyasını yalnız bir kez indirin.
+2. Gerçek Key ID'yi GitHub Actions `APP_OAUTH_APPLE_KEY_ID`, `.p8` içeriğini `APP_OAUTH_APPLE_PRIVATE_KEY` secret'ına kaydedin. Secret değerlerini terminal çıktısında veya CI log'unda göstermeyin.
+3. Production config'te `APP_OAUTH_APPLE_REVOKE_CLIENT_ID=talhacan.tscforex` ve `APP_OAUTH_APPLE_PRIVATE_KEY_PATH=/etc/apple-auth/sign-in-with-apple.p8` değerlerini; pod secret'ında KID ve dosya mount'unu doğrulayın.
+4. Pod rollout sonrası Apple ile giriş yapılmış sandbox hesapta Ayarlar → Hesabı Sil akışını çalıştırın. Yeniden Apple doğrulaması, başarılı revoke, hesap silme ve sonraki girişin yeni hesap akışı olduğu doğrulanmadan gönderim yapmayın.
+5. Key ID veya dosya yoksa backend silmeyi güvenli biçimde reddeder; bu durum submit blocker'dır. Apple-linked kullanıcıyı sadece yerel olarak çıkış yaptırmak hesap silme sayılmaz.
+
+---
+
+## 7. Demo hesap ve App Review erişimi
+
+| Alan | Değer |
+|---|---|
+| Sign-in required? | Yes; uygulama açılışta giriş ister |
+| App Review iletişim adı/e-postası/telefonu | App Store Connect'te dolduruldu; gönderim öncesi Account Holder güncelliğini doğrulayacak |
+| Demo kullanıcı adı/e-posta | `appreview2-6790740484@talhacan.com`; production login testi HTTP 200 ile doğrulandı |
+| Demo parola | Yalnız App Store Connect → App Review Information parola alanına girildi; repository/doküman/Review Notes'a yazılmadı |
+
+Demo kullanıcı production backend'de gerçekten giriş yapabilmeli ve şunlara sahip olmalıdır: örnek favoriler, en az bir alarm, örnek portföy, bildirim/oyunlaştırma geçmişi. Reviewer'a gerçek kişisel veri göstermeyin. App Store Connect'teki username/password alanları doldurulduktan sonra farklı bir ağdan aynı bilgilerle smoke test yapın. IAP'ler App Review sandbox ortamında gerçek ücret oluşturmadan satın alınabilir; reviewer'ın izleyebileceği paywall yolu Review Notes'ta bulunmalıdır. “Premium hazır” özel server override'ı varsa production kullanıcıya açık olmamalı ve Review Notes'ta dürüstçe açıklanmalıdır.
+
+### App Review Notes — kopyalanabilir
+
+```text
+TSC Forex; altın, döviz, kripto ve BIST fiyatlarını, kullanıcı alarmlarını/portföylerini ve kaynaklı derin piyasa araştırmasını sunan bilgilendirme uygulamasıdır. Alım-satım, aracılık veya kişiselleştirilmiş yatırım danışmanlığı sunmaz. Fiyatlar ve araştırma sonuçları hata/gecikme içerebilir; yatırım tavsiyesi değildir.
+
+GİRİŞ: Uygulama açılışta giriş ister. App Review için çalışan, kişisel veri içermeyen demo kullanıcı adı ve parola App Store Connect > App Review Information alanlarında ayrı olarak sağlanmıştır.
+
+GİRİŞ YÖNTEMLERİ: E-posta, Sign in with Apple, Google ve Passkey. Sign in with Apple görünür ve Google ile eşdeğerdir.
+
+ABONELİK TESTİ: Ayarlar > Planları İncele yolunu izleyin. Bu yol ücretsiz araştırma hakkının durumundan bağımsız olarak satın alma ekranını açar. Başlangıç, Pro, Uzman ve Elite aylık ürünleri aynı premium_monthly subscription group içindedir. Satın Almaları Geri Yükle ve Aboneliği Apple'da Yönet seçenekleri satın alma/Ayarlar ekranındadır. App Review sandbox işlemleri backend tarafından kabul edilir ve signed JWS doğrulanır.
+
+DERİN ARAŞTIRMA AÇIK İZNİ: İlk araştırma isteğinden önce OpenAI'a seçilen varlık, piyasa bağlamı ve hesaptan tek yönlü türetilen takma adlı güvenlik kimliğinin gönderileceğini açıklayan izin gösterilir. Reddetmek araştırma dışı özellikleri etkilemez; izin Ayarlar'dan geri çekilebilir. OpenAI'a ad, e-posta, profil fotoğrafı, ödeme veya kişisel portföy verisi gönderilmez.
+
+HESAP SİLME: Ayarlar > Tehlikeli Bölge > Hesabı Sil. Aktif Apple aboneliğinin hesap silmeyle iptal olmayacağı ve Apple üzerinden yönetilmesi gerektiği silme öncesi gösterilir. Hesap bağlantısı derhal kaldırılır. Tek yönlü, takma adlı cihaz claim hash'i yalnız kullanıcı+cihaz başına tek ücretsiz derin araştırma hakkının tekrar suistimalini önlemek için ücretsiz kullanım programı boyunca tutulur; tracking/reklam amacıyla kullanılmaz.
+
+BİLDİRİMLER: Kullanıcının kurduğu fiyat alarmları, hesap/güvenlik ve seçtiği öğrenme bildirimleri içindir. Bildirim izni zorunlu değildir.
+
+APP STORE SERVER NOTIFICATIONS V2:
+https://tsc-api.talhacan.com/api/v1/billing/apple/notifications
+Production ve Sandbox aynı HTTPS endpoint'i kullanır; environment ve bundle ID signed JWS üzerinden doğrulanır.
 ```
 
 ---
 
-## 10. Ekran Görüntüleri & Önizleme (Screenshots)
+## 8. Ekran görüntüleri ve App Review görselleri
 
-App Store zorunlu boyutlar (en az bu iki set):
+### Kabul edilen iPhone boyutları — mevcut sürüm sayfası
 
-| Cihaz | Çözünürlük (px) | Zorunlu |
-|-------|-----------------|:-------:|
-| iPhone 6.9" (15/16 Pro Max) | 1320 × 2868 | Evet |
-| iPhone 6.5" (11 Pro Max/XS Max) | 1242 × 2688 | Önerilir |
-| iPad 13" (varsa iPad desteği) | 2064 × 2752 | iPad destekliyorsa |
+App Store Connect'in bu uygulama için gösterdiği 6.5-inch portrait yükleme alanı yalnız şu exact ölçüleri kabul ediyor:
 
-Önerilen 5–8 ekran ve başlıkları:
-1. **Piyasalar** — "Altın, döviz, kripto ve hisseler tek ekranda"
-2. **Varlık detayı + grafik** — "İnteraktif grafiklerle piyasayı yakından izle"
-3. **Fiyat alarmı** — "Hedef fiyatına gelince haber ver"
-4. **Favoriler** — "İzleme listeni kendine göre sırala"
-5. **Portföy** — "Varlıklarını ve kâr/zararını takip et"
-6. **Ödüller** — "Günlük seriler, XP ve rozetler"
-7. **Giriş** — "Apple, Google veya Passkey ile güvenli giriş"
+- **1284 × 2778 px**, veya
+- **1242 × 2688 px**.
 
-> Ekran görüntülerinde gerçek fiyat gösterirken "Bilgilendirme amaçlıdır" ibaresini korumak red riskini azaltır.
+Bağlı iPhone 14 Pro Max'in native **1290 × 2796 px** görüntüsü bu alana doğrudan yüklenebilir ölçü değildir. 1290×2796 dosyayı kabul edilecekmiş gibi belgelemeyin ve görüntüyü orantısız esnetmeyin. Tercih edilen yöntem, kabul edilen çözünürlüğü üreten uygun Xcode Simulator/device sınıfında aynı production build ekranlarını yeniden çekmektir. Marketing canvas hazırlanırsa gerçek UI oranı korunmalı, cihaz çerçevesi/başlık App Store metadata'sını yanıltmamalı ve son dosya exact ölçüyle doğrulanmalıdır.
 
----
+Uygulama kaydı şu anda universal iPhone + iPad desteği içeriyor. Bu nedenle iPad üzerinde bütün kritik akışlar ayrıca QA edilmeli ve App Store Connect'in sürüm sayfasında istediği iPad screenshot seti yüklenmelidir. iPad desteğini kaldırma kararı yalnız ürün ve teknik kapsam kararı olarak, signed archive'daki device family ile tutarlı biçimde alınabilir; eksik screenshot'ı saklamak için son anda metadata hilesi yapılmaz.
 
-## 11. Yayın Öncesi Kontrol Listesi (Checklist)
+17 Temmuz 2026'da `docs/store/screenshots/ios/iphone-6.5/01-markets.png` exact **1284×2778** ve `docs/store/screenshots/ios/ipad-13/01-markets.png` exact **2064×2752** olarak doğrulanıp App Store Connect'e yüklendi. iPhone görseli Piyasalar ekranını, iPad görseli gerçek açılış/giriş ekranını gösterir. Bunlar Apple'ın minimum screenshot alanını kapatır; aşağıdaki kapsamlı pazarlama seti ve iPad'in login sonrası kritik akış QA'sı hâlâ önerilir.
 
-- [ ] Uygulama görünen adı: **TSC Forex** (doğrulandı)
-- [ ] Sürüm/Build numarası artırıldı (ör. 1.0.0 / build 1)
-- [ ] Apple ile Giriş görünür ve çalışıyor (Guideline 4.8)
-- [ ] Hesap silme akışı çalışıyor (Guideline 5.1.1(v))
-- [ ] App Privacy formu Bölüm 3'e göre dolduruldu
-- [ ] Privacy Policy URL erişilebilir: https://tsc.talhacan.com/privacy
-- [ ] Support URL erişilebilir: https://tsc.talhacan.com/support
-- [ ] Demo hesap oluşturuldu ve Review Notes'a yazıldı
-- [ ] Export compliance: yalnızca standart şifreleme
-- [ ] Push bildirimleri yalnızca kullanıcı alarmları için (4.5.4)
-- [ ] Yatırım tavsiyesi olmadığına dair uyarı açıklamada mevcut
-- [ ] ATS: `NSAllowsArbitraryLoads` kaldırıldı, yalnızca `NSAllowsLocalNetworking` (DEBUG) var
-- [ ] Ekran görüntüleri 6.9" için yüklendi
-- [ ] `ITSAppUsesNonExemptEncryption = NO` eklendi (isteğe bağlı ama önerilir)
+### Önerilen 8 screenshot sırası
+
+1. **Piyasalar** — “Altın, döviz, kripto ve hisseler tek ekranda”
+2. **Varlık detayı** — “Çoklu zaman dilimleriyle fiyat hareketini incele”
+3. **Derin Araştırma** — “Makro, jeopolitik ve çapraz piyasa bağlamı; kaynaklarıyla”
+4. **Alarm** — “Hedef seviyene gelince haber al”
+5. **Portföy** — “Dağılımını ve kâr/zararını takip et”
+6. **Öğrenme/ödüller** — “Plan, ders, seri ve süreç odaklı gelişim”
+7. **Paywall** — “İhtiyacına uygun aylık planı seç”
+8. **Güvenli hesap** — “Apple, Google veya Passkey ile giriş”
+
+### Screenshot QA
+
+- Signed Release adayı ve production API verisi kullan; debug URL, log, test etiketi, kişisel e-posta/avatar, bildirim banner'ı ve cihaz geliştirici göstergesi görünmesin.
+- Status bar tutarlı; saat/batarya temiz; hiçbir modal kesilmemiş olsun.
+- Derin Araştırma ekranında en az bir kaynak, zaman ufku ve “yatırım tavsiyesi değildir” uyarısı görünsün; garanti veya “kesin yükselir” dili olmasın.
+- Paywall screenshot'ında StoreKit'ten gelen gerçek yerel fiyat, süre, auto-renew açıklaması, restore, Terms ve Privacy bağlantıları görünür olsun.
+- Apple ürün/logolarını yanıltıcı biçimde kullanma; “Apple tarafından önerilir” izlenimi verme.
+- Grafik/fiyatlar gerçekçi ve güncel olmalı; yanıltıcı kazanç vaadi, getiri yüzdesi garantisi veya sahte testimonial kullanma.
+- Her screenshot'ın piksel boyutunu `sips -g pixelWidth -g pixelHeight DOSYA` ile doğrula; iPhone çıktısı tam olarak `1284×2778` veya `1242×2688` değilse yükleme.
+
+IAP Review Information için ayrıca satın alma düğmesi, ürün adı/fiyatı, restore ve legal bağlantıları gösteren temiz bir paywall screenshot'ı dört ürünün her birine yüklenmelidir.
 
 ---
 
-## 12. Sık Görülen Red Sebepleri ve Bizim Durumumuz
+## 9. Build, archive ve export compliance
 
-| Red Sebebi | Kılavuz | Durumumuz |
-|-----------|---------|-----------|
-| Google girişi var ama Apple girişi yok | 4.8 | ✅ Apple ile Giriş mevcut |
-| Hesap silme yok | 5.1.1(v) | ✅ Uygulama içi silme mevcut |
-| Gizlilik politikası yok/erişilemiyor | 5.1.1 | ✅ Public URL mevcut |
-| App Privacy formu eksik/yanlış | 5.1.2 | ✅ Bölüm 3 rehberi |
-| Spam/pazarlama push | 4.5.4 | ✅ Sadece kullanıcı alarmları |
-| Finansal tavsiye izlenimi | 3.1.1 / genel | ✅ "Yatırım tavsiyesi değildir" ibaresi |
-| Eksik demo hesap | 2.1 | ✅ Demo hesap sağlanır |
-| Anlamsız yerel ağ izni | 5.1.1 | ✅ Yalnızca DEBUG, açıklaması net |
+- Marketing Version ve Build numarası daha önce yüklenen bütün build'lerden yüksek olmalı.
+- Release configuration, production API URL, production Sign in with Apple/Google config ve distribution profile kullanmalı.
+- Archive Organizer validation sıfır error ile tamamlanmalı; widget extension imzası/capability'leri eşleşmeli.
+- Uygulama yalnız standart HTTPS/TLS ve Apple platform şifrelemesi kullanıyorsa `ITSAppUsesNonExemptEncryption = NO` eklenebilir. Özel/non-exempt kriptografi eklenirse cevabı yeniden değerlendirin.
+- StoreKit Configuration file yerel test içindir; production ürünleri App Store Connect'ten gelir. Release build sahte ürün catalog'una bağlı kalmamalıdır.
+
+### 9.1 StoreKit sandbox / TestFlight test matrisi
+
+Her satır tarih, build numarası, test Apple hesabı, transaction/original transaction ID'nin maskelenmiş son kısmı, backend request/notification correlation ID ve ekran kaydıyla kanıtlanır. Secret/JWS/parola kanıta konmaz.
+
+| Senaryo | Ortam | Beklenen sonuç |
+|---|---|---|
+| Dört ürünün fetch edilmesi | StoreKit sandbox + TestFlight | Exact dört Product ID gelir; ad, bir aylık dönem ve `displayPrice` App Store Connect ile eşleşir. |
+| İlk satın alma — her tier | Sandbox, ayrı temiz hesaplar | Verified transaction backend'e sync olur; doğru plan/kotalar bir kez açılır; restart sonrası korunur. |
+| Kullanıcı iptali | Sandbox purchase sheet | Premium açılmaz; hata gibi gösterilmez; tekrar satın alma mümkün kalır. |
+| Pending / Ask to Buy | Sandbox | İşlem beklemede görünür; onay gelmeden premium açılmaz; daha sonra verified update tek kez uygulanır. |
+| Unverified/bozuk JWS | Backend test + sandbox negatif test | Entitlement verilmez, güvenli hata gösterilir ve hassas veri loglanmaz. |
+| Restore — aynı cihazda reinstall | Sandbox | `AppStore.sync()` sonrası doğru entitlement döner; çift kota/transaction oluşmaz. |
+| Restore — ikinci cihaz | Sandbox | Aynı Apple satın alımı ve uygulama hesabı doğru entitlement'a bağlanır; appAccountToken politikası tutarlı çalışır. |
+| Plus → Pro/Uzman/Elite upgrade | Sandbox | Apple'ın effective-date davranışı izlenir; backend en yüksek geçerli entitlement'ı verir; notification tekrarında çift uygulamaz. |
+| Elite/Uzman → düşük tier downgrade | Sandbox | Düşük plan Apple'ın bildirdiği yenileme tarihinde başlar; erken kota düşürülmez. |
+| Aylık yenileme | Sandbox hızlandırılmış renewal | Kota dönemi bir kez yenilenir; unused hak devretmez; duplicate notification ikinci reset üretmez. |
+| Billing retry / `DID_FAIL_TO_RENEW` | Sandbox | Geçerli signed entitlement süresine göre erişim belirlenir; Grace Period OFF olduğu için belgelenmemiş ek grace verilmez. |
+| Expiration | Sandbox | Süre bittikten ve geçerli entitlement kalmadıktan sonra plan free'ye döner; paywall/restore çalışır. |
+| Refund / revoke | Sandbox + notification V2 | Yetki kaldırılır, kota durumu tutarlı kalır; `REFUND`/`REVOKE` tekrar teslimi idempotenttir. |
+| Out-of-order / duplicate notification | Backend fixture + Apple test notification | Signed date/transaction state'e göre deterministik sonuç; eski event yeni entitlement'ı geri almaz. |
+| Satın alma sırasında ağ kesilmesi/restart | Sandbox | Kalıcı operation ID ve transaction listener ile sonuç toparlanır; çift satın alma/kota yoktur. |
+| Ücretsiz hak suistimal testi | Gerçek cihaz + production-benzeri backend | Aynı kullanıcı veya aynı DeviceCheck cihazı yeni hesap/reinstall ile ikinci ücretsiz derin araştırma alamaz. |
+| Hesap silme + aktif Apple aboneliği | Sandbox | Manage uyarısı gösterilir; hesap silinir fakat Apple aboneliği gizlice iptal edilmiş sayılmaz; sonraki restore/recovery politikası deterministiktir. |
+
+Grace Period **OFF** olduğu için grace-period erişim satırı ilk release için N/A'dır. Ayar açılacaksa `GRACE_PERIOD`, recovery ve expiration senaryoları ayrı PASS olmadan production'a alınmaz.
+
+### 9.2 Signed archive, upload ve review sırası
+
+1. Bölüm 10'daki teknik kapıları tamamlayın; Paid Apps Agreement/Tax/Banking, Content Rights, App Privacy ve gerçek review erişimi çözülmeden review'a göndermeyin.
+2. Xcode target'larında Marketing Version `1.0`, daha önce yüklenmemiş benzersiz bir Build numarası, bundle ID `talhacan.tscforex` ve widget ID `talhacan.tscforex.TSCWidget` olduğunu doğrulayın. Release scheme production API ve production entitlements kullanmalıdır.
+3. Fiziksel iPhone'da signed Release smoke testi yapın; ardından iPad desteği korunuyorsa fiziksel cihaz veya uygun simulator'da bütün kritik layout/akışları test edin.
+4. Xcode'da `Any iOS Device (arm64)` / generic device seçip **Product → Archive** çalıştırın. Organizer'da app + widget signing team, provisioning profile, capabilities, privacy manifest ve export compliance özetini inceleyin.
+5. Organizer → **Validate App** çalıştırın. Error kalmamalı; warning'ler de tek tek açıklanıp release riski taşımadığı doğrulanmalıdır.
+6. Organizer → **Distribute App → App Store Connect → Upload** ile build'i yükleyin. Upload başarı mesajı yetmez; App Store Connect'te processing tamamlanıp build görünene kadar bekleyin.
+7. İşlenen build'i `1.0 Prepare for Submission` sürümüne seçin; encryption/export compliance sorusunu gerçek archive davranışına göre cevaplayın.
+8. 6.5-inch exact iPhone screenshot setini ve mevcut universal destek nedeniyle iPad setini yükleyin. Description, promotional text, keywords, Support/Marketing/Privacy URL'lerini son production UI ile karşılaştırın.
+9. Dört subscription'ı aynı app version'ın **In-App Purchases and Subscriptions** bölümüne ekleyin; her üründe localization, availability, fiyat ve ayrı review screenshot'ı bulunduğunu doğrulayın.
+10. App Privacy formunu production veri akışına göre publish edin; Content Rights, copyright ve review contact alanlarını Account Holder doğrulanmış bilgilerle tamamlasın. Çalışan demo credentials yalnız güvenli review alanlarına girilsin.
+11. Review Notes'u güncel navigation yollarıyla kaydedin. İlk sürümde kontrol için **manual release** seçmek operasyonel olarak daha güvenlidir; automatic release seçilecekse bunun bilinçli ürün kararı olduğunu doğrulayın.
+12. Önce **Add for Review** ile Apple'ın eksik alan kontrollerini çalıştırın. App ve dört IAP'nin aynı submission içinde olduğunu görün; bütün uyarılar kapandıktan sonra Account Holder/authorized role **Submit for Review** işlemini yapar.
+13. Submission ID, build numarası ve gönderim zamanını release kaydına yazın. App Review mesajlarını izleyin; metadata/build değişikliği gerekirse hangi submission'ın geri çekildiğini açıkça kaydedin.
 
 ---
 
-_Son güncelleme: 14 Temmuz 2026_
+## 10. Gönderim kapıları — hepsi PASS olmadan submit yok
+
+### Ürün ve UX
+
+- [x] App name, bundle ID, `1.0 (3)` ve ikon archive/App Store Connect'te doğru; Build 3 `Ready to Submit` ve sürüme seçildi.
+- [x] Uygulama fiyatı Türkiye bazında `₺0,00`; ilk sürüm yalnız Türkiye'de public iPhone/iPad dağıtımına açık, Mac/Vision Pro kapalı.
+- [ ] iPhone ve destek sürüyorsa iPad'de launch, login/logout, cold start ve offline/error durumları çalışıyor.
+- [ ] Production API/WS/CDN erişilebilir; local network izni Release'te yok.
+- [ ] Piyasa, grafik, Derin Araştırma, alarm, portföy, bildirim, widget, profil/avatar, passkey ve oyunlaştırma smoke test edildi.
+- [ ] Derin Araştırma çıktısı kaynak, risk, no-advice uyarısı içeriyor; hata/timeout kullanıcıyı kilitlemiyor.
+
+### Abonelik/IAP
+
+- [ ] Paid Applications Agreement **New** durumundan Active'a geçti; yasal kişi, vergi ve banka bilgileri Account Holder tarafından onaylandı.
+- [x] `premium_monthly` group (`22243838`) ve dört exact Product ID/Apple ID oluşturuldu.
+- [x] Level sırası Elite → Uzman → Pro → Başlangıç olarak kaydedildi.
+- [x] Her ürünün bir aylık duration, Türkçe localization, Türkiye availability ve exact TRY price point'i kaydedildi.
+- [ ] Dört ürünün Review Information screenshot'ı tamamlandı.
+- [ ] Dört IAP app version ile birlikte review'a eklendi.
+- [ ] Paywall StoreKit fiyatı, ay, auto-renew, Terms, Privacy, Restore ve Manage gösteriyor.
+- [ ] Satın alma yalnız verified transaction/backend entitlement sonrası açılıyor.
+- [ ] Restore, upgrade/downgrade, expiration, refund/revoke ve billing retry testleri geçti.
+- [x] Production + Sandbox Notifications V2 URL aynı HTTPS endpoint'e Version 2 olarak kaydedildi.
+- [ ] Apple test notification, signed JWS doğrulaması ve tekrar teslim idempotency geçti.
+- [x] Billing Grace Period ilk release için OFF bırakıldı.
+- [ ] Server env üçlüsü production podlarında doğrulandı; sandbox yalnız imzalı App Review/TestFlight transaction'ları için kabul ediliyor.
+- [ ] App, backend ve dokümandaki bütün kotalar birebir aynı.
+
+### Privacy / legal / account
+
+- [ ] Privacy, Terms ve Support public URL'leri canlı ve 200 dönüyor.
+- [ ] Privacy Policy'deki veri sorumlusu, gerçek kişi/şirketin tam yasal unvanı ve geçerli tebligat/iletişim adresiyle tamamlandı; yalnız marka adı bırakılmadı.
+- [ ] Privacy Policy abonelik, purchase ID, portföy, Derin Araştırma/OpenAI, quota, device claim hash ve retention'ı açıklıyor.
+- [ ] App Privacy label Purchases, Other Financial Info, User Content, User ID, Device ID ve Product Interaction dahil kodla eşleşiyor.
+- [ ] İlk Derin Araştırma kullanımında OpenAI için açık izin var; ret ve consent revoke test edildi.
+- [ ] App Attest challenge/register/assertion ve DeviceCheck available/reserved/consumed akışları gerçek cihazda geçti; uygulamayı silip yeniden kurma + yeni hesap denemesi ikinci ücretsiz hak vermiyor.
+- [ ] DeviceCheck KID/`.p8` ve Sign in with Apple revoke KID/`.p8` GitHub/Kubernetes secret'larında mevcut; repository/app bundle/log'da yok.
+- [ ] `PrivacyInfo.xcprivacy` + archive privacy report incelendi; SDK manifest/signature uyarısı yok.
+- [ ] Sign in with Apple production'da çalışıyor; hesap silmede token revoke doğrulandı.
+- [ ] Hesap silme aktif abonelik uyarısı + Manage bağlantısı gösteriyor; kullanıcı yine hemen silebiliyor.
+- [ ] Silme sonrası kişisel veriler kalkıyor; device claim yalnız belgelenen amaç/süreyle ayrık tutuluyor.
+
+### Metadata / review
+
+- [x] Age Rating formu mevcut özelliklere göre dolduruldu; global sonuç `4+`.
+- [ ] Copyright gerçek ve doğrulanmış yasal hak sahibiyle dolduruldu; App Review iletişim adı, telefon ve e-posta çalışan kişiye ait.
+- [ ] Bütün piyasa/haber/web kaynakları ve marka görselleri için içerik/yeniden dağıtım hakları belgelendi; Content Rights cevabı kanıtla uyumlu.
+- [ ] Encryption/export compliance doğru cevaplandı.
+- [ ] Demo hesap production'da çalışıyor ve örnek verisi hazır.
+- [x] Review Notes güncel yolları içeriyor; production login'i HTTP 200 ile doğrulanan credentials yalnız ayrı güvenli username/password alanlarında kayıtlı.
+- [x] Minimum screenshot alanları için exact `1284×2778` iPhone ve `2064×2752` iPad görselleri yüklendi; kapsamlı pazarlama seti ayrıca geliştirilecek.
+- [ ] App ve IAP review screenshots kişisel veri/debug öğesi içermiyor.
+- [ ] Support iletişimi izleniyor; reviewer sorusuna hızlı yanıt verilecek.
+
+---
+
+## 11. Başlıca red riskleri ve önlemler
+
+| Risk | Apple alanı | Gerekli önlem |
+|---|---|---|
+| Paywall yenileme/fiyat bilgisini saklıyor | 3.1.2 | StoreKit fiyatı, süre, auto-renew, Terms/Privacy satın almadan önce |
+| Restore yok veya çalışmıyor | 3.1.1 / StoreKit | Görünür restore ve gerçek verified entitlement sync |
+| IAP bulunamıyor | 2.1 / 3.1 | Ürünleri version'a ekle; agreements ve availability tamamla |
+| Derin Araştırma verisi üçüncü tarafa izinsiz gidiyor | 5.1.2(i) | OpenAI adı + veri + amaç için işlem öncesi explicit consent |
+| App Privacy eksik | 5.1.1 / 5.1.2 | Purchases, financial/user content, IDs, usage ve partnerleri doğru beyan et |
+| Hesap silme Apple aboneliğini gizliyor | 5.1.1(v) | Silme öncesi billing uyarısı + Manage; immediate delete seçeneğini koru |
+| Google var, Apple yok/bozuk | 4.8 | Production Sign in with Apple ve private relay testi |
+| Derin Araştırma yatırım danışmanlığı izlenimi | Finance / misleading claims | Kaynak, belirsizlik, no-advice; kişisel al/sat emri ve garanti yok |
+| Production build local network ister | 5.1.1 / completeness | Local network key/capability Release'ten çıkar |
+| Demo hesap/özellik erişimi yok | 2.1 | Canlı credentials, review path, erişilebilir backend |
+| Screenshot yanlış boyut/yanıltıcı | Metadata | Accepted exact dimensions, gerçek UI, no guarantees |
+| iPad destekleniyor ama UI bozuk | 2.1 / 4.0 | iPad QA + screenshots veya bilinçli device-family kararı |
+
+---
+
+## 12. Resmî Apple kaynakları
+
+- [App Review Guidelines](https://developer.apple.com/app-store/review/guidelines/)
+- [Offer auto-renewable subscriptions](https://developer.apple.com/help/app-store-connect/manage-subscriptions/offer-auto-renewable-subscriptions/)
+- [Auto-renewable subscription information and levels](https://developer.apple.com/help/app-store-connect/reference/in-app-purchases-and-subscriptions/auto-renewable-subscription-information)
+- [Subscription pricing and availability](https://developer.apple.com/help/app-store-connect/reference/pricing-and-availability/in-app-purchase-and-subscriptions-pricing-and-availability/)
+- [Manage subscription pricing](https://developer.apple.com/help/app-store-connect/manage-subscriptions/manage-pricing-for-auto-renewable-subscriptions/)
+- [Restoring purchased products](https://developer.apple.com/documentation/storekit/restoring-purchased-products)
+- [Handling subscription billing](https://developer.apple.com/documentation/storekit/handling-subscriptions-billing)
+- [Offering account deletion in your app](https://developer.apple.com/support/offering-account-deletion-in-your-app)
+- [App Privacy Details](https://developer.apple.com/app-store/app-privacy-details/)
+- [Privacy manifests](https://developer.apple.com/documentation/bundleresources/privacy_manifest_files)
+- [Establishing your app’s integrity with App Attest](https://developer.apple.com/documentation/devicecheck/establishing-your-app-s-integrity)
+- [Accessing and modifying per-device data with DeviceCheck](https://developer.apple.com/documentation/devicecheck/accessing-and-modifying-per-device-data)
+- [Apple Standard EULA](https://www.apple.com/legal/internet-services/itunes/dev/stdeula/)
+- [Screenshot specifications](https://developer.apple.com/help/app-store-connect/reference/app-information/screenshot-specifications)
+- [Manage Apple subscriptions](https://apps.apple.com/account/subscriptions)
+- [Request a refund / report a problem](https://reportaproblem.apple.com/)
+
+---
+
+_Son güncelleme: 17 Temmuz 2026_

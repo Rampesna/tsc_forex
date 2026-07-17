@@ -3,8 +3,10 @@ package routes_test
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -19,6 +21,10 @@ import (
 )
 
 func buildEngine(t *testing.T) (http.Handler, *calculator.Calculator) {
+	return buildEngineWithReadiness(t, func(context.Context) error { return nil })
+}
+
+func buildEngineWithReadiness(t *testing.T, ready func(context.Context) error) (http.Handler, *calculator.Calculator) {
 	t.Helper()
 
 	cfg := &config.Config{}
@@ -66,6 +72,7 @@ func buildEngine(t *testing.T) (http.Handler, *calculator.Calculator) {
 		System: api.NewSystemHandler(api.SystemDeps{
 			Provider: pm, Calc: calc, ClientsFn: hub.ClientCount,
 		}),
+		Ready: ready,
 	})
 	return engine, calc
 }
@@ -97,6 +104,8 @@ func TestEngineEndpoints(t *testing.T) {
 		{"/api/v1/providers", http.StatusOK},
 		{"/api/v1/gold/current", http.StatusOK},
 		{"/metrics", http.StatusOK},
+		{"/livez", http.StatusOK},
+		{"/readyz", http.StatusOK},
 		{"/docs", http.StatusOK},
 		{"/docs/openapi.yaml", http.StatusOK},
 	}
@@ -106,6 +115,23 @@ func TestEngineEndpoints(t *testing.T) {
 		if w.Code != tc.code {
 			t.Fatalf("%s → %d, want %d", tc.path, w.Code, tc.code)
 		}
+	}
+}
+
+func TestReadinessProbeFailsClosed(t *testing.T) {
+	engine, _ := buildEngineWithReadiness(t, func(context.Context) error {
+		return errors.New("sensitive database detail")
+	})
+	w := httptest.NewRecorder()
+	engine.ServeHTTP(w, httptest.NewRequest(http.MethodGet, "/readyz", nil))
+	if w.Code != http.StatusServiceUnavailable {
+		t.Fatalf("readyz status=%d body=%s", w.Code, w.Body.String())
+	}
+	if w.Header().Get("Retry-After") != "5" {
+		t.Fatalf("retry-after=%q", w.Header().Get("Retry-After"))
+	}
+	if strings.Contains(w.Body.String(), "sensitive database detail") {
+		t.Fatalf("readiness leaked internal error: %s", w.Body.String())
 	}
 }
 

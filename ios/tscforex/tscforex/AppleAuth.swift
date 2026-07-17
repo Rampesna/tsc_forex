@@ -12,12 +12,14 @@ import AuthenticationServices
 enum AppleAuthError: Error, LocalizedError {
     case cancelled
     case noToken
+    case noAuthorizationCode
     case failed(String)
 
     var errorDescription: String? {
         switch self {
         case .cancelled: return "Apple girişi iptal edildi"
         case .noToken: return "Apple kimlik doğrulama belirteci alınamadı"
+        case .noAuthorizationCode: return "Apple yetkilendirme kodu alınamadı"
         case .failed(let m): return "Apple girişi başarısız: \(m)"
         }
     }
@@ -26,6 +28,7 @@ enum AppleAuthError: Error, LocalizedError {
 struct AppleCredential {
     let idToken: String
     let fullName: String
+    let authorizationCode: String
 }
 
 @MainActor
@@ -58,6 +61,11 @@ extension AppleAuth: ASAuthorizationControllerDelegate {
             continuation?.resume(throwing: AppleAuthError.noToken)
             return
         }
+        guard let codeData = cred.authorizationCode,
+              let authorizationCode = String(data: codeData, encoding: .utf8) else {
+            continuation?.resume(throwing: AppleAuthError.noAuthorizationCode)
+            return
+        }
         var name = ""
         if let full = cred.fullName {
             name = [full.givenName, full.familyName]
@@ -65,7 +73,9 @@ extension AppleAuth: ASAuthorizationControllerDelegate {
                 .joined(separator: " ")
                 .trimmingCharacters(in: .whitespaces)
         }
-        continuation?.resume(returning: AppleCredential(idToken: idToken, fullName: name))
+        continuation?.resume(returning: AppleCredential(
+            idToken: idToken, fullName: name, authorizationCode: authorizationCode
+        ))
     }
 
     func authorizationController(controller: ASAuthorizationController,

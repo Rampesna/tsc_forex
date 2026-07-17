@@ -19,6 +19,7 @@ final class PriceStore: ObservableObject {
     @Published var liveNotifications: [WSNotificationPayload] = []
     @Published var connected = false
     @Published var lastUpdate: Date?
+    @Published var favoriteMessage: String?
 
     private var task: URLSessionWebSocketTask?
     private var reconnectAttempts = 0
@@ -27,6 +28,7 @@ final class PriceStore: ObservableObject {
     private let sparkCap = 40
     private let favKey = "favorite_codes"
     private let favOrderKey = "favorite_order"
+    private var favoriteMutations: [String: UUID] = [:]
 
     // Network-change monitor: auto-reconnects when Wi-Fi/connectivity changes
     // so the user doesn't have to manually re-connect after switching networks.
@@ -93,16 +95,55 @@ final class PriceStore: ObservableObject {
     func isFavorite(_ code: String) -> Bool { favorites.contains(code) }
 
     func toggleFavorite(_ code: String) {
-        if favorites.contains(code) {
+        favoriteMessage = nil
+        let wasFavorite = favorites.contains(code)
+        let previousIndex = favoriteOrder.firstIndex(of: code)
+        let operationID = UUID()
+        favoriteMutations[code] = operationID
+
+        if wasFavorite {
             favorites.remove(code)
             favoriteOrder.removeAll { $0 == code }
-            Task { try? await APIClient(token: token).removeWatch(code) }
         } else {
             favorites.insert(code)
             if !favoriteOrder.contains(code) { favoriteOrder.append(code) }
-            Task { try? await APIClient(token: token).addWatch(code) }
         }
         persistFavorites()
+
+        Task {
+            do {
+                if wasFavorite {
+                    try await APIClient(token: token).removeWatch(code)
+                } else {
+                    try await APIClient(token: token).addWatch(code)
+                }
+                if favoriteMutations[code] == operationID {
+                    favoriteMutations.removeValue(forKey: code)
+                }
+            } catch {
+                // A newer tap for the same asset owns the current UI state; a
+                // late response from this request must not undo it.
+                guard favoriteMutations[code] == operationID else { return }
+                favoriteMutations.removeValue(forKey: code)
+                if wasFavorite {
+                    favorites.insert(code)
+                    favoriteOrder.removeAll { $0 == code }
+                    favoriteOrder.insert(code, at: min(previousIndex ?? favoriteOrder.count,
+                                                       favoriteOrder.count))
+                } else {
+                    favorites.remove(code)
+                    favoriteOrder.removeAll { $0 == code }
+                }
+                persistFavorites()
+                if let apiError = error as? APIError, apiError.statusCode == 402 {
+                    favoriteMessage = "İzleme listesi hakkınız doldu. Planınızı Ayarlar'dan yükseltebilirsiniz."
+                } else if let apiError = error as? APIError, apiError.statusCode == 429 {
+                    favoriteMessage = "Çok sık istek gönderildi. Kısa bir süre bekleyip tekrar deneyin."
+                } else {
+                    favoriteMessage = "Favori güncellenemedi: \(error.localizedDescription)"
+                }
+            }
+        }
     }
 
     func moveFavorite(from source: IndexSet, to destination: Int) {
@@ -159,7 +200,8 @@ final class PriceStore: ObservableObject {
         guard !netStarted else { return }
         netStarted = true
         netMonitor.pathUpdateHandler = { [weak self] path in
-            Task { @MainActor in
+            guard path.status == .satisfied else { return }
+            Task { @MainActor [weak self] in
                 guard let self, self.shouldRun, path.status == .satisfied else { return }
                 // Debounce: avoid reopening on every minor path update.
                 if Date().timeIntervalSince(self.lastReopen) < 2 { return }
@@ -210,9 +252,12 @@ final class PriceStore: ObservableObject {
 
     private func syncFavorites() async {
         guard token != nil else { return }
-        if let remote = try? await APIClient(token: token).watchlist(), !remote.isEmpty {
-            favorites.formUnion(remote)
-            UserDefaults.standard.set(Array(favorites), forKey: favKey)
+        if let remote = try? await APIClient(token: token).watchlist() {
+            let remoteSet = Set(remote)
+            favorites = remoteSet
+            favoriteOrder = favoriteOrder.filter { remoteSet.contains($0) }
+            favoriteOrder += remote.filter { !favoriteOrder.contains($0) }
+            persistFavorites()
         }
     }
 
@@ -234,15 +279,17 @@ final class PriceStore: ObservableObject {
 
     private func receive() {
         task?.receive { [weak self] result in
-            guard let self else { return }
-            switch result {
-            case .success(let message):
-                if case .string(let text) = message {
-                    Task { @MainActor in self.handle(text) }
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                switch result {
+                case .success(let message):
+                    if case .string(let text) = message {
+                        self.handle(text)
+                    }
+                    self.receive()
+                case .failure:
+                    self.scheduleReconnect()
                 }
-                self.receive()
-            case .failure:
-                Task { @MainActor in self.scheduleReconnect() }
             }
         }
     }

@@ -1,8 +1,13 @@
 package service
 
 import (
+	"bytes"
 	"context"
+	"encoding/csv"
+	"encoding/json"
 	"errors"
+	"fmt"
+	"math"
 	"sort"
 	"strings"
 	"time"
@@ -46,6 +51,7 @@ type PortfolioService struct {
 	repo    repository.PortfolioRepository
 	prices  PortfolioPriceSource
 	candles PortfolioCandleSource
+	billing *SubscriptionService
 }
 
 func NewPortfolioService(repo repository.PortfolioRepository, prices PortfolioPriceSource) *PortfolioService {
@@ -54,6 +60,11 @@ func NewPortfolioService(repo repository.PortfolioRepository, prices PortfolioPr
 
 func (s *PortfolioService) WithHistory(candles PortfolioCandleSource) *PortfolioService {
 	s.candles = candles
+	return s
+}
+
+func (s *PortfolioService) WithSubscriptions(billing *SubscriptionService) *PortfolioService {
+	s.billing = billing
 	return s
 }
 
@@ -112,10 +123,191 @@ func (s *PortfolioService) Create(
 		BaseCurrency: "TRY",
 		Version:      1,
 	}
-	if err := s.repo.Create(ctx, &portfolio); err != nil {
-		return models.Portfolio{}, err
+	var createErr error
+	if s.billing != nil {
+		createErr = s.billing.CreatePortfolioWithinCapacity(ctx, &portfolio)
+	} else {
+		createErr = s.repo.Create(ctx, &portfolio)
+	}
+	if createErr != nil {
+		return models.Portfolio{}, createErr
 	}
 	return portfolio, nil
+}
+
+type PortfolioHealthFinding struct {
+	Title    string `json:"title"`
+	Detail   string `json:"detail"`
+	Severity string `json:"severity"`
+}
+
+type PortfolioHealth struct {
+	Score       int                      `json:"score"`
+	Grade       string                   `json:"grade"`
+	Summary     string                   `json:"summary"`
+	Findings    []PortfolioHealthFinding `json:"findings"`
+	GeneratedAt time.Time                `json:"generated_at"`
+}
+
+// HealthCheck is a deterministic educational risk overview. It avoids price
+// predictions and buy/sell language; the paid allowance covers the scheduled
+// server-side analysis/report generation feature.
+func (s *PortfolioService) HealthCheck(ctx context.Context, userID, portfolioID uuid.UUID, requestKey string) (PortfolioHealth, error) {
+	overview, err := s.Get(ctx, userID, portfolioID)
+	if err != nil {
+		return PortfolioHealth{}, err
+	}
+	artifact := FeatureArtifactReservation{Created: true}
+	if s.billing != nil {
+		artifact, err = s.billing.BeginFeatureArtifact(ctx, userID, FeaturePortfolioHealth, requestKey, portfolioID.String())
+		if err != nil {
+			return PortfolioHealth{}, err
+		}
+		if !artifact.Created {
+			var replay PortfolioHealth
+			if json.Unmarshal(artifact.Payload, &replay) != nil {
+				return PortfolioHealth{}, ErrRequestConflict
+			}
+			return replay, nil
+		}
+	}
+	score := 100
+	findings := make([]PortfolioHealthFinding, 0, 5)
+	if overview.ActivePositions == 0 {
+		score = 35
+		findings = append(findings, PortfolioHealthFinding{Title: "Henüz pozisyon yok", Detail: "Dağılım analizi için portföye en az bir işlem ekleyin.", Severity: "medium"})
+	} else {
+		if overview.ActivePositions < 3 {
+			score -= 15
+			findings = append(findings, PortfolioHealthFinding{Title: "Sınırlı çeşitlilik", Detail: "Portföy üçten az aktif pozisyona dayanıyor; tekil hareketlerin etkisi artabilir.", Severity: "medium"})
+		}
+		largest := 0.0
+		kindWeights := map[string]float64{}
+		for _, position := range overview.Positions {
+			allocation := position.AllocationPct.InexactFloat64()
+			largest = math.Max(largest, allocation)
+			kindWeights[position.Kind] += allocation
+		}
+		if largest > 50 {
+			score -= 25
+			findings = append(findings, PortfolioHealthFinding{Title: "Yüksek tek-varlık yoğunluğu", Detail: fmt.Sprintf("En büyük pozisyon portföyün yaklaşık %%%.0f'sini oluşturuyor.", largest), Severity: "high"})
+		} else if largest > 35 {
+			score -= 12
+			findings = append(findings, PortfolioHealthFinding{Title: "Belirgin pozisyon yoğunluğu", Detail: fmt.Sprintf("En büyük pozisyonun ağırlığı %%%.0f seviyesinde.", largest), Severity: "medium"})
+		}
+		for kind, weight := range kindWeights {
+			if weight > 75 {
+				score -= 12
+				findings = append(findings, PortfolioHealthFinding{Title: "Varlık sınıfı yoğunluğu", Detail: fmt.Sprintf("%s sınıfı toplam dağılımın %%%.0f'sini oluşturuyor.", portfolioKindLabel(kind), weight), Severity: "medium"})
+				break
+			}
+		}
+		if overview.TotalCostTRY.IsPositive() {
+			pnlPct := overview.UnrealizedPnL.Div(overview.TotalCostTRY).Mul(decimal.NewFromInt(100)).InexactFloat64()
+			if pnlPct < -20 {
+				score -= 15
+				findings = append(findings, PortfolioHealthFinding{Title: "Yüksek gerçekleşmemiş kayıp", Detail: fmt.Sprintf("Toplam maliyete göre gerçekleşmemiş değişim %%%.1f.", pnlPct), Severity: "high"})
+			}
+		}
+		dayPct := math.Abs(overview.DayChangePct.InexactFloat64())
+		if dayPct > 5 {
+			score -= 10
+			findings = append(findings, PortfolioHealthFinding{Title: "Yüksek günlük oynaklık", Detail: fmt.Sprintf("Portföyün gün içi hareketi yaklaşık %%%.1f.", dayPct), Severity: "medium"})
+		}
+	}
+	score = max(0, min(100, score))
+	grade := "Dengeli"
+	summary := "Dağılım ve güncel risk göstergeleri genel olarak izlenebilir seviyede."
+	switch {
+	case score >= 85:
+		grade, summary = "Güçlü", "Dağılım ve yoğunluk göstergeleri mevcut kurallar içinde güçlü görünüyor."
+	case score < 50:
+		grade, summary = "Dikkat", "Yoğunluk veya oynaklık göstergelerinden bazıları yakından izlenmeli."
+	case score < 70:
+		grade, summary = "İzlenmeli", "Portföyde iyileştirilebilecek birkaç dağılım göstergesi bulunuyor."
+	}
+	if len(findings) == 0 {
+		findings = append(findings, PortfolioHealthFinding{Title: "Belirgin yoğunluk uyarısı yok", Detail: "Mevcut dağılım eşikleri önemli bir uyarı üretmedi.", Severity: "low"})
+	}
+	result := PortfolioHealth{Score: score, Grade: grade, Summary: summary, Findings: findings, GeneratedAt: time.Now().UTC()}
+	if s.billing != nil {
+		payload, marshalErr := json.Marshal(result)
+		if marshalErr != nil {
+			_ = s.billing.ReleaseFeatureArtifact(ctx, userID, FeaturePortfolioHealth, requestKey, artifact.OwnerToken)
+			return PortfolioHealth{}, marshalErr
+		}
+		if err := s.billing.CompleteFeatureArtifact(ctx, userID, FeaturePortfolioHealth, requestKey, artifact.OwnerToken, payload, "application/json", ""); err != nil {
+			_ = s.billing.ReleaseFeatureArtifact(ctx, userID, FeaturePortfolioHealth, requestKey, artifact.OwnerToken)
+			return PortfolioHealth{}, err
+		}
+	}
+	return result, nil
+}
+
+func portfolioKindLabel(kind string) string {
+	switch kind {
+	case "gold":
+		return "Altın"
+	case "currency":
+		return "Döviz"
+	case "crypto":
+		return "Kripto"
+	case "stock":
+		return "Hisse"
+	default:
+		return "Aynı varlık"
+	}
+}
+
+// ExportCSV creates a portable ledger export after consuming the monthly
+// export allowance. Values are exact decimal strings to avoid rounding money.
+func (s *PortfolioService) ExportCSV(ctx context.Context, userID, portfolioID uuid.UUID, requestKey string) ([]byte, string, error) {
+	portfolio, err := s.repo.Get(ctx, userID, portfolioID)
+	if err != nil {
+		return nil, "", err
+	}
+	transactions, err := s.repo.Transactions(ctx, userID, portfolioID, 5000, time.Time{})
+	if err != nil {
+		return nil, "", err
+	}
+	artifact := FeatureArtifactReservation{Created: true}
+	if s.billing != nil {
+		artifact, err = s.billing.BeginFeatureArtifact(ctx, userID, FeatureExports, requestKey, portfolioID.String())
+		if err != nil {
+			return nil, "", err
+		}
+		if !artifact.Created {
+			return artifact.Payload, artifact.Filename, nil
+		}
+	}
+	var buffer bytes.Buffer
+	buffer.Write([]byte{0xEF, 0xBB, 0xBF}) // Excel-friendly UTF-8 BOM.
+	writer := csv.NewWriter(&buffer)
+	rows := [][]string{{"Portföy", "İşlem ID", "Tarih", "Tür", "Varlık", "Miktar", "Birim fiyat", "Tutar", "Masraf", "Para birimi", "USD/TRY", "Not"}}
+	for _, transaction := range transactions {
+		rows = append(rows, []string{
+			portfolio.Name, transaction.ID.String(), transaction.OccurredAt.UTC().Format(time.RFC3339),
+			transaction.Type, transaction.Code, transaction.Quantity.String(), transaction.UnitPriceNative.String(),
+			transaction.AmountNative.String(), transaction.FeeNative.String(), transaction.Currency,
+			transaction.USDTRY.String(), transaction.Note,
+		})
+	}
+	if err := writer.WriteAll(rows); err != nil {
+		return nil, "", err
+	}
+	writer.Flush()
+	if err := writer.Error(); err != nil {
+		return nil, "", err
+	}
+	filename := fmt.Sprintf("portfoy-%s-%s.csv", portfolio.ID.String()[:8], time.Now().UTC().Format("2006-01-02"))
+	if s.billing != nil {
+		payload := buffer.Bytes()
+		if err := s.billing.CompleteFeatureArtifact(ctx, userID, FeatureExports, requestKey, artifact.OwnerToken, payload, "text/csv; charset=utf-8", filename); err != nil {
+			_ = s.billing.ReleaseFeatureArtifact(ctx, userID, FeatureExports, requestKey, artifact.OwnerToken)
+			return nil, "", err
+		}
+	}
+	return buffer.Bytes(), filename, nil
 }
 
 func (s *PortfolioService) List(ctx context.Context, userID uuid.UUID) ([]PortfolioOverview, error) {

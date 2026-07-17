@@ -121,7 +121,7 @@ function openSocket(
       const dir: Flash = !prev ? undefined : p.price > prev.price ? "up" : p.price < prev.price ? "down" : undefined;
       const sparkArr = (st.spark[p.code] ?? []).concat(p.price).slice(-SPARK_LEN);
       set({
-        prices: { ...st.prices, [p.code]: { ...(prev ?? {}), ...p } },
+        prices: { ...st.prices, [p.code]: { ...prev, ...p } },
         spark: { ...st.spark, [p.code]: sparkArr },
         flash: dir ? { ...st.flash, [p.code]: dir } : st.flash,
       });

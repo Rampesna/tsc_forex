@@ -25,6 +25,13 @@ final class PushManager: NSObject, ObservableObject, UNUserNotificationCenterDel
 
     func bootstrap() {
         UNUserNotificationCenter.current().delegate = self
+        UNUserNotificationCenter.current().getNotificationSettings { settings in
+            Task { @MainActor in
+                self.authorized = settings.authorizationStatus == .authorized
+                    || settings.authorizationStatus == .provisional
+                if self.authorized { UIApplication.shared.registerForRemoteNotifications() }
+            }
+        }
     }
 
     /// Ask for permission (works for local notifications regardless of APNs) and

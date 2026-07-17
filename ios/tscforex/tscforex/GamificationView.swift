@@ -1,8 +1,8 @@
 //
 //  GamificationView.swift
-//  "Ödüller" — daily streak, XP/levels, badges, daily quests & weekly leaderboard.
-//  Designed to bring users back every day: a satisfying claim moment, visible
-//  streak, and a competitive weekly board.
+//  "Ödüller" — daily streak, XP/levels, badges and learning journeys.
+//  Designed to bring users back every day with a visible learning streak and
+//  transparent progress milestones.
 //
 
 import SwiftUI
@@ -12,23 +12,25 @@ struct GamificationView: View {
 
     @State private var profile: GamProfile?
     @State private var experience: GamificationExperience?
-    @State private var leaders: [LeaderEntry] = []
-    @State private var me: LeaderEntry?
     @State private var loading = true
     @State private var failed = false
     @State private var claiming = false
     @State private var toast: String?
     @State private var celebrate: [GamBadge] = []
+    @State private var selectedBadge: GamBadge?
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 16) {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 16) {
                 ScreenHeader(title: "Ödüller", subtitle: "Serini koru, seviye atla, rozet topla")
 
                 if let p = profile {
                     heroCard(p)
                     statsRow(p)
-                    if experience != nil {
+                    if let experience {
+                        GamificationProgressSummaryCard(experience: experience)
+                        badgesCard(p)
                         GamificationExperienceHub(
                             experience: $experience,
                             token: auth.accessToken,
@@ -36,11 +38,12 @@ struct GamificationView: View {
                             onToast: showToast
                         )
                     } else if !loading {
+                        badgesCard(p)
                         experienceErrorCard
+                    } else {
+                        badgesCard(p)
                     }
                     questsCard(p)
-                    badgesCard(p)
-                    leaderboardCard()
                 } else if loading {
                     skeleton
                 } else if failed {
@@ -48,14 +51,16 @@ struct GamificationView: View {
                 }
                 Color.clear.frame(height: 96)
             }
-            .padding(.horizontal, 16)
-            .padding(.top, 8)
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+            }
+            .background(Theme.bg.ignoresSafeArea())
+            .refreshable { await load() }
         }
-        .background(Theme.bg.ignoresSafeArea())
         .task { await load() }
-        .refreshable { await load() }
         .overlay(alignment: .top) { toastBanner }
         .overlay { celebration }
+        .sheet(item: $selectedBadge) { badge in badgeDetail(badge) }
     }
 
     // MARK: Hero (level + XP progress)
@@ -82,7 +87,7 @@ struct GamificationView: View {
         HStack(spacing: 10) {
             StatTile(label: "🔥 Seri", value: "\(p.currentStreak) gün", tint: p.currentStreak > 0 ? Theme.down : Theme.text)
             StatTile(label: "Haftalık XP", value: "\(p.weeklyXp)", tint: Theme.accent)
-            StatTile(label: "Sıralama", value: p.rank > 0 ? "#\(p.rank)" : "—")
+            StatTile(label: "Toplam XP", value: "\(p.xp)")
         }
     }
 
@@ -164,7 +169,7 @@ struct GamificationView: View {
                 }
                 LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 4), spacing: 14) {
                     ForEach(p.badges) { b in
-                        VStack(spacing: 5) {
+                        Button { selectedBadge = b; Haptics.tap() } label: { VStack(spacing: 5) {
                             ZStack {
                                 Circle()
                                     .fill(b.earned ? Theme.accentSoft : Theme.surfaceHi)
@@ -184,72 +189,32 @@ struct GamificationView: View {
                                 .multilineTextAlignment(.center)
                                 .lineLimit(2)
                                 .frame(height: 24)
-                        }
+                        } }
+                        .buttonStyle(.plain)
                     }
                 }
             }
         }
     }
 
-    // MARK: Leaderboard
-
-    private func leaderboardCard() -> some View {
-        Card {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Text("Haftalık Liderlik").font(.system(size: 15, weight: .bold)).foregroundStyle(Theme.text)
-                    Spacer()
-                    Image(systemName: "crown.fill").font(.system(size: 13)).foregroundStyle(Theme.accent)
-                }
-                if leaders.isEmpty {
-                    Text("Bu hafta henüz sıralama yok. İlk XP'yi sen kazan!")
-                        .font(.system(size: 12)).foregroundStyle(Theme.textDim)
-                        .padding(.vertical, 8)
-                } else {
-                    ForEach(leaders) { e in
-                        leaderRow(e, mine: me?.userId == e.userId)
-                    }
-                    if let me, !leaders.contains(where: { $0.userId == me.userId }), me.xp > 0 {
-                        Divider().overlay(Theme.stroke)
-                        leaderRow(me, mine: true)
-                    }
-                }
-            }
-        }
-    }
-
-    private func leaderRow(_ e: LeaderEntry, mine: Bool) -> some View {
-        HStack(spacing: 12) {
-            Text(rankLabel(e.rank))
-                .font(Theme.number(14, weight: .bold))
-                .foregroundStyle(e.rank <= 3 ? Theme.accent : Theme.textDim)
-                .frame(width: 34, alignment: .leading)
-            avatar(e)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(mine ? "Sen" : e.displayName)
-                    .font(.system(size: 14, weight: .semibold)).foregroundStyle(Theme.text)
-                    .lineLimit(1)
-                Text("Seviye \(e.level)").font(.system(size: 11)).foregroundStyle(Theme.textFaint)
+    private func badgeDetail(_ badge: GamBadge) -> some View {
+        VStack(spacing: 16) {
+            Text(badge.icon).font(.system(size: 54))
+            Text(badge.name).font(.system(size: 21, weight: .bold)).foregroundStyle(Theme.text)
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Kazanma koşulu").font(.system(size: 11, weight: .bold)).foregroundStyle(Theme.accent)
+                Text(badge.description).font(.system(size: 13)).foregroundStyle(Theme.textDim)
+            }.frame(maxWidth: .infinity, alignment: .leading)
+            if badge.earned, let date = badge.earnedAt {
+                Label("Kazanıldı: \(date.formatted(date: .long, time: .omitted))", systemImage: "checkmark.seal.fill")
+                    .font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.up)
+            } else {
+                Label("Henüz kazanılmadı", systemImage: "lock.fill")
+                    .font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.textDim)
             }
             Spacer()
-            Text("\(e.xp) XP").font(Theme.number(13, weight: .bold)).foregroundStyle(Theme.accent)
         }
-        .padding(.vertical, 4)
-        .padding(.horizontal, mine ? 8 : 0)
-        .background(mine ? Theme.accentSoft : .clear, in: RoundedRectangle(cornerRadius: 10))
-    }
-
-    private func avatar(_ e: LeaderEntry) -> some View {
-        Group {
-            if !e.avatarUrl.isEmpty, let url = URL(string: e.avatarUrl) {
-                AsyncImage(url: url) { img in img.resizable().scaledToFill() } placeholder: { Theme.surfaceHi }
-            } else {
-                Circle().fill(Theme.brandDeep)
-                    .overlay(Text(initials(e.displayName)).font(.system(size: 12, weight: .bold)).foregroundStyle(.white))
-            }
-        }
-        .frame(width: 32, height: 32)
-        .clipShape(Circle())
+        .padding(24).background(Theme.bg.ignoresSafeArea()).presentationDetents([.medium])
     }
 
     // MARK: Loading / error
@@ -347,15 +312,12 @@ struct GamificationView: View {
     private func load() async {
         let c = APIClient(token: auth.accessToken)
         async let profFetch = c.gamification()
-        async let boardFetch = c.leaderboard(limit: 20)
         async let experienceFetch = c.gamificationExperience()
         let prof = try? await profFetch
-        let board = try? await boardFetch
         let experience = try? await experienceFetch
         await MainActor.run {
             if let prof { self.profile = prof; self.failed = false }
             else if self.profile == nil { self.failed = true }
-            if let board { self.leaders = board.entries; self.me = board.me }
             if let experience { self.experience = experience }
             self.loading = false
         }
@@ -383,9 +345,6 @@ struct GamificationView: View {
                 }
             }
         }
-        if let board = try? await c.leaderboard(limit: 20) {
-            await MainActor.run { self.leaders = board.entries; self.me = board.me }
-        }
     }
 
     private func showToast(_ msg: String) {
@@ -396,20 +355,6 @@ struct GamificationView: View {
         }
     }
 
-    private func rankLabel(_ r: Int) -> String {
-        switch r {
-        case 1: return "🥇"
-        case 2: return "🥈"
-        case 3: return "🥉"
-        default: return "\(r)"
-        }
-    }
-
-    private func initials(_ name: String) -> String {
-        let parts = name.split(separator: " ").prefix(2)
-        let s = parts.compactMap { $0.first }.map(String.init).joined()
-        return s.isEmpty ? "?" : s.uppercased()
-    }
 }
 
 // MARK: - Small reusable pieces

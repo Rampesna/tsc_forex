@@ -23,14 +23,13 @@ struct RootView: View {
 }
 
 enum AppTab: Int, CaseIterable {
-    case markets, portfolio, rewards, alerts, notifications, settings
+    case markets, portfolio, rewards, alerts, settings
     var title: String {
         switch self {
         case .markets: return "Piyasa"
         case .portfolio: return "Portföy"
         case .rewards: return "Ödüller"
         case .alerts: return "Alarm"
-        case .notifications: return "Bildirim"
         case .settings: return "Ayarlar"
         }
     }
@@ -40,7 +39,6 @@ enum AppTab: Int, CaseIterable {
         case .portfolio: return "briefcase"
         case .rewards: return "trophy"
         case .alerts: return "bell"
-        case .notifications: return "tray.full"
         case .settings: return "gearshape"
         }
     }
@@ -50,7 +48,6 @@ enum AppTab: Int, CaseIterable {
         case .portfolio: return "briefcase.fill"
         case .rewards: return "trophy.fill"
         case .alerts: return "bell.fill"
-        case .notifications: return "tray.full.fill"
         case .settings: return "gearshape.fill"
         }
     }
@@ -59,26 +56,45 @@ enum AppTab: Int, CaseIterable {
 struct MainTabView: View {
     @EnvironmentObject var auth: AuthStore
     @EnvironmentObject var prices: PriceStore
+    @EnvironmentObject var billing: BillingStore
     @State private var tab: AppTab = .markets
+    @State private var marketCategory: MarketCategory = .all
+    @State private var marketPath = NavigationPath()
 
     var body: some View {
         Group {
             switch tab {
-            case .markets:        MarketsView()
+            case .markets:        MarketsView(category: $marketCategory, path: $marketPath)
             case .portfolio:      PortfolioView()
             case .rewards:        GamificationView()
             case .alerts:         AlertsView()
-            case .notifications:  NotificationsView()
             case .settings:       SettingsView()
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .safeAreaInset(edge: .bottom) {
-            CustomTabBar(selection: $tab, badge: prices.liveNotifications.count)
+            CustomTabBar(selection: $tab) { tapped in
+                if tapped == .markets, !marketPath.isEmpty {
+                    withAnimation { marketPath = NavigationPath() }
+                }
+            }
         }
         .onAppear {
             prices.connect(token: auth.accessToken)
             setupPush()
+        }
+        .task(id: auth.accessToken) {
+            guard let token = auth.accessToken, !token.isEmpty else {
+                billing.clearSession()
+                return
+            }
+            await auth.loadProfile()
+            await billing.refresh(token: token)
+        }
+        .onDisappear {
+            if !auth.isLoggedIn {
+                billing.clearSession()
+            }
         }
     }
 
@@ -94,7 +110,6 @@ struct MainTabView: View {
         PushManager.shared.onToken = { token in
             Task { try? await APIClient(token: auth.accessToken).registerDevice(token: token) }
         }
-        PushManager.shared.requestPermission()
         if let existing = PushManager.shared.deviceToken {
             Task { try? await APIClient(token: auth.accessToken).registerDevice(token: existing) }
         }
@@ -105,7 +120,7 @@ struct MainTabView: View {
 // behind the active item and a filled-icon state on selection.
 struct CustomTabBar: View {
     @Binding var selection: AppTab
-    var badge: Int = 0
+    var onTap: (AppTab) -> Void = { _ in }
     @Namespace private var ns
 
     var body: some View {
@@ -137,22 +152,15 @@ struct CustomTabBar: View {
         let active = selection == t
         Button {
             Haptics.tap()
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) { selection = t }
+            onTap(t)
+            if selection != t {
+                withAnimation(.spring(response: 0.35, dampingFraction: 0.78)) { selection = t }
+            }
         } label: {
             VStack(spacing: 3) {
-                ZStack(alignment: .topTrailing) {
-                    Image(systemName: active ? t.iconFilled : t.icon)
-                        .font(.system(size: 18, weight: .semibold))
-                        .frame(height: 22)
-                    if t == .notifications && badge > 0 {
-                        Text(badge > 9 ? "9+" : "\(badge)")
-                            .font(.system(size: 9, weight: .bold))
-                            .foregroundStyle(.white)
-                            .padding(.horizontal, 4).padding(.vertical, 1)
-                            .background(Theme.down, in: Capsule())
-                            .offset(x: 12, y: -6)
-                    }
-                }
+                Image(systemName: active ? t.iconFilled : t.icon)
+                    .font(.system(size: 18, weight: .semibold))
+                    .frame(height: 22)
                 Text(t.title)
                     .font(.system(size: 9.5, weight: active ? .bold : .medium))
                     .lineLimit(1)
@@ -180,9 +188,13 @@ struct ContentView: View {
     var body: some View { RootView() }
 }
 
-#Preview {
-    RootView()
-        .environmentObject(AuthStore())
-        .environmentObject(PriceStore())
-        .environmentObject(PortfolioStore())
+#if DEBUG
+struct ContentView_Previews: PreviewProvider {
+    static var previews: some View {
+        RootView()
+            .environmentObject(AuthStore())
+            .environmentObject(PriceStore())
+            .environmentObject(PortfolioStore())
+    }
 }
+#endif

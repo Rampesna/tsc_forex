@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/endpoints";
+import { describeApiError } from "../lib/api";
 import { useMarkets } from "../store/markets";
 import { tl } from "../lib/format";
 import { Card, ChangePill, EmptyState } from "../components/common";
@@ -56,7 +57,13 @@ export function Favorites() {
         <div style={{ color: "var(--text-dim)", fontSize: 13 }}>Sıralamayı yukarı/aşağı taşıyarak özelleştir</div>
       </div>
 
-      {ordered.length === 0 ? (
+      {(watch.isError || remove.isError) && (
+        <Card style={{ padding: 12, color: "var(--down)", fontSize: 12 }}>
+          {describeApiError(remove.error || watch.error, "Favoriler şu anda güncellenemedi.")}
+        </Card>
+      )}
+
+      {!watch.isLoading && ordered.length === 0 ? (
         <EmptyState icon="star" title="Henüz favori yok" hint="Bir varlık detayından ‘Favori ekle’ ile ekleyin" />
       ) : (
         <Card style={{ overflow: "hidden" }}>
@@ -85,7 +92,7 @@ export function Favorites() {
                   <div className="mono" style={{ fontSize: 15, fontWeight: 700 }}>{tl(p?.price ?? 0)}</div>
                   <div style={{ marginTop: 3 }}><ChangePill pct={p?.change_pct ?? 0} small /></div>
                 </div>
-                <button onClick={() => remove.mutate(code)} style={removeBtn} title="Kaldır">✕</button>
+                <button disabled={remove.isPending} onClick={() => remove.mutate(code)} style={removeBtn} title="Kaldır">✕</button>
               </div>
             );
           })}

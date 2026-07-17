@@ -46,7 +46,7 @@ func (r *authMemRepo) Update(_ context.Context, u *models.User) error {
 	r.m[u.Email] = *u
 	return nil
 }
-func (r *authMemRepo) DeleteUser(_ context.Context, id uuid.UUID) error {
+func (r *authMemRepo) DeleteUser(_ context.Context, id uuid.UUID, _ ...string) error {
 	for e, u := range r.m {
 		if u.ID == id {
 			delete(r.m, e)

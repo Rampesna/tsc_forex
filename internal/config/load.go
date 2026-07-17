@@ -186,6 +186,9 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("oauth.google_client_ids", []string{})
 	v.SetDefault("oauth.apple_bundle_ids", []string{})
 	v.SetDefault("oauth.apple_domain_association", "")
+	v.SetDefault("oauth.apple_revoke_client_id", "talhacan.tscforex")
+	v.SetDefault("oauth.apple_key_id", "")
+	v.SetDefault("oauth.apple_private_key_path", "")
 
 	// Safe default when no config file/env is present (tests, bare runs): the
 	// mock provider needs no network. Production sets yahoo via config/ConfigMap.
@@ -285,7 +288,27 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("ai.reasoning_effort", "high")
 	v.SetDefault("ai.web_search", true)
 	v.SetDefault("ai.search_context", "high")
-	v.SetDefault("ai.max_tool_calls", 4)
+	v.SetDefault("ai.max_tool_calls", 6)
+
+	v.SetDefault("billing.enabled", false)
+	v.SetDefault("billing.bundle_id", "talhacan.tscforex")
+	// TestFlight and App Review transactions use Apple's Sandbox environment.
+	// They remain isolated by the verified environment carried in the JWS.
+	v.SetDefault("billing.allow_sandbox", true)
+	// Sandbox/TestFlight grants are intentionally short lived even when the
+	// signed transaction carries a much later test expiry. A fresh Apple JWS
+	// extends the window; copied stale Sandbox JWS cannot unlock production
+	// indefinitely.
+	v.SetDefault("billing.sandbox_max_lifetime", "24h")
+	v.SetDefault("billing.app_attest_enabled", false)
+	v.SetDefault("billing.app_attest_team_id", "")
+	v.SetDefault("billing.app_attest_environment", "development")
+	v.SetDefault("billing.app_attest_root_ca_path", "")
+	v.SetDefault("billing.app_attest_bundle_versions", []string{"3"})
+	v.SetDefault("billing.app_attest_challenge_ttl", "5m")
+	v.SetDefault("billing.device_check_enabled", false)
+	v.SetDefault("billing.device_check_key_id", "")
+	v.SetDefault("billing.device_check_private_key_path", "")
 
 	v.SetDefault("webauthn.enabled", false)
 	v.SetDefault("webauthn.rp_display_name", "TSC Forex")

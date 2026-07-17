@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "../auth/AuthContext";
-import { tokens } from "../lib/api";
+import { describeApiError, tokens } from "../lib/api";
 import { api } from "../lib/endpoints";
 import { signed, signedPct, tl } from "../lib/format";
 import type {
   PortfolioOverview,
+  PortfolioHealth,
   PortfolioPerformancePoint,
   PortfolioPosition,
   PortfolioTransaction,
@@ -94,6 +95,11 @@ export function Portfolio() {
   const pricesRef = useRef(prices);
   pricesRef.current = prices;
   const [overview, setOverview] = useState<PortfolioOverview | null>(() => loadScopedCache(userId));
+  const [portfolioList, setPortfolioList] = useState<PortfolioOverview[]>([]);
+  const [selectedPortfolioID, setSelectedPortfolioID] = useState(() => loadScopedCache(userId)?.portfolio.id ?? "");
+  const selectedPortfolioIDRef = useRef(selectedPortfolioID);
+  selectedPortfolioIDRef.current = selectedPortfolioID;
+  const [portfolioManagerOpen, setPortfolioManagerOpen] = useState(false);
   const [performance, setPerformance] = useState<PortfolioPerformancePoint[]>([]);
   const [range, setRange] = useState("1y");
   const [loading, setLoading] = useState(!overview);
@@ -104,14 +110,20 @@ export function Portfolio() {
     transactions: PortfolioTransaction[];
   } | null>(null);
   const [legacyPending, setLegacyPending] = useState<LegacyHolding[]>([]);
+  const [health, setHealth] = useState<PortfolioHealth | null>(null);
+  const [premiumAction, setPremiumAction] = useState<"health" | "export" | null>(null);
 
   useEffect(() => {
-    setOverview(loadScopedCache(userId));
+    const cached = loadScopedCache(userId);
+    setOverview(cached);
+    setPortfolioList([]);
+    setSelectedPortfolioID(cached?.portfolio.id ?? "");
+    selectedPortfolioIDRef.current = cached?.portfolio.id ?? "";
     setPerformance([]);
     setLegacyPending([]);
   }, [userId]);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (preferredPortfolioID?: string) => {
     if (!userId) return;
     setLoading(true);
     setError("");
@@ -121,7 +133,11 @@ export function Portfolio() {
         const created = await api.createPortfolio("Ana Portföy");
         list = [await api.portfolio(created.id)];
       }
-      let next = list[0];
+      setPortfolioList(list);
+      const wantedID = preferredPortfolioID || selectedPortfolioIDRef.current || loadScopedCache(userId)?.portfolio.id;
+      let next = list.find((item) => item.portfolio.id === wantedID) ?? list[0];
+      selectedPortfolioIDRef.current = next.portfolio.id;
+      setSelectedPortfolioID(next.portfolio.id);
       const legacy = readJSON<LegacyHolding[]>(LEGACY_KEY, []);
       if (legacy.length && !localStorage.getItem(legacyDoneKey)) {
         if (next.positions.some((position) => num(position.quantity) > 0)) {
@@ -137,6 +153,7 @@ export function Portfolio() {
         next = await api.portfolio(next.portfolio.id);
       }
       setOverview(next);
+      setPortfolioList((current) => current.map((item) => item.portfolio.id === next.portfolio.id ? next : item));
       localStorage.setItem(cacheKey, JSON.stringify(next));
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : "Portföy yüklenemedi.");
@@ -218,6 +235,39 @@ export function Portfolio() {
     }
   };
 
+  const healthCheck = async () => {
+    if (!overview) return;
+    setPremiumAction("health");
+    setError("");
+    try {
+      setHealth(await api.portfolioHealth(overview.portfolio.id));
+    } catch (reason) {
+      setError(describeApiError(reason, "Portföy sağlık analizi oluşturulamadı."));
+    } finally {
+      setPremiumAction(null);
+    }
+  };
+
+  const exportPortfolio = async () => {
+    if (!overview) return;
+    setPremiumAction("export");
+    setError("");
+    try {
+      const response = await api.exportPortfolio(overview.portfolio.id);
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `portfoy-${new Date().toISOString().slice(0, 10)}.csv`;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (reason) {
+      setError(describeApiError(reason, "Portföy dışa aktarılamadı."));
+    } finally {
+      setPremiumAction(null);
+    }
+  };
+
   if (loading && !overview) {
     return <Card style={{ padding: 24 }}>Portföy senkronize ediliyor…</Card>;
   }
@@ -237,14 +287,40 @@ export function Portfolio() {
             İşlem defteri, bulut senkronu ve TRY bazlı canlı analiz
           </div>
         </div>
-        <Button variant="primary" onClick={() => setEditor({})}>+ İşlem ekle</Button>
+        <div style={{ display: "flex", flexWrap: "wrap", justifyContent: "flex-end", gap: 7 }}>
+          <label style={{ position: "absolute", width: 1, height: 1, overflow: "hidden", clipPath: "inset(50%)" }} htmlFor="portfolio-picker">Portföy seç</label>
+          <select
+            id="portfolio-picker"
+            value={selectedPortfolioID}
+            onChange={(event) => {
+              const id = event.target.value;
+              selectedPortfolioIDRef.current = id;
+              setSelectedPortfolioID(id);
+              setHealth(null);
+              setSelected(null);
+              setEditor(null);
+              const cached = portfolioList.find((item) => item.portfolio.id === id);
+              if (cached) setOverview(cached);
+              void refresh(id);
+            }}
+            style={{ minWidth: 170, border: "1px solid var(--stroke)", borderRadius: 9, padding: "8px 10px", color: "var(--text)", background: "var(--surface)" }}
+          >
+            {portfolioList.map((item) => <option key={item.portfolio.id} value={item.portfolio.id}>{item.portfolio.name}</option>)}
+          </select>
+          <Button variant="ghost" onClick={() => setPortfolioManagerOpen(true)}>Portföyleri yönet</Button>
+          <Button variant="ghost" disabled={premiumAction !== null} onClick={() => void healthCheck()}>{premiumAction === "health" ? "Analiz ediliyor…" : "Portföy sağlığı"}</Button>
+          <Button variant="ghost" disabled={premiumAction !== null} onClick={() => void exportPortfolio()}>{premiumAction === "export" ? "Hazırlanıyor…" : "CSV dışa aktar"}</Button>
+          <Button variant="primary" onClick={() => setEditor({})}>+ İşlem ekle</Button>
+        </div>
       </div>
 
       {error && (
         <Card style={{ padding: 12, color: "var(--down)", fontSize: 13 }}>
-          {error}
+          {error} {error.includes("Ayarlar") && <button type="button" onClick={() => navigate("/settings")} style={{ marginLeft: 6, padding: 0, border: 0, borderBottom: "1px solid currentColor", color: "inherit", background: "transparent", cursor: "pointer", fontWeight: 750 }}>Planı gör</button>}
         </Card>
       )}
+
+      {health && <PortfolioHealthCard health={health} onClose={() => setHealth(null)} />}
 
       {!!legacyPending.length && (
         <Card style={{ padding: 16, borderColor: "var(--accent)" }}>
@@ -388,8 +464,151 @@ export function Portfolio() {
           onDelete={(transaction) => void deleteTransaction(transaction)}
         />
       )}
+
+      {portfolioManagerOpen && (
+        <PortfolioManager
+          portfolios={portfolioList}
+          selectedID={selectedPortfolioID}
+          onClose={() => setPortfolioManagerOpen(false)}
+          onSelect={(id) => {
+            selectedPortfolioIDRef.current = id;
+            setSelectedPortfolioID(id);
+            setPortfolioManagerOpen(false);
+            void refresh(id);
+          }}
+          onCreate={async (name) => {
+            const created = await api.createPortfolio(name);
+            selectedPortfolioIDRef.current = created.id;
+            await refresh(created.id);
+          }}
+          onRename={async (id, name) => {
+            await api.updatePortfolio(id, name);
+            await refresh(selectedPortfolioID || id);
+          }}
+          onDelete={async (id) => {
+            await api.deletePortfolio(id);
+            const nextID = selectedPortfolioID === id ? "" : selectedPortfolioID;
+            selectedPortfolioIDRef.current = nextID;
+            await refresh(nextID);
+          }}
+        />
+      )}
     </div>
   );
+}
+
+function PortfolioManager({
+  portfolios,
+  selectedID,
+  onClose,
+  onSelect,
+  onCreate,
+  onRename,
+  onDelete,
+}: {
+  portfolios: PortfolioOverview[];
+  selectedID: string;
+  onClose: () => void;
+  onSelect: (id: string) => void;
+  onCreate: (name: string) => Promise<void>;
+  onRename: (id: string, name: string) => Promise<void>;
+  onDelete: (id: string) => Promise<void>;
+}) {
+  const [newName, setNewName] = useState("");
+  const [editingID, setEditingID] = useState("");
+  const [editingName, setEditingName] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  async function perform(action: () => Promise<void>) {
+    setBusy(true);
+    setError("");
+    try {
+      await action();
+    } catch (reason) {
+      setError(describeApiError(reason, "Portföy işlemi tamamlanamadı."));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div onMouseDown={onClose} style={overlay}>
+      <div role="dialog" aria-modal="true" aria-labelledby="portfolio-manager-title" onMouseDown={(event) => event.stopPropagation()} style={{ ...modal, maxWidth: 560 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", gap: 12, alignItems: "start" }}>
+          <div>
+            <h3 id="portfolio-manager-title" style={{ margin: 0 }}>Portföyleri yönet</h3>
+            <div style={{ marginTop: 4, color: "var(--text-dim)", fontSize: 12 }}>Plan limitin içinde ayrı strateji ve hedefler için birden fazla portföy kullan.</div>
+          </div>
+          <button type="button" onClick={onClose} style={closeButton} aria-label="Kapat">×</button>
+        </div>
+
+        <div style={{ display: "grid", gap: 8, marginTop: 18 }}>
+          {portfolios.map((item) => {
+            const isEditing = editingID === item.portfolio.id;
+            return <div key={item.portfolio.id} style={{ padding: 11, border: `1px solid ${selectedID === item.portfolio.id ? "var(--accent)" : "var(--stroke)"}`, borderRadius: 10, background: "var(--bg-elev)" }}>
+              {isEditing ? (
+                <div style={{ display: "flex", gap: 7 }}>
+                  <input value={editingName} maxLength={80} onChange={(event) => setEditingName(event.target.value)} style={{ ...managerInput, flex: 1 }} autoFocus />
+                  <Button variant="soft" disabled={busy || !editingName.trim()} onClick={() => void perform(async () => { await onRename(item.portfolio.id, editingName.trim()); setEditingID(""); })}>Kaydet</Button>
+                </div>
+              ) : (
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <button type="button" onClick={() => onSelect(item.portfolio.id)} style={{ flex: 1, padding: 0, border: 0, color: "var(--text)", background: "transparent", textAlign: "left", cursor: "pointer" }}>
+                    <strong>{item.portfolio.name}</strong>
+                    <small style={{ display: "block", marginTop: 3, color: "var(--text-faint)" }}>{item.active_positions} aktif pozisyon · {tl(num(item.total_value_try))}</small>
+                  </button>
+                  <button type="button" onClick={() => { setEditingID(item.portfolio.id); setEditingName(item.portfolio.name); }} style={actionButton}>Yeniden adlandır</button>
+                  <button type="button" disabled={busy} onClick={() => {
+                    if (window.confirm(`“${item.portfolio.name}” ve işlem geçmişi kalıcı olarak silinsin mi?`)) {
+                      void perform(() => onDelete(item.portfolio.id));
+                    }
+                  }} style={{ ...actionButton, color: "var(--down)" }}>Sil</button>
+                </div>
+              )}
+            </div>;
+          })}
+        </div>
+
+        <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, marginTop: 14, paddingTop: 14, borderTop: "1px solid var(--stroke)" }}>
+          <input value={newName} maxLength={80} onChange={(event) => setNewName(event.target.value)} placeholder="Yeni portföy adı" style={managerInput} />
+          <Button variant="primary" disabled={busy || !newName.trim()} onClick={() => void perform(async () => { await onCreate(newName.trim()); setNewName(""); })}>{busy ? "İşleniyor…" : "Yeni portföy"}</Button>
+        </div>
+        {error && <div role="alert" style={{ marginTop: 10, color: "var(--down)", fontSize: 12 }}>{error} {error.includes("Ayarlar") && <button type="button" onClick={() => { window.location.href = "/settings"; }} style={{ ...actionButton, marginLeft: 6 }}>Planı gör</button>}</div>}
+      </div>
+    </div>
+  );
+}
+
+const managerInput: React.CSSProperties = {
+  minWidth: 0,
+  border: "1px solid var(--stroke)",
+  borderRadius: 9,
+  padding: "9px 10px",
+  color: "var(--text)",
+  background: "var(--surface-hi)",
+};
+
+function PortfolioHealthCard({ health, onClose }: { health: PortfolioHealth; onClose: () => void }) {
+  const score = typeof health.score === "number" ? Math.round(health.score) : null;
+  const findings = Array.isArray(health.findings) ? health.findings : [];
+  return <Card style={{ padding: 18, borderColor: "rgba(69,192,214,.32)" }}>
+    <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 14 }}>
+      <div>
+        <div style={{ color: "var(--accent-hi)", fontSize: 10, fontWeight: 750, letterSpacing: ".09em", textTransform: "uppercase" }}>Premium portföy sağlığı</div>
+        <h3 style={{ margin: "6px 0 4px", fontSize: 18 }}>{score === null ? "Sağlık kontrolü tamamlandı" : `${score}/100${health.grade ? ` · ${health.grade}` : ""}`}</h3>
+        <p style={{ margin: 0, color: "var(--text-dim)", fontSize: 12, lineHeight: 1.5 }}>{health.summary || "Portföy dağılımı ve risk göstergeleri güncel verilerle değerlendirildi."}</p>
+      </div>
+      <button type="button" onClick={onClose} aria-label="Portföy sağlık kartını kapat" style={{ border: 0, color: "var(--text-faint)", background: "transparent", cursor: "pointer", fontSize: 18 }}>×</button>
+    </div>
+    {!!findings.length && <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit,minmax(190px,1fr))", gap: 8, marginTop: 14 }}>
+      {findings.map((finding, index) => <div key={`${finding.title || "bulgu"}-${index}`} style={{ padding: 11, border: "1px solid var(--stroke)", borderRadius: 9, background: "var(--bg-elev)" }}>
+        <strong style={{ display: "block", color: finding.severity === "high" ? "var(--down)" : finding.severity === "medium" ? "#e6b565" : "var(--text)", fontSize: 12 }}>{finding.title || "Portföy bulgusu"}</strong>
+        {finding.detail && <p style={{ margin: "5px 0 0", color: "var(--text-dim)", fontSize: 11, lineHeight: 1.45 }}>{finding.detail}</p>}
+      </div>)}
+    </div>}
+    <div style={{ marginTop: 12, color: "var(--text-faint)", fontSize: 10 }}>Bilgilendirme ve risk farkındalığı amaçlıdır; yatırım tavsiyesi değildir.</div>
+  </Card>;
 }
 
 function Metric({ label, value, sub, tone: valueTone, large }: { label: string; value: string; sub?: string; tone?: number; large?: boolean }) {

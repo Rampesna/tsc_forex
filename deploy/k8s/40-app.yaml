@@ -39,6 +39,12 @@ spec:
             - name: push-creds
               mountPath: /etc/push
               readOnly: true
+            # Dedicated Apple private keys: sign-in-with-apple.p8 revokes login
+            # tokens before deletion; devicecheck.p8 authorizes DeviceCheck's
+            # reinstall-resistant free-trial bit. Create both out of band.
+            - name: apple-auth-creds
+              mountPath: /etc/apple-auth
+              readOnly: true
           # Startup can be slow after a cold DB (the day-open baseline seed
           # scans a large price_ticks window before the HTTP server binds).
           # startupProbe disables liveness/readiness until the app is up so a
@@ -72,6 +78,10 @@ spec:
         - name: push-creds
           secret:
             secretName: tsc-forex-push
+            optional: true
+        - name: apple-auth-creds
+          secret:
+            secretName: tsc-forex-apple-auth
             optional: true
       # Rolling updates keep the WebSocket stream broadcasting during deploys.
 ---

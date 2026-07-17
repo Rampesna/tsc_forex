@@ -47,14 +47,33 @@ var badgeCatalog = []BadgeDef{
 	{"first_steps", "İlk Adım", "İlk günlük girişini yaptın.", "🌱", 20},
 	{"streak_3", "Isınıyor", "3 gün üst üste giriş yaptın.", "🔥", 30},
 	{"streak_7", "Haftalık Seri", "7 gün üst üste giriş yaptın.", "🔥", 70},
+	{"streak_14", "İki Haftalık Ritim", "14 gün üst üste giriş yaptın.", "🗓️", 120},
 	{"streak_30", "Aylık Disiplin", "30 gün üst üste giriş yaptın.", "⚡️", 300},
+	{"streak_60", "Kararlı Takip", "60 gün üst üste giriş yaptın.", "💪", 500},
 	{"streak_100", "Efsane Seri", "100 gün üst üste giriş yaptın.", "🏆", 1000},
+	{"streak_180", "Yarım Yıl", "180 gün üst üste giriş yaptın.", "🌟", 1500},
+	{"streak_365", "Bir Yıllık Seri", "365 gün üst üste giriş yaptın.", "👑", 2500},
+	{"collector_1", "İlk Favori", "1 varlığı favorilere ekledin.", "☆", 15},
 	{"collector", "Koleksiyoncu", "5 varlığı favorilere ekledin.", "⭐️", 50},
+	{"collector_10", "Takip Listesi", "10 varlığı favorilere ekledin.", "📌", 90},
+	{"collector_25", "Piyasa Radarı", "25 varlığı favorilere ekledin.", "📡", 180},
+	{"collector_50", "Geniş Radar", "50 varlığı favorilere ekledin.", "🛰️", 350},
+	{"watchful_1", "İlk Alarm", "1 fiyat alarmı kurdun.", "🔕", 20},
 	{"watchful", "Tetikte", "5 fiyat alarmı kurdun.", "🔔", 60},
+	{"watchful_10", "Nöbetçi", "10 fiyat alarmı kurdun.", "⏰", 100},
+	{"watchful_25", "Risk Gözcüsü", "25 fiyat alarmı kurdun.", "👁️", 200},
+	{"watchful_50", "Erken Uyarı", "50 fiyat alarmı kurdun.", "🚨", 400},
+	{"level_3", "Çırak", "3. seviyeye ulaştın.", "🟤", 0},
 	{"level_5", "Yükselen", "5. seviyeye ulaştın.", "🥉", 0},
 	{"level_10", "Deneyimli", "10. seviyeye ulaştın.", "🥈", 0},
+	{"level_15", "Analist", "15. seviyeye ulaştın.", "🔷", 0},
 	{"level_25", "Usta Yatırımcı", "25. seviyeye ulaştın.", "🥇", 0},
+	{"level_50", "Piyasa Ustası", "50. seviyeye ulaştın.", "💎", 0},
+	{"committed_7", "İlk Hafta", "Toplam 7 gün giriş yaptın.", "📆", 60},
 	{"committed", "Sadık Takipçi", "Toplam 30 gün giriş yaptın.", "📅", 200},
+	{"committed_90", "Düzenli Takipçi", "Toplam 90 gün giriş yaptın.", "🧭", 450},
+	{"committed_180", "Uzun Yol", "Toplam 180 gün giriş yaptın.", "🛤️", 800},
+	{"committed_365", "Yıllık Yolculuk", "Toplam 365 gün giriş yaptın.", "🎖️", 1600},
 }
 
 // QuestDef is a daily task that resets each Istanbul day.
@@ -398,22 +417,60 @@ func badgeQualifies(code string, st *models.UserGamification, favCount, alertCou
 		return st.LongestStreak >= 3
 	case "streak_7":
 		return st.LongestStreak >= 7
+	case "streak_14":
+		return st.LongestStreak >= 14
 	case "streak_30":
 		return st.LongestStreak >= 30
+	case "streak_60":
+		return st.LongestStreak >= 60
 	case "streak_100":
 		return st.LongestStreak >= 100
+	case "streak_180":
+		return st.LongestStreak >= 180
+	case "streak_365":
+		return st.LongestStreak >= 365
+	case "collector_1":
+		return favCount >= 1
 	case "collector":
 		return favCount >= 5
+	case "collector_10":
+		return favCount >= 10
+	case "collector_25":
+		return favCount >= 25
+	case "collector_50":
+		return favCount >= 50
+	case "watchful_1":
+		return alertCount >= 1
 	case "watchful":
 		return alertCount >= 5
+	case "watchful_10":
+		return alertCount >= 10
+	case "watchful_25":
+		return alertCount >= 25
+	case "watchful_50":
+		return alertCount >= 50
+	case "level_3":
+		return st.Level >= 3
 	case "level_5":
 		return st.Level >= 5
 	case "level_10":
 		return st.Level >= 10
+	case "level_15":
+		return st.Level >= 15
 	case "level_25":
 		return st.Level >= 25
+	case "level_50":
+		return st.Level >= 50
+	case "committed_7":
+		return st.TotalCheckIns >= 7
 	case "committed":
 		return st.TotalCheckIns >= 30
+	case "committed_90":
+		return st.TotalCheckIns >= 90
+	case "committed_180":
+		return st.TotalCheckIns >= 180
+	case "committed_365":
+		return st.TotalCheckIns >= 365
 	}
 	return false
 }

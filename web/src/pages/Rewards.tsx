@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "../lib/endpoints";
 import type {
@@ -7,7 +7,6 @@ import type {
   GamificationExperience,
   GamificationPrivacy,
   GamProfile,
-  LeaderEntry,
   LessonStatus,
   PaperTrade,
 } from "../lib/types";
@@ -20,9 +19,9 @@ export function Rewards() {
   const [toast, setToast] = useState<string | null>(null);
   const [celebrate, setCelebrate] = useState<GamBadge[]>([]);
   const [showPlan, setShowPlan] = useState(false);
+  const [selectedBadge, setSelectedBadge] = useState<GamBadge | null>(null);
 
   const profileQ = useQuery({ queryKey: ["gamification"], queryFn: api.gamification, refetchOnWindowFocus: false });
-  const boardQ = useQuery({ queryKey: ["leaderboard"], queryFn: () => api.leaderboard(20), refetchOnWindowFocus: false });
   const experienceQ = useQuery({
     queryKey: ["gamification-experience"],
     queryFn: api.gamificationExperience,
@@ -51,25 +50,20 @@ export function Rewards() {
         <div style={{ display: "grid", gap: 16 }}>
           <Hero p={p} />
           <StatsRow p={p} />
-          <DailyReward
-            p={p}
-            planned={Boolean(experienceQ.data?.daily_plan)}
-            onClaim={() => setShowPlan(true)}
-          />
+          {experienceQ.data && <DevelopmentSummary experience={experienceQ.data} />}
+          <Badges p={p} onSelect={setSelectedBadge} />
           {experienceQ.data && (
             <ExperienceCards
+              profile={p}
               experience={experienceQ.data}
+              onPlan={() => setShowPlan(true)}
               flash={flash}
               refresh={() => {
                 qc.invalidateQueries({ queryKey: ["gamification-experience"] });
                 qc.invalidateQueries({ queryKey: ["gamification"] });
-                qc.invalidateQueries({ queryKey: ["leaderboard"] });
               }}
             />
           )}
-          <Quests p={p} />
-          <Badges p={p} />
-          <LeaderboardCard entries={boardQ.data?.entries ?? []} me={boardQ.data?.me} />
         </div>
       )}
 
@@ -97,6 +91,7 @@ export function Rewards() {
       {celebrate.length > 0 && (
         <Celebration badges={celebrate} onClose={() => setCelebrate([])} />
       )}
+      {selectedBadge && <BadgeDetail badge={selectedBadge} onClose={() => setSelectedBadge(null)} />}
       {showPlan && (
         <PlanEditor
           experience={experienceQ.data}
@@ -105,7 +100,6 @@ export function Rewards() {
           onSaved={(res) => {
             qc.setQueryData(["gamification"], res.profile);
             qc.invalidateQueries({ queryKey: ["gamification-experience"] });
-            qc.invalidateQueries({ queryKey: ["leaderboard"] });
             setShowPlan(false);
             flash(`Plan kaydedildi · +${res.xp_gained} XP · 🔥 ${res.profile.current_streak} gün`);
             if (res.new_badges.length) setCelebrate(res.new_badges);
@@ -259,33 +253,90 @@ function PlanEditor({
 }
 
 function ExperienceCards({
+  profile,
   experience,
+  onPlan,
   refresh,
   flash,
 }: {
+  profile: GamProfile;
   experience: GamificationExperience;
+  onPlan: () => void;
   refresh: () => void;
   flash: (message: string) => void;
 }) {
+  const [activeTab, setActiveTab] = useState<ExperienceTab>("plan");
+  const tabs: Array<{ id: ExperienceTab; label: string; description: string }> = [
+    { id: "plan", label: "Bugünü planla", description: "Risk sınırı ve odak" },
+    { id: "quests", label: "Günlük görevler", description: "Süreç görevleri" },
+    { id: "learning", label: "Mikro dersler", description: "Bilgi ve tekrar" },
+    { id: "discipline", label: "Disiplin", description: "Karar kalitesi" },
+    { id: "season", label: "Sezon", description: "Kişisel ilerleme" },
+    { id: "paper", label: "Karar günlüğü", description: "Paper senaryolar" },
+    { id: "community", label: "Gruplar ve gizlilik", description: "Paylaşım tercihleri" },
+  ];
   return (
-    <>
-      <Card style={{ padding: 18 }}>
-        <div style={{ fontWeight: 800, marginBottom: 12 }}>Gelişim Özeti</div>
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10 }}>
-          <MiniStat label="Ustalık" value={`${experience.weekly_summary.mastered_lessons}/${experience.weekly_summary.total_lessons}`} />
-          <MiniStat label="Tekrar" value={`${experience.weekly_summary.due_reviews}`} />
-          <MiniStat label="Sezon puanı" value={`${experience.weekly_summary.season_points}`} />
-        </div>
-        <div style={{ marginTop: 10, fontSize: 11, color: "var(--text-faint)" }}>
-          Kural sürümü {experience.rule_version} · Finansal getiri puanlamaya dahil değildir.
+    <section aria-labelledby="development-tools-title" style={{ display: "grid", gap: 12 }}>
+      <div>
+        <h2 id="development-tools-title" style={{ margin: 0, fontSize: 18 }}>Gelişim araçları</h2>
+        <div style={{ marginTop: 3, color: "var(--text-dim)", fontSize: 12 }}>Her araç kendi çalışma alanında açılır; finansal getiri puanlamaya dahil edilmez.</div>
+      </div>
+      <Card style={{ padding: 7, overflow: "hidden" }}>
+        <div role="tablist" aria-label="Gelişim araçları" style={{ display: "flex", gap: 6, overflowX: "auto" }}>
+          {tabs.map((tab) => (
+            <button
+              key={tab.id}
+              type="button"
+              role="tab"
+              aria-selected={activeTab === tab.id}
+              aria-controls="rewards-feature-panel"
+              onClick={() => setActiveTab(tab.id)}
+              style={{
+                flex: "0 0 auto",
+                minWidth: 132,
+                padding: "10px 11px",
+                border: activeTab === tab.id ? "1px solid var(--stroke-strong)" : "1px solid transparent",
+                borderRadius: 9,
+                color: activeTab === tab.id ? "var(--text)" : "var(--text-dim)",
+                background: activeTab === tab.id ? "var(--surface-hi)" : "transparent",
+                textAlign: "left",
+                cursor: "pointer",
+              }}
+            >
+              <strong style={{ display: "block", fontSize: 11.5 }}>{tab.label}</strong>
+              <small style={{ display: "block", marginTop: 3, color: "var(--text-faint)", fontSize: 9.5 }}>{tab.description}</small>
+            </button>
+          ))}
         </div>
       </Card>
-      <LearningLab lessons={experience.lessons} refresh={refresh} flash={flash} />
-      <DisciplineLab quests={experience.discipline_quests} refresh={refresh} flash={flash} />
-      <SeasonCard experience={experience} />
-      <PaperLab trades={experience.paper_trades} refresh={refresh} flash={flash} />
-      <PrivacyAndGroups experience={experience} refresh={refresh} flash={flash} />
-    </>
+      <div id="rewards-feature-panel" role="tabpanel" tabIndex={0}>
+        {activeTab === "plan" && <DailyReward p={profile} planned={Boolean(experience.daily_plan)} onClaim={onPlan} />}
+        {activeTab === "quests" && <Quests p={profile} />}
+        {activeTab === "learning" && <LearningLab lessons={experience.lessons} refresh={refresh} flash={flash} />}
+        {activeTab === "discipline" && <DisciplineLab quests={experience.discipline_quests} refresh={refresh} flash={flash} />}
+        {activeTab === "season" && <SeasonCard experience={experience} />}
+        {activeTab === "paper" && <PaperLab trades={experience.paper_trades} refresh={refresh} flash={flash} />}
+        {activeTab === "community" && <PrivacyAndGroups experience={experience} refresh={refresh} flash={flash} />}
+      </div>
+    </section>
+  );
+}
+
+type ExperienceTab = "plan" | "quests" | "learning" | "discipline" | "season" | "paper" | "community";
+
+function DevelopmentSummary({ experience }: { experience: GamificationExperience }) {
+  return (
+    <Card style={{ padding: 18 }}>
+      <div style={{ fontWeight: 800, marginBottom: 12 }}>Gelişim Özeti</div>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 10 }}>
+        <MiniStat label="Ustalık" value={`${experience.weekly_summary.mastered_lessons}/${experience.weekly_summary.total_lessons}`} />
+        <MiniStat label="Tekrar" value={`${experience.weekly_summary.due_reviews}`} />
+        <MiniStat label="Sezon puanı" value={`${experience.weekly_summary.season_points}`} />
+      </div>
+      <div style={{ marginTop: 10, fontSize: 11, color: "var(--text-faint)" }}>
+        Kural sürümü {experience.rule_version} · Finansal getiri puanlamaya dahil değildir.
+      </div>
+    </Card>
   );
 }
 
@@ -411,16 +462,12 @@ function SeasonCard({ experience }: { experience: GamificationExperience }) {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "start" }}>
         <div>
           <div style={{ fontWeight: 800 }}>{season.name}</div>
-          <div style={{ fontSize: 12, color: "var(--text-dim)" }}>{season.code} · {season.league} Ligi</div>
+          <div style={{ fontSize: 12, color: "var(--text-dim)" }}>{season.code} · kişisel sezon ilerlemesi</div>
         </div>
-        <span style={pillStyle}>#{season.rank} · {season.points} puan</span>
+        <span style={pillStyle}>{season.points} puan</span>
       </div>
       <div style={{ fontSize: 11, color: "var(--text-faint)", margin: "10px 0" }}>{season.scoring}</div>
-      <div style={{ display: "grid", gap: 6 }}>
-        {season.standings.slice(0, 5).map((entry) => (
-          <LeaderRow key={entry.user_id} e={entry} mine={false} />
-        ))}
-      </div>
+      <div style={{ color: "var(--text-dim)", fontSize: 11 }}>Sezon bitişi: {new Date(season.ends_at).toLocaleDateString("tr-TR", { day: "numeric", month: "long", year: "numeric" })}</div>
     </Card>
   );
 }
@@ -563,7 +610,6 @@ function PrivacyAndGroups({
       <input value={privacy.alias} maxLength={40} onChange={(event) => setPrivacy({ ...privacy, alias: event.target.value })}
         placeholder="Görünecek takma ad" style={inputStyle} />
       <div style={{ display: "grid", gap: 8, margin: "10px 0" }}>
-        <Toggle label="Sezon sıralamasında görün" checked={privacy.league_opt_in} onChange={() => toggle("league_opt_in")} />
         <Toggle label="Kişiselleştirilmiş öğrenme yolu" checked={privacy.personalized_learning} onChange={() => toggle("personalized_learning")} />
         <Toggle label="Öğrenme bildirimleri" checked={privacy.learning_notifications} onChange={() => toggle("learning_notifications")} />
         <Toggle label="Gizlilik güvenli çalışma grupları" checked={privacy.social_opt_in} onChange={() => toggle("social_opt_in")} />
@@ -690,7 +736,7 @@ function StatsRow({ p }: { p: GamProfile }) {
     <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 12 }}>
       <Tile label="🔥 Seri" value={`${p.current_streak} gün`} tint="var(--down)" />
       <Tile label="Haftalık XP" value={`${p.weekly_xp}`} tint="var(--accent-hi)" />
-      <Tile label="Sıralama" value={p.rank > 0 ? `#${p.rank}` : "—"} />
+      <Tile label="Tamamlanan plan" value={`${p.total_check_ins}`} />
     </div>
   );
 }
@@ -755,19 +801,19 @@ function Quests({ p }: { p: GamProfile }) {
   );
 }
 
-function Badges({ p }: { p: GamProfile }) {
+function Badges({ p, onSelect }: { p: GamProfile; onSelect: (badge: GamBadge) => void }) {
   const earned = p.badges.filter((b) => b.earned).length;
   return (
     <Card style={{ padding: 18 }}>
       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 14 }}>
-        <div style={{ fontWeight: 700 }}>Rozetler</div>
+        <div><div style={{ fontWeight: 700 }}>Rozet Koleksiyonu</div><div style={{ marginTop: 2, color: "var(--text-faint)", fontSize: 10 }}>Kazanma koşulunu görmek için bir rozete dokun</div></div>
         <div style={{ fontSize: 12, color: "var(--text-dim)", fontWeight: 700 }}>
           {earned}/{p.badges.length}
         </div>
       </div>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(76px,1fr))", gap: 16 }}>
         {p.badges.map((b) => (
-          <div key={b.code} title={`${b.name} — ${b.description}`} style={{ textAlign: "center" }}>
+          <button key={b.code} type="button" onClick={() => onSelect(b)} aria-label={`${b.name} rozetinin detayları`} style={{ padding: 0, border: 0, color: "inherit", background: "transparent", textAlign: "center", cursor: "pointer" }}>
             <div
               style={{
                 width: 54,
@@ -798,90 +844,63 @@ function Badges({ p }: { p: GamProfile }) {
             >
               {b.name}
             </div>
-          </div>
+          </button>
         ))}
       </div>
     </Card>
   );
 }
 
-function LeaderboardCard({ entries, me }: { entries: LeaderEntry[]; me?: LeaderEntry }) {
-  const inTop = me && entries.some((e) => e.user_id === me.user_id);
-  return (
-    <Card style={{ padding: 18 }}>
-      <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 12 }}>
-        <div style={{ fontWeight: 700 }}>Haftalık Liderlik 👑</div>
-      </div>
-      {entries.length === 0 ? (
-        <div style={{ fontSize: 13, color: "var(--text-dim)", padding: "8px 0" }}>
-          Bu hafta henüz sıralama yok. İlk XP'yi sen kazan!
-        </div>
-      ) : (
-        <div style={{ display: "grid", gap: 6 }}>
-          {entries.map((e) => (
-            <LeaderRow key={e.user_id} e={e} mine={me?.user_id === e.user_id} />
-          ))}
-          {me && !inTop && me.xp > 0 && (
-            <>
-              <div style={{ height: 1, background: "var(--stroke)", margin: "4px 0" }} />
-              <LeaderRow e={me} mine />
-            </>
-          )}
-        </div>
-      )}
-    </Card>
-  );
-}
+function BadgeDetail({ badge, onClose }: { badge: GamBadge; onClose: () => void }) {
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const closeRef = useRef<HTMLButtonElement>(null);
 
-function LeaderRow({ e, mine }: { e: LeaderEntry; mine: boolean }) {
-  const medal = e.rank === 1 ? "🥇" : e.rank === 2 ? "🥈" : e.rank === 3 ? "🥉" : `${e.rank}`;
-  return (
-    <div
-      style={{
-        display: "flex",
-        alignItems: "center",
-        gap: 12,
-        padding: mine ? "8px 10px" : "6px 0",
-        borderRadius: 10,
-        background: mine ? "var(--accent-soft)" : "transparent",
-      }}
-    >
-      <div className="mono" style={{ width: 30, fontWeight: 700, color: e.rank <= 3 ? "var(--accent-hi)" : "var(--text-dim)" }}>
-        {medal}
-      </div>
-      <Avatar e={e} />
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 14, fontWeight: 600, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-          {mine ? "Sen" : e.display_name}
-        </div>
-        <div style={{ fontSize: 11, color: "var(--text-faint)" }}>Seviye {e.level}</div>
-      </div>
-      <div className="mono" style={{ fontWeight: 700, color: "var(--accent-hi)" }}>{e.xp} XP</div>
-    </div>
-  );
-}
+  useEffect(() => {
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    closeRef.current?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onClose();
+        return;
+      }
+      if (event.key !== "Tab" || !dialogRef.current) return;
+      const focusable = Array.from(
+        dialogRef.current.querySelectorAll<HTMLElement>(
+          "button, [href], input, select, textarea, [tabindex]:not([tabindex='-1'])",
+        ),
+      ).filter((element) => !element.hasAttribute("disabled"));
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("keydown", onKeyDown);
+      previous?.focus();
+    };
+  }, [onClose]);
 
-function Avatar({ e }: { e: LeaderEntry }) {
-  if (e.avatar_url) {
-    return <img src={e.avatar_url} width={30} height={30} style={{ borderRadius: 15, objectFit: "cover" }} alt="" />;
-  }
-  const initials = (e.display_name || "?").slice(0, 1).toUpperCase();
   return (
-    <div
-      style={{
-        width: 30,
-        height: 30,
-        borderRadius: 15,
-        background: "var(--brand-deep)",
-        color: "#fff",
-        display: "flex",
-        alignItems: "center",
-        justifyContent: "center",
-        fontSize: 13,
-        fontWeight: 700,
-      }}
-    >
-      {initials}
+    <div onClick={onClose} style={{ position: "fixed", inset: 0, zIndex: 280, display: "grid", placeItems: "center", padding: 20, background: "rgba(0,0,0,.68)" }}>
+      <div ref={dialogRef} role="dialog" aria-modal="true" aria-labelledby="badge-detail-title" aria-describedby="badge-detail-description" onClick={(event) => event.stopPropagation()} style={{ width: "min(410px,100%)", padding: 24, border: "1px solid var(--stroke-strong)", borderRadius: 16, background: "var(--surface)", boxShadow: "var(--shadow)", textAlign: "center" }}>
+        <div style={{ width: 72, height: 72, display: "grid", placeItems: "center", margin: "0 auto 14px", borderRadius: 36, background: badge.earned ? "var(--accent-soft)" : "var(--surface-hi)", fontSize: 36, filter: badge.earned ? "none" : "grayscale(1)" }}>{badge.icon}</div>
+        <h2 id="badge-detail-title" style={{ margin: 0, fontSize: 20 }}>{badge.name}</h2>
+        <div style={{ margin: "7px 0 16px", color: badge.earned ? "var(--up)" : "var(--text-faint)", fontSize: 11, fontWeight: 750, textTransform: "uppercase", letterSpacing: ".08em" }}>{badge.earned ? "Kazanıldı" : "Henüz kilitli"}</div>
+        <div id="badge-detail-description" style={{ padding: 13, borderRadius: 10, background: "var(--bg-elev)", color: "var(--text-dim)", fontSize: 13, lineHeight: 1.55, textAlign: "left" }}>
+          <strong style={{ display: "block", marginBottom: 4, color: "var(--text)", fontSize: 11 }}>{badge.earned ? "Rozet koşulu" : "Nasıl kazanılır?"}</strong>
+          {badge.description}
+        </div>
+        {badge.earned_at && <div style={{ marginTop: 12, color: "var(--text-faint)", fontSize: 11 }}>Kazanma tarihi: {new Date(badge.earned_at).toLocaleDateString("tr-TR", { day: "numeric", month: "long", year: "numeric" })}</div>}
+        <div style={{ marginTop: 18 }}><button ref={closeRef} type="button" onClick={onClose} style={{ width: "100%", minHeight: 40, border: "1px solid var(--stroke)", borderRadius: 9, color: "var(--text)", background: "var(--surface-hi)", fontWeight: 700, cursor: "pointer" }}>Kapat</button></div>
+      </div>
     </div>
   );
 }

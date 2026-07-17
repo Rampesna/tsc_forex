@@ -168,10 +168,15 @@ oauth:
     - 986533998041-ln1jog6861sleiii0ajcsq4bt48ruin1.apps.googleusercontent.com  # Web (tscforex-16f7e, JS origin tsc.talhacan.com)
   apple_bundle_ids:
     - talhacan.tscforex            # iOS app bundle id (native Sign in with Apple)
-    - talhacan.tscforex.web        # Apple Services ID (web Sign in with Apple)
+    - tscforex                     # Apple Services ID (web Sign in with Apple)
   # Apple Developer Team ID — used to build the AASA webcredentials for passkeys
   # + Sign in with Apple. Overridable via APP_OAUTH_APPLE_TEAM_ID.
   apple_team_id: SGQ86WW4J3
+  # Required before App Store submission so in-app deletion can revoke Sign in
+  # with Apple. Mount the .p8 key as a secret; never paste it into this file.
+  apple_revoke_client_id: talhacan.tscforex
+  apple_key_id: ""
+  apple_private_key_path: ""
   android_package_name: com.example.tsc.forex
   android_sha256: []
   # Sign in with Apple (web) domain verification file content (from the Services
@@ -197,7 +202,7 @@ rate_limit:
   requests: 100
   window_sec: 60
 
-# Optional TSC AI market brief. Keep the key in APP_AI_API_KEY; never put it in
+# Optional AI-assisted market research. Keep the key in APP_AI_API_KEY; never put it in
 # this file or in a browser/mobile build.
 ai:
   enabled: false
@@ -209,7 +214,26 @@ ai:
   reasoning_effort: high
   web_search: true
   search_context: high
-  max_tool_calls: 4
+  max_tool_calls: 6
+
+# iOS auto-renewable subscriptions. StoreKit transactions are accepted only
+# after Apple JWS verification and exact bundle/product matching.
+billing:
+  enabled: false
+  bundle_id: talhacan.tscforex
+  allow_sandbox: true
+  sandbox_max_lifetime: 24h
+  # Enable only after the iOS target includes the App Attest entitlement and
+  # its challenge/register/assertion integration has been verified.
+  app_attest_enabled: false
+  app_attest_team_id: SGQ86WW4J3
+  app_attest_environment: development
+  app_attest_root_ca_path: ""
+  app_attest_bundle_versions: ["3"]
+  app_attest_challenge_ttl: 5m
+  device_check_enabled: false
+  device_check_key_id: ""
+  device_check_private_key_path: ""
 
 log:
   level: info

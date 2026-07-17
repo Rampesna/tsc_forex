@@ -217,6 +217,26 @@ struct PortfolioPositionDetail: Codable {
     let transactions: [CloudPortfolioTransaction]
 }
 
+struct PortfolioHealthFinding: Codable, Identifiable, Equatable {
+    var id: String { "\(severity)-\(title)-\(detail)" }
+    let title: String
+    let detail: String
+    let severity: String
+}
+
+struct PortfolioHealth: Codable, Equatable {
+    let score: Int
+    let grade: String
+    let summary: String
+    let findings: [PortfolioHealthFinding]
+    let generatedAt: Date
+
+    enum CodingKeys: String, CodingKey {
+        case score, grade, summary, findings
+        case generatedAt = "generated_at"
+    }
+}
+
 private struct PortfolioOutboxItem: Codable, Identifiable {
     let id: UUID
     let portfolioId: String
@@ -226,6 +246,7 @@ private struct PortfolioOutboxItem: Codable, Identifiable {
 @MainActor
 final class PortfolioStore: ObservableObject {
     @Published private(set) var overview: CloudPortfolioOverview?
+    @Published private(set) var portfolios: [CloudPortfolioOverview] = []
     @Published private(set) var performance: [PortfolioPerformancePoint] = []
     @Published private(set) var loading = false
     @Published private(set) var syncing = false
@@ -236,6 +257,7 @@ final class PortfolioStore: ObservableObject {
     private let cacheKey = "portfolio_cloud_cache_v2"
     private let outboxKey = "portfolio_outbox_v1"
     private let migrationKey = "portfolio_legacy_migrated_v2"
+    private let selectedPortfolioKey = "portfolio_selected_v1"
     private var userScope: String?
     private var token: String?
     private var outbox: [PortfolioOutboxItem] = []
@@ -261,29 +283,32 @@ final class PortfolioStore: ObservableObject {
         defer { loading = false; syncing = false }
         do {
             let client = APIClient(token: token)
-            var portfolios = try await client.portfolios()
-            if portfolios.isEmpty {
+            var available = try await client.portfolios()
+            if available.isEmpty {
                 let created = try await client.createPortfolio(name: "Ana Portföy")
-                portfolios = [try await client.portfolio(id: created.id)]
+                available = [try await client.portfolio(id: created.id)]
             }
-            var next = portfolios[0]
             if userScope == nil {
-                activateScope(userId: next.portfolio.userId)
+                activateScope(userId: available[0].portfolio.userId)
             }
+            portfolios = available
+            let selectedID = UserDefaults.standard.string(forKey: storageKey(selectedPortfolioKey))
+                ?? overview?.portfolio.id
+            var next = available.first(where: { $0.portfolio.id == selectedID }) ?? available[0]
             if !legacy.isEmpty && !UserDefaults.standard.bool(forKey: storageKey(migrationKey)) {
                 if next.positions.contains(where: { $0.quantity > 0 }) {
                     legacyPreview = legacy
                 } else {
                     try await importLegacy(portfolioId: next.portfolio.id, prices: prices)
                     next = try await client.portfolio(id: next.portfolio.id)
+                    replacePortfolio(next)
                 }
             }
-            overview = next
-            saveCache()
+            selectLocally(next)
             if await flushOutbox() {
                 next = try await client.portfolio(id: next.portfolio.id)
-                overview = next
-                saveCache()
+                replacePortfolio(next)
+                selectLocally(next)
             }
             performance = (try? await client.portfolioPerformance(id: next.portfolio.id, range: range)) ?? []
         } catch {
@@ -294,6 +319,86 @@ final class PortfolioStore: ObservableObject {
     func refreshPerformance(range: String) async {
         guard let token, let id = overview?.portfolio.id else { return }
         performance = (try? await APIClient(token: token).portfolioPerformance(id: id, range: range)) ?? []
+    }
+
+    func selectPortfolio(id: String, range: String = "1y") async {
+        guard let token else { return }
+        errorMessage = nil
+        do {
+            let selected: CloudPortfolioOverview
+            if let cached = portfolios.first(where: { $0.portfolio.id == id }) {
+                selected = cached
+            } else {
+                selected = try await APIClient(token: token).portfolio(id: id)
+            }
+            replacePortfolio(selected)
+            selectLocally(selected)
+            performance = (try? await APIClient(token: token)
+                .portfolioPerformance(id: id, range: range)) ?? []
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+    }
+
+    @discardableResult
+    func createPortfolio(name: String, range: String = "1y") async throws -> CloudPortfolioOverview {
+        guard let token else { throw APIError.invalidResponse }
+        let cleaned = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty else {
+            throw APIError.http(400, "Geçerli bir portföy adı girin.", nil)
+        }
+        errorMessage = nil
+        do {
+            let client = APIClient(token: token)
+            let created = try await client.createPortfolio(name: cleaned)
+            let selected = try await client.portfolio(id: created.id)
+            replacePortfolio(selected)
+            selectLocally(selected)
+            performance = (try? await client.portfolioPerformance(id: created.id, range: range)) ?? []
+            return selected
+        } catch {
+            errorMessage = error.localizedDescription
+            throw error
+        }
+    }
+
+    func renameCurrentPortfolio(name: String) async throws {
+        guard let token, let id = overview?.portfolio.id else { throw APIError.invalidResponse }
+        let cleaned = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !cleaned.isEmpty else {
+            throw APIError.http(400, "Geçerli bir portföy adı girin.", nil)
+        }
+        errorMessage = nil
+        do {
+            _ = try await APIClient(token: token).updatePortfolio(id: id, name: cleaned)
+            let refreshed = try await APIClient(token: token).portfolio(id: id)
+            replacePortfolio(refreshed)
+            selectLocally(refreshed)
+        } catch {
+            errorMessage = error.localizedDescription
+            throw error
+        }
+    }
+
+    func deleteCurrentPortfolio(range: String = "1y") async throws {
+        guard let token, let currentID = overview?.portfolio.id else { throw APIError.invalidResponse }
+        guard portfolios.count > 1 else {
+            throw APIError.http(409, "En az bir portföy bulunmalıdır.", nil)
+        }
+        errorMessage = nil
+        do {
+            try await APIClient(token: token).deletePortfolio(id: currentID)
+            portfolios.removeAll { $0.portfolio.id == currentID }
+            outbox.removeAll { $0.portfolioId == currentID }
+            persistOutbox()
+            guard let next = portfolios.first else { throw APIError.invalidResponse }
+            selectLocally(next)
+            performance = (try? await APIClient(token: token)
+                .portfolioPerformance(id: next.portfolio.id, range: range)) ?? []
+        } catch {
+            errorMessage = error.localizedDescription
+            throw error
+        }
     }
 
     func positionDetail(code: String) async throws -> PortfolioPositionDetail {
@@ -422,6 +527,20 @@ final class PortfolioStore: ObservableObject {
         }
     }
 
+    private func selectLocally(_ value: CloudPortfolioOverview) {
+        overview = value
+        UserDefaults.standard.set(value.portfolio.id, forKey: storageKey(selectedPortfolioKey))
+        saveCache()
+    }
+
+    private func replacePortfolio(_ value: CloudPortfolioOverview) {
+        if let index = portfolios.firstIndex(where: { $0.portfolio.id == value.portfolio.id }) {
+            portfolios[index] = value
+        } else {
+            portfolios.append(value)
+        }
+    }
+
     private func persistOutbox() {
         if let data = try? JSONEncoder().encode(outbox) {
             UserDefaults.standard.set(data, forKey: storageKey(outboxKey))
@@ -437,6 +556,7 @@ final class PortfolioStore: ObservableObject {
         guard userScope != userId else { return }
         userScope = userId
         overview = nil
+        portfolios = []
         performance = []
         legacyPreview = []
         outbox = []
@@ -460,6 +580,7 @@ final class PortfolioStore: ObservableObject {
             defaults.removeObject(forKey: outboxKey)
             defaults.removeObject(forKey: migrationKey)
         }
+        if let overview { portfolios = [overview] }
         if let data = defaults.data(forKey: storageKey(outboxKey)) {
             outbox = (try? JSONDecoder().decode([PortfolioOutboxItem].self, from: data)) ?? []
         }

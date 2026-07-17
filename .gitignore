@@ -2,6 +2,7 @@
 .env
 .env.local
 *.pem
+!internal/service/apple_app_attestation_root.pem
 
 # Binaries / build
 /bin/

@@ -14,9 +14,12 @@
 	<array>
 		<string>webcredentials:tsc.talhacan.com</string>
 	</array>
-	<!-- APNs background push. Xcode toggles this to "production" for release. -->
+	<!-- APNs environment is selected per build configuration. -->
 	<key>aps-environment</key>
-	<string>development</string>
+	<string>$(APS_ENVIRONMENT)</string>
+	<!-- App Attest is development for Debug and production for Release. -->
+	<key>com.apple.developer.devicecheck.appattest-environment</key>
+	<string>$(APP_ATTEST_ENVIRONMENT)</string>
 	<!-- App Group shared with the widget extension so the app can hand off the
 	     user's top favorites snapshot for the home-screen widget. -->
 	<key>com.apple.security.application-groups</key>

@@ -9,6 +9,11 @@ import SwiftUI
 
 enum MarketCategory: String, CaseIterable { case favorites, all, gold, currency, crypto, stock }
 
+enum MarketRoute: Hashable {
+    case asset(String)
+    case notifications
+}
+
 // Curated fixed order for the main list: gold, then majors, then crypto/stock.
 private let fixedOrder: [String: Int] = {
     let codes = [
@@ -47,9 +52,15 @@ private func fixedRank(_ p: InstrumentPrice) -> Int {
 struct MarketsView: View {
     @EnvironmentObject var prices: PriceStore
     @State private var query = ""
-    @State private var category: MarketCategory = .all
+    @Binding var category: MarketCategory
     @State private var editMode: EditMode = .inactive
-    @State private var path = NavigationPath()
+    @Binding var path: NavigationPath
+
+    init(category: Binding<MarketCategory> = .constant(.all),
+         path: Binding<NavigationPath> = .constant(NavigationPath())) {
+        _category = category
+        _path = path
+    }
 
     private var tabs: [(value: MarketCategory, label: String, icon: String)] {
         [(.favorites, "Favoriler", "star.fill"),
@@ -92,8 +103,11 @@ struct MarketsView: View {
                     content
                 }
             }
-            .navigationDestination(for: String.self) { code in
-                AssetDetailView(code: code)
+            .navigationDestination(for: MarketRoute.self) { route in
+                switch route {
+                case .asset(let code): AssetDetailView(code: code)
+                case .notifications: NotificationsView()
+                }
             }
             .toolbar(.hidden, for: .navigationBar)
         }
@@ -108,6 +122,26 @@ struct MarketsView: View {
                 Text("Altın · Döviz · Kripto · Hisse").font(.system(size: 12)).foregroundStyle(Theme.textDim)
             }
             Spacer()
+            Button {
+                Haptics.tap()
+                path.append(MarketRoute.notifications)
+            } label: {
+                ZStack(alignment: .topTrailing) {
+                    Image(systemName: "bell")
+                        .font(.system(size: 18, weight: .semibold))
+                        .foregroundStyle(Theme.textDim)
+                        .frame(width: 38, height: 38)
+                        .background(Theme.surface, in: Circle())
+                    if !prices.liveNotifications.isEmpty {
+                        Text(prices.liveNotifications.count > 9 ? "9+" : "\(prices.liveNotifications.count)")
+                            .font(.system(size: 9, weight: .bold)).foregroundStyle(.white)
+                            .padding(.horizontal, 4).padding(.vertical, 2)
+                            .background(Theme.down, in: Capsule())
+                            .offset(x: 4, y: -3)
+                    }
+                }
+            }
+            .buttonStyle(.plain)
             if category == .favorites && !prices.orderedFavorites().isEmpty {
                 Button {
                     withAnimation { editMode = editMode == .active ? .inactive : .active }
@@ -196,7 +230,7 @@ struct MarketsView: View {
         ScrollView {
             LazyVStack(spacing: 0) {
                 ForEach(mainRows) { p in
-                    NavigationLink(value: p.code) {
+                    NavigationLink(value: MarketRoute.asset(p.code)) {
                         MarketRow(price: p, spark: prices.spark[p.code] ?? [],
                                   isFav: prices.isFavorite(p.code))
                     }
@@ -230,7 +264,7 @@ struct MarketsView: View {
                         .listRowBackground(Theme.bg)
                         .listRowSeparator(.hidden)
                         .contentShape(Rectangle())
-                        .onTapGesture { if editMode == .inactive { path.append(p.code) } }
+                        .onTapGesture { if editMode == .inactive { path.append(MarketRoute.asset(p.code)) } }
                 }
                 .onMove { prices.moveFavorite(from: $0, to: $1); Haptics.soft() }
                 Color.clear.frame(height: 96)

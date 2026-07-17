@@ -14,10 +14,10 @@ data:
   APP_DATABASE_SSL_MODE: "disable"
   APP_REDIS_ADDR: "redis:6379"
   APP_REDIS_PUBSUB_CHANNEL: "gold:gram:updates"
-  # Real-time market data via Yahoo Finance (no API key; reachable where
-  # Binance is blocked). rest+synthetic are always-on fallbacks.
+  # Real-time market data via Yahoo Finance with real external REST feeds as
+  # the only production fallback. Synthetic prices are reserved for local/CI.
   APP_PROVIDER_PRIMARY: "yahoo"
-  APP_PROVIDER_FALLBACKS: "rest,synthetic"
+  APP_PROVIDER_FALLBACKS: "rest"
   APP_PROVIDER_REST_ENABLED: "true"
   APP_PROVIDER_REST_POLL_INTERVAL: "2s"
   APP_PROVIDER_REST_FX_BASE_URL: "https://open.er-api.com/v6/latest/USD"
@@ -25,7 +25,6 @@ data:
   # Crypto priced from Binance (deepest/most real-time), converted to TRY via
   # the live USD/TRY leg. Public market data needs no API key.
   APP_PROVIDER_REST_CRYPTO_BASE_URL: "https://api.binance.com/api/v3/ticker/price"
-  APP_PROVIDER_SYNTHETIC_TICK_INTERVAL: "5s"
   # AI market commentary. The API key is injected through tsc-forex-secrets;
   # client applications never receive it.
   APP_AI_ENABLED: "true"
@@ -36,7 +35,26 @@ data:
   APP_AI_REASONING_EFFORT: "high"
   APP_AI_WEB_SEARCH: "true"
   APP_AI_SEARCH_CONTEXT: "high"
-  APP_AI_MAX_TOOL_CALLS: "4"
+  APP_AI_MAX_TOOL_CALLS: "6"
+
+  # StoreKit 2 subscriptions. App Review/TestFlight use Sandbox-signed JWS.
+  APP_BILLING_ENABLED: "true"
+  APP_BILLING_BUNDLE_ID: "talhacan.tscforex"
+  APP_BILLING_ALLOW_SANDBOX: "true"
+  APP_BILLING_SANDBOX_MAX_LIFETIME: "24h"
+  # Production free-trial issuance fails closed unless this is true and a
+  # Release/App Store assertion for the submitted bundle version verifies.
+  APP_BILLING_APP_ATTEST_ENABLED: "true"
+  APP_BILLING_APP_ATTEST_TEAM_ID: "SGQ86WW4J3"
+  APP_BILLING_APP_ATTEST_ENVIRONMENT: "production"
+  APP_BILLING_APP_ATTEST_BUNDLE_VERSIONS: "3"
+  APP_BILLING_APP_ATTEST_CHALLENGE_TTL: "5m"
+  # DeviceCheck bit 0 is the reinstall-resistant physical-device redemption
+  # marker. Submission remains fail-closed until a DeviceCheck-enabled key is
+  # mounted and this Key ID is populated.
+  APP_BILLING_DEVICE_CHECK_ENABLED: "true"
+  APP_BILLING_DEVICE_CHECK_KEY_ID: ""
+  APP_BILLING_DEVICE_CHECK_PRIVATE_KEY_PATH: "/etc/apple-auth/devicecheck.p8"
   # Object storage (MinIO) for profile pictures — shared across all pods.
   APP_STORAGE_ENABLED: "true"
   APP_STORAGE_ENDPOINT: "minio:9000"
@@ -46,13 +64,17 @@ data:
   # Social login: accepted Google ID-token audiences (public client IDs).
   APP_OAUTH_GOOGLE_CLIENT_IDS: "83380535128-16nfuuc3p0jok4l4htitlubgpsjah622.apps.googleusercontent.com,83380535128-pr4lcmaerra3sdqf8211t1nc4n4pbksj.apps.googleusercontent.com,83380535128-o4h4v9rc9u1tuis9hggcckqei0idahg3.apps.googleusercontent.com,986533998041-ln1jog6861sleiii0ajcsq4bt48ruin1.apps.googleusercontent.com"
   # iOS app bundle id + Apple Services ID (web Sign in with Apple).
-  APP_OAUTH_APPLE_BUNDLE_IDS: "talhacan.tscforex,talhacan.tscforex.web"
+  APP_OAUTH_APPLE_BUNDLE_IDS: "talhacan.tscforex,tscforex"
   # Apple Team ID for AASA (Sign in with Apple + passkeys).
   APP_OAUTH_APPLE_TEAM_ID: "SGQ86WW4J3"
+  APP_OAUTH_APPLE_REVOKE_CLIENT_ID: "talhacan.tscforex"
+  # Fill with a Sign in with Apple-enabled key ID before App Store submission.
+  APP_OAUTH_APPLE_KEY_ID: ""
+  APP_OAUTH_APPLE_PRIVATE_KEY_PATH: "/etc/apple-auth/sign-in-with-apple.p8"
   APP_OAUTH_ANDROID_PACKAGE_NAME: "com.example.tsc.forex"
   APP_OAUTH_ANDROID_SHA256: "0A:AB:C2:DD:D5:A9:70:55:0A:8C:45:E9:A6:5B:82:29:91:28:0B:04:AD:34:3A:BE:FF:0E:1D:CB:F8:31:62:38"
   # Sign in with Apple (web) domain verification. Paste the verbatim content of
-  # the file Apple issues on the Services ID (talhacan.tscforex.web) config
+  # the file Apple issues on the Services ID (tscforex) config
   # screen; it is then served at
   # https://tsc.talhacan.com/.well-known/apple-developer-domain-association.txt
   APP_OAUTH_APPLE_DOMAIN_ASSOCIATION: ""
@@ -77,9 +99,9 @@ data:
   APP_NOTIFY_APNS_KEY_ID: "2729F227T3"
   APP_NOTIFY_APNS_TEAM_ID: "SGQ86WW4J3"
   APP_NOTIFY_APNS_KEY_PATH: "/etc/push/apns.p8"
-  # Development APNs (sandbox) matches development-signed builds. Set to "false"
-  # for TestFlight/App Store (production) builds.
-  APP_NOTIFY_APNS_SANDBOX: "true"
+  # Production APNs is required for TestFlight/App Store device tokens.
+  # Local development keeps notify.apns_sandbox=true in configs/config.yaml.
+  APP_NOTIFY_APNS_SANDBOX: "false"
   APP_NOTIFY_FCM_ENABLED: "true"
   APP_NOTIFY_FCM_PROJECT_ID: "tscforex-16f7e"
   APP_NOTIFY_FCM_CREDENTIAL_PATH: "/etc/push/fcm.json"

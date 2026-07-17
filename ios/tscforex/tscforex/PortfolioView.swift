@@ -1,11 +1,21 @@
 import SwiftUI
+import UIKit
 
 struct PortfolioView: View {
     @EnvironmentObject private var portfolio: PortfolioStore
     @EnvironmentObject private var prices: PriceStore
     @EnvironmentObject private var auth: AuthStore
+    @EnvironmentObject private var billing: BillingStore
     @State private var showTransaction = false
     @State private var range = "1y"
+    @State private var showCreatePortfolio = false
+    @State private var showRenamePortfolio = false
+    @State private var confirmDeletePortfolio = false
+    @State private var portfolioName = ""
+    @State private var portfolioHealth: PortfolioHealth?
+    @State private var premiumOperation: String?
+    @State private var exportFile: PortfolioExportFile?
+    @State private var showPaywall = false
 
     var body: some View {
         NavigationStack {
@@ -23,7 +33,12 @@ struct PortfolioView: View {
                             if !portfolio.legacyPreview.isEmpty {
                                 legacyImportCard
                             }
+                            portfolioSelectorCard
                             summaryCard
+                            premiumToolsCard
+                            if let portfolioHealth {
+                                healthCard(portfolioHealth)
+                            }
                             performanceCard
                             if portfolio.activePositions.isEmpty {
                                 emptyCard
@@ -65,6 +80,295 @@ struct PortfolioView: View {
                 .environmentObject(prices)
                 .presentationDetents([.large])
                 .presentationBackground(Theme.bgElevated)
+        }
+        .sheet(isPresented: $showPaywall) {
+            PaywallView()
+                .environmentObject(auth)
+                .environmentObject(billing)
+        }
+        .sheet(item: $exportFile) { file in
+            PortfolioShareSheet(url: file.url)
+                .presentationDetents([.medium, .large])
+        }
+        .alert("Yeni Portföy", isPresented: $showCreatePortfolio) {
+            TextField("Portföy adı", text: $portfolioName)
+            Button("Vazgeç", role: .cancel) { portfolioName = "" }
+            Button("Oluştur") {
+                let name = portfolioName
+                portfolioName = ""
+                Task {
+                    do { _ = try await portfolio.createPortfolio(name: name, range: range) }
+                    catch { handlePremiumError(error) }
+                }
+            }
+        } message: {
+            Text("Planınızdaki portföy hakkı kapsamında ayrı bir takip alanı oluşturun.")
+        }
+        .alert("Portföyü Yeniden Adlandır", isPresented: $showRenamePortfolio) {
+            TextField("Portföy adı", text: $portfolioName)
+            Button("Vazgeç", role: .cancel) { portfolioName = "" }
+            Button("Kaydet") {
+                let name = portfolioName
+                portfolioName = ""
+                Task { try? await portfolio.renameCurrentPortfolio(name: name) }
+            }
+        }
+        .alert("Portföy silinsin mi?", isPresented: $confirmDeletePortfolio) {
+            Button("Vazgeç", role: .cancel) {}
+            Button("Kalıcı Olarak Sil", role: .destructive) {
+                Task { try? await portfolio.deleteCurrentPortfolio(range: range) }
+            }
+        } message: {
+            Text("Bu portföydeki tüm işlem ve performans geçmişi kalıcı olarak silinir.")
+        }
+    }
+
+    private var portfolioSelectorCard: some View {
+        Card(padding: 14) {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("AKTİF PORTFÖY")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(Theme.textFaint)
+                        .tracking(1)
+                    Menu {
+                        ForEach(portfolio.portfolios, id: \.portfolio.id) { item in
+                            Button {
+                                portfolioHealth = nil
+                                Task { await portfolio.selectPortfolio(id: item.portfolio.id, range: range) }
+                            } label: {
+                                if item.portfolio.id == portfolio.overview?.portfolio.id {
+                                    Label(item.portfolio.name, systemImage: "checkmark")
+                                } else {
+                                    Text(item.portfolio.name)
+                                }
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Text(portfolio.overview?.portfolio.name ?? "Portföy seç")
+                                .font(.system(size: 16, weight: .bold))
+                                .foregroundStyle(Theme.text)
+                            Image(systemName: "chevron.up.chevron.down")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundStyle(Theme.accent)
+                        }
+                    }
+                }
+                Spacer()
+                Button {
+                    portfolioName = ""
+                    showCreatePortfolio = true
+                } label: {
+                    Image(systemName: "folder.badge.plus")
+                        .font(.system(size: 17, weight: .semibold))
+                        .foregroundStyle(Theme.accent)
+                        .frame(width: 36, height: 36)
+                        .background(Theme.accentSoft, in: RoundedRectangle(cornerRadius: 10))
+                }
+                Menu {
+                    Button("Yeniden Adlandır", systemImage: "pencil") {
+                        portfolioName = portfolio.overview?.portfolio.name ?? ""
+                        showRenamePortfolio = true
+                    }
+                    Button("Portföyü Sil", systemImage: "trash", role: .destructive) {
+                        confirmDeletePortfolio = true
+                    }
+                    .disabled(portfolio.portfolios.count <= 1)
+                } label: {
+                    Image(systemName: "ellipsis")
+                        .foregroundStyle(Theme.textDim)
+                        .frame(width: 32, height: 36)
+                }
+            }
+        }
+    }
+
+    private var premiumToolsCard: some View {
+        Card {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Portföy Araçları")
+                            .font(.system(size: 15, weight: .bold)).foregroundStyle(Theme.text)
+                        Text("Dağılımı değerlendir veya işlem defterini paylaşılabilir CSV olarak al.")
+                            .font(.system(size: 10)).foregroundStyle(Theme.textDim)
+                    }
+                    Spacer()
+                    Image(systemName: "crown.fill").foregroundStyle(Theme.accent)
+                }
+                HStack(spacing: 10) {
+                    premiumButton(
+                        title: "Sağlık Analizi",
+                        subtitle: quotaText("portfolio_health"),
+                        icon: "heart.text.square",
+                        busy: premiumOperation == "health"
+                    ) { Task { await loadPortfolioHealth() } }
+                    premiumButton(
+                        title: "CSV Dışa Aktar",
+                        subtitle: quotaText("exports"),
+                        icon: "square.and.arrow.up",
+                        busy: premiumOperation == "export"
+                    ) { Task { await exportPortfolio() } }
+                }
+            }
+        }
+    }
+
+    private func premiumButton(title: String, subtitle: String, icon: String,
+                               busy: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 7) {
+                if busy {
+                    ProgressView().tint(Theme.accent)
+                } else {
+                    Image(systemName: icon).foregroundStyle(Theme.accent)
+                }
+                Text(title).font(.system(size: 12, weight: .bold)).foregroundStyle(Theme.text)
+                Text(subtitle).font(.system(size: 9)).foregroundStyle(Theme.textFaint)
+            }
+            .frame(maxWidth: .infinity, minHeight: 72, alignment: .leading)
+            .padding(11)
+            .background(Theme.surfaceHi, in: RoundedRectangle(cornerRadius: 11))
+        }
+        .buttonStyle(.plain)
+        .disabled(premiumOperation != nil)
+    }
+
+    private func healthCard(_ report: PortfolioHealth) -> some View {
+        Card {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .top) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text("Portföy Sağlığı")
+                            .font(.system(size: 15, weight: .bold)).foregroundStyle(Theme.text)
+                        Text(report.generatedAt.formatted(date: .abbreviated, time: .shortened))
+                            .font(.system(size: 9)).foregroundStyle(Theme.textFaint)
+                    }
+                    Spacer()
+                    VStack(spacing: 1) {
+                        Text("\(report.score)").font(Theme.number(24, weight: .bold)).foregroundStyle(healthColor(report.score))
+                        Text(report.grade).font(.system(size: 9, weight: .bold)).foregroundStyle(healthColor(report.score))
+                    }
+                }
+                Text(report.summary).font(.system(size: 12)).foregroundStyle(Theme.textDim)
+                ForEach(report.findings) { finding in
+                    HStack(alignment: .top, spacing: 9) {
+                        Circle().fill(severityColor(finding.severity)).frame(width: 7, height: 7).padding(.top, 5)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(finding.title).font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.text)
+                            Text(finding.detail).font(.system(size: 10)).foregroundStyle(Theme.textDim)
+                        }
+                    }
+                }
+                Text("Bu değerlendirme eğitim ve risk farkındalığı içindir; yatırım tavsiyesi değildir.")
+                    .font(.system(size: 9)).foregroundStyle(Theme.textFaint)
+            }
+        }
+    }
+
+    private func quotaText(_ feature: String) -> String {
+        guard let quota = billing.serverStatus?.usage[feature] else { return "Paket özelliği" }
+        return "Bu ay \(quota.remaining)/\(quota.limit) kaldı"
+    }
+
+    private func healthColor(_ score: Int) -> Color {
+        score >= 85 ? Theme.up : (score >= 60 ? Theme.accent : Theme.down)
+    }
+
+    private func severityColor(_ severity: String) -> Color {
+        switch severity {
+        case "high": return Theme.down
+        case "medium": return Theme.accent
+        default: return Theme.up
+        }
+    }
+
+    private func loadPortfolioHealth() async {
+        guard let token = auth.accessToken, let id = portfolio.overview?.portfolio.id else { return }
+        if auth.userID == nil { await auth.loadProfile() }
+        guard let userID = auth.userID else {
+            portfolio.errorMessage = "Hesap bilgileri doğrulanamadı. Profilinizi yenileyip tekrar deneyin."
+            return
+        }
+        let operation = "portfolio-health"
+        let pending = PendingOperationStore.loadOrCreate(
+            userID: userID, operation: operation, resource: id
+        )
+        premiumOperation = "health"
+        defer { premiumOperation = nil }
+        do {
+            portfolioHealth = try await APIClient(token: token).portfolioHealth(
+                id: id, requestID: pending.requestID
+            )
+            PendingOperationStore.clear(userID: userID, operation: operation, resource: id)
+            await billing.refresh(token: token)
+            Haptics.success()
+        } catch {
+            clearTerminalPendingOperation(
+                error, userID: userID, operation: operation, resource: id
+            )
+            handlePremiumError(error)
+        }
+    }
+
+    private func exportPortfolio() async {
+        guard let token = auth.accessToken, let id = portfolio.overview?.portfolio.id else { return }
+        if auth.userID == nil { await auth.loadProfile() }
+        guard let userID = auth.userID else {
+            portfolio.errorMessage = "Hesap bilgileri doğrulanamadı. Profilinizi yenileyip tekrar deneyin."
+            return
+        }
+        let operation = "portfolio-export"
+        let pending = PendingOperationStore.loadOrCreate(
+            userID: userID, operation: operation, resource: id
+        )
+        premiumOperation = "export"
+        defer { premiumOperation = nil }
+        do {
+            let data = try await APIClient(token: token).exportPortfolio(
+                id: id, requestID: pending.requestID
+            )
+            let date = Date().formatted(.iso8601.year().month().day().dateSeparator(.dash))
+            let url = FileManager.default.temporaryDirectory
+                .appendingPathComponent("portfoy-\(id.prefix(8))-\(date).csv")
+            try data.write(to: url, options: .atomic)
+            PendingOperationStore.clear(userID: userID, operation: operation, resource: id)
+            exportFile = PortfolioExportFile(url: url)
+            await billing.refresh(token: token)
+            Haptics.success()
+        } catch {
+            clearTerminalPendingOperation(
+                error, userID: userID, operation: operation, resource: id
+            )
+            handlePremiumError(error)
+        }
+    }
+
+    private func handlePremiumError(_ error: Error) {
+        guard let apiError = error as? APIError else {
+            portfolio.errorMessage = error.localizedDescription
+            return
+        }
+        if apiError.statusCode == 402 {
+            showPaywall = true
+        } else if apiError.statusCode == 429 {
+            portfolio.errorMessage = "Çok sık istek gönderildi. Kısa bir süre bekleyip tekrar deneyin."
+        } else if apiError.statusCode == 409 && apiError.serverCode == "operation_in_progress" {
+            portfolio.errorMessage = "İşlem halen tamamlanıyor. Biraz sonra tekrar deneyin; kullanım hakkınız yeniden düşülmeyecek."
+        } else {
+            portfolio.errorMessage = error.localizedDescription
+        }
+    }
+
+    private func clearTerminalPendingOperation(
+        _ error: Error, userID: String, operation: String, resource: String
+    ) {
+        guard let apiError = error as? APIError else { return }
+        if !apiError.shouldRetainRequestID {
+            PendingOperationStore.clear(
+                userID: userID, operation: operation, resource: resource
+            )
         }
     }
 
@@ -256,6 +560,21 @@ struct PortfolioView: View {
     }
 }
 
+private struct PortfolioExportFile: Identifiable {
+    let id = UUID()
+    let url: URL
+}
+
+private struct PortfolioShareSheet: UIViewControllerRepresentable {
+    let url: URL
+
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: [url], applicationActivities: nil)
+    }
+
+    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
+}
+
 private struct PortfolioPerformanceChart: View {
     let points: [PortfolioPerformancePoint]
 
@@ -384,7 +703,7 @@ private struct PortfolioPositionView: View {
         VStack(alignment: .leading, spacing: 3) {
             Text(title).font(.system(size: 10)).foregroundStyle(Theme.textDim)
             Text(value).font(Theme.number(12, weight: .semibold))
-                .foregroundStyle(trend.map(Theme.trend) ?? Theme.text)
+                .foregroundStyle(trend == nil ? Theme.text : (trend! >= 0 ? Theme.up : Theme.down))
         }.frame(maxWidth: .infinity, alignment: .leading)
     }
 

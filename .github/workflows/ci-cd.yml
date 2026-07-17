@@ -6,6 +6,12 @@ on:
   pull_request:
     branches: [main]
 
+# A newer main push cancels every older build/deploy for the same ref. This
+# prevents a slower run from deploying an older immutable SHA after a newer one.
+concurrency:
+  group: ci-cd-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref == 'refs/heads/main' }}
+
 env:
   # GHCR requires a lowercase path; the owner "Rampesna" has an uppercase letter.
   IMAGE: ghcr.io/rampesna/tsc_forex
@@ -13,8 +19,10 @@ env:
 
 jobs:
   test:
-    name: Test (Go)
+    name: Test (Go + Web)
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
       - name: backfill catalog sync
@@ -27,6 +35,20 @@ jobs:
         run: go vet ./...
       - name: go test
         run: go test ./... -count=1
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+      - name: install web dependencies
+        working-directory: web
+        run: npm ci
+      - name: lint web
+        working-directory: web
+        run: npm run lint
+      - name: build web
+        working-directory: web
+        run: npm run build
 
   build-push:
     name: Build & push image
@@ -76,13 +98,43 @@ jobs:
     needs: build-push
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    # Deployment authenticates only with explicit SSH/GHCR repository secrets;
+    # it neither needs nor persists the ephemeral Actions token.
+    permissions: {}
     steps:
-      - name: Set up SSH
+      - name: Validate production release secrets
+        env:
+          DEVICE_CHECK_KEY_ID: ${{ secrets.APP_BILLING_DEVICE_CHECK_KEY_ID }}
+          DEVICE_CHECK_PRIVATE_KEY: ${{ secrets.APP_BILLING_DEVICE_CHECK_PRIVATE_KEY }}
+          APPLE_SIGN_IN_KEY_ID: ${{ secrets.APP_OAUTH_APPLE_KEY_ID }}
+          APPLE_SIGN_IN_PRIVATE_KEY: ${{ secrets.APP_OAUTH_APPLE_PRIVATE_KEY }}
+          GHCR_PULL_USER: ${{ secrets.GHCR_PULL_USERNAME }}
+          GHCR_PULL_TOKEN: ${{ secrets.GHCR_PULL_TOKEN }}
         run: |
+          set -euo pipefail
+          missing=0
+          for name in \
+            DEVICE_CHECK_KEY_ID DEVICE_CHECK_PRIVATE_KEY \
+            APPLE_SIGN_IN_KEY_ID APPLE_SIGN_IN_PRIVATE_KEY \
+            GHCR_PULL_USER GHCR_PULL_TOKEN
+          do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::Required GitHub Actions secret for $name is empty"
+              missing=1
+            fi
+          done
+          exit "$missing"
+      - name: Set up SSH
+        env:
+          SSH_KEY: ${{ secrets.SSH_KEY }}
+          SSH_HOST: ${{ secrets.SSH_HOST }}
+        run: |
+          set -euo pipefail
+          umask 077
           mkdir -p ~/.ssh
-          echo "${{ secrets.SSH_KEY }}" > ~/.ssh/id_ed25519
+          printf '%s' "$SSH_KEY" > ~/.ssh/id_ed25519
           chmod 600 ~/.ssh/id_ed25519
-          ssh-keyscan -H "${{ secrets.SSH_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null
+          ssh-keyscan -H "$SSH_HOST" >> ~/.ssh/known_hosts 2>/dev/null
       - name: Deploy (pull repo, sync secrets, apply manifests, prune)
         env:
           SSH_HOST: ${{ secrets.SSH_HOST }}
@@ -95,52 +147,199 @@ jobs:
           STORAGE_ACCESS_KEY: ${{ secrets.APP_STORAGE_ACCESS_KEY }}
           STORAGE_SECRET_KEY: ${{ secrets.APP_STORAGE_SECRET_KEY }}
           AI_API_KEY: ${{ secrets.APP_AI_API_KEY }}
-          GHCR_USER: ${{ github.actor }}
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DEVICE_CHECK_KEY_ID: ${{ secrets.APP_BILLING_DEVICE_CHECK_KEY_ID }}
+          DEVICE_CHECK_PRIVATE_KEY: ${{ secrets.APP_BILLING_DEVICE_CHECK_PRIVATE_KEY }}
+          APPLE_SIGN_IN_KEY_ID: ${{ secrets.APP_OAUTH_APPLE_KEY_ID }}
+          APPLE_SIGN_IN_PRIVATE_KEY: ${{ secrets.APP_OAUTH_APPLE_PRIVATE_KEY }}
+          GHCR_PULL_USER: ${{ secrets.GHCR_PULL_USERNAME }}
+          GHCR_PULL_TOKEN: ${{ secrets.GHCR_PULL_TOKEN }}
         run: |
-          ssh -i ~/.ssh/id_ed25519 "$SSH_USER@$SSH_HOST" bash -s <<EOF
           set -euo pipefail
+          umask 077
+
+          # Secrets are copied as files instead of being interpolated into the
+          # remote shell script. This keeps multiline Apple .p8 keys and values
+          # containing shell metacharacters out of commands and logs.
+          SECRET_BUNDLE="$RUNNER_TEMP/tsc-forex-secrets-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          REMOTE_SECRET_BUNDLE="/tmp/tsc-forex-secrets-$GITHUB_RUN_ID-$GITHUB_RUN_ATTEMPT"
+          mkdir -p "$SECRET_BUNDLE"
+          trap 'rm -rf "$SECRET_BUNDLE"' EXIT
+
+          write_secret() {
+            local name="$1"
+            local value="$2"
+            if [ -z "$value" ]; then
+              echo "::error::Required GitHub Actions secret $name is empty"
+              exit 1
+            fi
+            printf '%s' "$value" > "$SECRET_BUNDLE/$name"
+          }
+
+          write_secret APP_DATABASE_PASSWORD "$DB_PASSWORD"
+          write_secret APP_JWT_SECRET "$JWT_SECRET"
+          write_secret APP_REDIS_PASSWORD "$REDIS_PASSWORD"
+          write_secret APP_STORAGE_ACCESS_KEY "$STORAGE_ACCESS_KEY"
+          write_secret APP_STORAGE_SECRET_KEY "$STORAGE_SECRET_KEY"
+          write_secret APP_AI_API_KEY "$AI_API_KEY"
+          write_secret APP_BILLING_DEVICE_CHECK_KEY_ID "$DEVICE_CHECK_KEY_ID"
+          write_secret devicecheck.p8 "$DEVICE_CHECK_PRIVATE_KEY"
+          write_secret APP_OAUTH_APPLE_KEY_ID "$APPLE_SIGN_IN_KEY_ID"
+          write_secret sign-in-with-apple.p8 "$APPLE_SIGN_IN_PRIVATE_KEY"
+          write_secret GHCR_PULL_USERNAME "$GHCR_PULL_USER"
+          write_secret GHCR_PULL_TOKEN "$GHCR_PULL_TOKEN"
+
+          # Parse both Apple keys without ever echoing their contents. Empty,
+          # escaped or malformed .p8 values stop the production deploy here.
+          openssl pkey -in "$SECRET_BUNDLE/devicecheck.p8" -noout >/dev/null
+          openssl pkey -in "$SECRET_BUNDLE/sign-in-with-apple.p8" -noout >/dev/null
+
+          scp -i ~/.ssh/id_ed25519 -r "$SECRET_BUNDLE" "$SSH_USER@$SSH_HOST:$REMOTE_SECRET_BUNDLE"
+          rm -rf "$SECRET_BUNDLE"
+
+          ssh -i ~/.ssh/id_ed25519 "$SSH_USER@$SSH_HOST" bash -s -- \
+            "$IMAGE_REF" "$WEB_IMAGE_REF" "${{ github.repository }}" \
+            "$REMOTE_SECRET_BUNDLE" <<'EOF'
+          set -euo pipefail
+          IMAGE_REF="$1"
+          WEB_IMAGE_REF="$2"
+          REPOSITORY="$3"
+          SECRET_BUNDLE="$4"
+          trap 'rm -rf "$SECRET_BUNDLE"' EXIT
+
           REPO=/www/wwwroot/tsc_forex
-          if [ ! -d "\$REPO/.git" ]; then
-            git clone git@github.com:${{ github.repository }}.git "\$REPO"
+          if [ ! -d "$REPO/.git" ]; then
+            git clone "git@github.com:$REPOSITORY.git" "$REPO"
           fi
-          cd "\$REPO"
-          git fetch --all && git reset --hard origin/main
+          cd "$REPO"
+          git fetch --all
+          git reset --hard origin/main
 
           NS=tsc-forex
-          kubectl get ns \$NS >/dev/null 2>&1 || kubectl create ns \$NS
+          kubectl get ns "$NS" >/dev/null 2>&1 || kubectl create ns "$NS"
 
           # Real secrets injected from GitHub Actions secrets (never in git).
-          kubectl -n \$NS create secret generic tsc-forex-secrets \
-            --from-literal=APP_DATABASE_USER=tsc_forex \
-            --from-literal=APP_DATABASE_PASSWORD="$DB_PASSWORD" \
-            --from-literal=APP_JWT_SECRET="$JWT_SECRET" \
-            --from-literal=APP_REDIS_PASSWORD="$REDIS_PASSWORD" \
-            --from-literal=APP_STORAGE_ACCESS_KEY="$STORAGE_ACCESS_KEY" \
-            --from-literal=APP_STORAGE_SECRET_KEY="$STORAGE_SECRET_KEY" \
-            --from-literal=APP_AI_API_KEY="$AI_API_KEY" \
+          app_secret_args=(
+            --from-literal=APP_DATABASE_USER=tsc_forex
+            --from-file=APP_DATABASE_PASSWORD="$SECRET_BUNDLE/APP_DATABASE_PASSWORD"
+            --from-file=APP_JWT_SECRET="$SECRET_BUNDLE/APP_JWT_SECRET"
+            --from-file=APP_REDIS_PASSWORD="$SECRET_BUNDLE/APP_REDIS_PASSWORD"
+            --from-file=APP_STORAGE_ACCESS_KEY="$SECRET_BUNDLE/APP_STORAGE_ACCESS_KEY"
+            --from-file=APP_STORAGE_SECRET_KEY="$SECRET_BUNDLE/APP_STORAGE_SECRET_KEY"
+            --from-file=APP_AI_API_KEY="$SECRET_BUNDLE/APP_AI_API_KEY"
+            --from-file=APP_BILLING_DEVICE_CHECK_KEY_ID="$SECRET_BUNDLE/APP_BILLING_DEVICE_CHECK_KEY_ID"
+            --from-file=APP_OAUTH_APPLE_KEY_ID="$SECRET_BUNDLE/APP_OAUTH_APPLE_KEY_ID"
+          )
+          kubectl -n "$NS" create secret generic tsc-forex-secrets \
+            "${app_secret_args[@]}" \
             --dry-run=client -o yaml | kubectl apply -f -
 
-          # Image pull secret for GHCR.
-          kubectl -n \$NS create secret docker-registry ghcr-pull \
-            --docker-server=ghcr.io --docker-username="$GHCR_USER" \
-            --docker-password="$GHCR_TOKEN" \
+          # Both Apple keys are mandatory production gates and are mounted
+          # read-only; their values never appear in a command or workflow log.
+          kubectl -n "$NS" create secret generic tsc-forex-apple-auth \
+            --from-file=devicecheck.p8="$SECRET_BUNDLE/devicecheck.p8" \
+            --from-file=sign-in-with-apple.p8="$SECRET_BUNDLE/sign-in-with-apple.p8" \
             --dry-run=client -o yaml | kubectl apply -f -
 
-          # Apply manifests (ConfigMap, Postgres, MinIO, Redis, app, HPA).
-          kubectl apply -k deploy/k8s
+          # Use a durable, least-privilege read:packages credential. A job-scoped
+          # GITHUB_TOKEN expires and cannot safely back future pod reschedules.
+          kubectl -n "$NS" create secret docker-registry ghcr-pull \
+            --docker-server=ghcr.io \
+            --docker-username="$(<"$SECRET_BUNDLE/GHCR_PULL_USERNAME")" \
+            --docker-password="$(<"$SECRET_BUNDLE/GHCR_PULL_TOKEN")" \
+            --dry-run=client -o yaml | kubectl apply -f -
+          # ServiceAccount pull credentials must exist before new pods are
+          # admitted; patching it afterwards does not update existing pods.
+          kubectl -n "$NS" patch serviceaccount default \
+            -p '{"imagePullSecrets":[{"name":"ghcr-pull"}]}'
 
-          # Roll out the freshly built images (API + web).
-          kubectl -n \$NS set image deployment/tsc-forex-app app="$IMAGE_REF"
-          kubectl -n \$NS set image deployment/tsc-forex-web web="$WEB_IMAGE_REF"
-          # envFrom Secret updates do not restart existing pods when the image
-          # digest is unchanged (for example during an API-key rotation).
-          kubectl -n \$NS rollout restart deployment/tsc-forex-app
-          kubectl -n \$NS patch serviceaccount default -p '{"imagePullSecrets":[{"name":"ghcr-pull"}]}' || true
-          kubectl -n \$NS rollout status deployment/tsc-forex-app --timeout=420s
-          kubectl -n \$NS rollout status deployment/tsc-forex-web --timeout=180s
+          previous_api_image="$(kubectl -n "$NS" get deployment tsc-forex-app -o jsonpath='{.spec.template.spec.containers[?(@.name=="app")].image}' 2>/dev/null || true)"
+
+          # Render once and replace exactly the two checked-in image placeholders
+          # before apply. Buffering in awk prevents any partial/placeholder apply
+          # if a manifest rename makes either expected match disappear.
+          kubectl kustomize deploy/k8s | awk -v api_image="$IMAGE_REF" -v web_image="$WEB_IMAGE_REF" '
+            {
+              line = $0
+              if (line ~ /image: tsc-forex:latest$/) {
+                sub(/image: tsc-forex:latest$/, "image: " api_image, line)
+                api_count++
+              }
+              if (line ~ /image: ghcr.io\/rampesna\/tsc_forex-web:latest$/) {
+                sub(/image: ghcr.io\/rampesna\/tsc_forex-web:latest$/, "image: " web_image, line)
+                web_count++
+              }
+              rendered[NR] = line
+            }
+            END {
+              if (api_count != 1 || web_count != 1) {
+                print "release image placeholder count mismatch" > "/dev/stderr"
+                exit 1
+              }
+              for (i = 1; i <= NR; i++) print rendered[i]
+            }
+          ' | kubectl apply -f -
+
+          deployed_api_image="$(kubectl -n "$NS" get deployment tsc-forex-app -o jsonpath='{.spec.template.spec.containers[?(@.name=="app")].image}')"
+          deployed_web_image="$(kubectl -n "$NS" get deployment tsc-forex-web -o jsonpath='{.spec.template.spec.containers[?(@.name=="web")].image}')"
+          if [ "$deployed_api_image" != "$IMAGE_REF" ] || [ "$deployed_web_image" != "$WEB_IMAGE_REF" ]; then
+            echo "release image verification failed" >&2
+            exit 1
+          fi
+
+          # A normal release gets fresh pods from its new immutable image. A
+          # same-SHA rerun (for example after rotating a KID) needs one explicit
+          # restart because envFrom values are not refreshed in running pods.
+          if [ "$previous_api_image" = "$IMAGE_REF" ]; then
+            kubectl -n "$NS" rollout restart deployment/tsc-forex-app
+          fi
+
+          kubectl -n "$NS" rollout status deployment/tsc-forex-app --timeout=420s
+          kubectl -n "$NS" rollout status deployment/tsc-forex-web --timeout=180s
+          # Validate mounted credential files and non-empty KIDs without printing
+          # secret material. Real DeviceCheck remains a physical-device smoke.
+          kubectl -n "$NS" exec deployment/tsc-forex-app -- sh -ec '
+            test -s /etc/apple-auth/devicecheck.p8
+            test -s /etc/apple-auth/sign-in-with-apple.p8
+            test -n "${APP_BILLING_DEVICE_CHECK_KEY_ID:-}"
+            test -n "${APP_OAUTH_APPLE_KEY_ID:-}"
+          '
 
           # Prune leftover images/build cache so nothing accumulates on the host.
           docker image prune -af >/dev/null 2>&1 || true
           docker builder prune -af >/dev/null 2>&1 || true
           EOF
+      - name: Production API smoke checks
+        env:
+          EXPECTED_VERSION: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          curl_json() {
+            curl --fail --silent --show-error --retry 20 --retry-all-errors \
+              --retry-delay 5 --connect-timeout 10 --max-time 30 "$1"
+          }
+
+          version_json="$(curl_json https://tsc-api.talhacan.com/api/v1/version)"
+          if [ "$(jq -r '.version // empty' <<<"$version_json")" != "$EXPECTED_VERSION" ]; then
+            echo "deployed API version does not match the workflow commit" >&2
+            exit 1
+          fi
+
+          health_json="$(curl_json https://tsc-api.talhacan.com/api/v1/health)"
+          jq -e '
+            .status == "ok" and
+            .deps.database == "up" and
+            .deps.redis == "up"
+          ' <<<"$health_json" >/dev/null
+
+          plans_json="$(curl_json https://tsc-api.talhacan.com/api/v1/billing/plans)"
+          jq -e '
+            .purchase_channel == "ios_app_store" and
+            .free_trial.channel == "ios_app_attest_devicecheck" and
+            .free_trial.ready == true and
+            ([.plans[].product_id] | sort) == ([
+              "talhacan.tscforex.elite.monthly",
+              "talhacan.tscforex.expert.monthly",
+              "talhacan.tscforex.plus.monthly",
+              "talhacan.tscforex.pro.monthly"
+            ] | sort)
+          ' <<<"$plans_json" >/dev/null

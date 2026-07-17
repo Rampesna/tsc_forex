@@ -628,3 +628,269 @@ func (t *PortfolioTransaction) BeforeCreate(_ *gorm.DB) error {
 	}
 	return nil
 }
+
+// SubscriptionEntitlement is the server-authoritative snapshot of a user's
+// auto-renewable App Store subscription. The client never grants itself a
+// plan: this row is only updated after an Apple-signed transaction verifies.
+type SubscriptionEntitlement struct {
+	UserID                uuid.UUID  `gorm:"type:uuid;primaryKey" json:"user_id"`
+	ProductID             string     `gorm:"type:varchar(160);not null" json:"product_id"`
+	PlanCode              string     `gorm:"type:varchar(32);not null;index" json:"plan_code"`
+	OriginalTransactionID string     `gorm:"type:varchar(96);not null;uniqueIndex" json:"original_transaction_id"`
+	LatestTransactionID   string     `gorm:"type:varchar(96);not null" json:"latest_transaction_id"`
+	Environment           string     `gorm:"type:varchar(24);not null" json:"environment"`
+	Status                string     `gorm:"type:varchar(24);not null;index" json:"status"`
+	PeriodStart           time.Time  `gorm:"not null" json:"period_start"`
+	ExpiresAt             time.Time  `gorm:"not null;index" json:"expires_at"`
+	RevokedAt             *time.Time `json:"revoked_at,omitempty"`
+	CreatedAt             time.Time  `json:"created_at"`
+	UpdatedAt             time.Time  `json:"updated_at"`
+}
+
+func (SubscriptionEntitlement) TableName() string { return "subscription_entitlements" }
+
+// AppleTransaction is an immutable audit/fraud record for a verified StoreKit
+// transaction. UserID is nullable so account deletion can remove the personal
+// link while retaining the minimum transaction record needed for restore,
+// refunds and transaction-sharing prevention.
+type AppleTransaction struct {
+	TransactionID         string     `gorm:"type:varchar(96);primaryKey" json:"transaction_id"`
+	OriginalTransactionID string     `gorm:"type:varchar(96);not null;index" json:"original_transaction_id"`
+	UserID                *uuid.UUID `gorm:"type:uuid;index" json:"user_id,omitempty"`
+	ProductID             string     `gorm:"type:varchar(160);not null" json:"product_id"`
+	AppAccountToken       string     `gorm:"type:varchar(64)" json:"app_account_token,omitempty"`
+	Environment           string     `gorm:"type:varchar(24);not null" json:"environment"`
+	PurchasedAt           time.Time  `gorm:"not null" json:"purchased_at"`
+	ExpiresAt             time.Time  `gorm:"not null;index" json:"expires_at"`
+	RevokedAt             *time.Time `json:"revoked_at,omitempty"`
+	JWSSHA256             string     `gorm:"column:jws_sha256;type:char(64);not null" json:"-"`
+	CreatedAt             time.Time  `json:"created_at"`
+	UpdatedAt             time.Time  `json:"updated_at"`
+}
+
+func (AppleTransaction) TableName() string { return "apple_transactions" }
+
+// FeatureUsage is an idempotent monthly quota ledger. RequestKey is generated
+// once by the client and Scope identifies the concrete resource (for example
+// the researched instrument), preventing request-key reuse across operations.
+type FeatureUsage struct {
+	ID         uuid.UUID `gorm:"type:uuid;primaryKey" json:"id"`
+	UserID     uuid.UUID `gorm:"type:uuid;not null;index:idx_feature_usage_period,priority:1;uniqueIndex:uq_feature_request,priority:1" json:"user_id"`
+	Feature    string    `gorm:"type:varchar(48);not null;index:idx_feature_usage_period,priority:2;uniqueIndex:uq_feature_request,priority:2" json:"feature"`
+	PeriodKey  string    `gorm:"type:varchar(48);not null;index:idx_feature_usage_period,priority:3" json:"period_key"`
+	RequestKey string    `gorm:"type:varchar(80);not null;uniqueIndex:uq_feature_request,priority:3" json:"request_key"`
+	Scope      string    `gorm:"type:varchar(160);not null" json:"scope"`
+	Quantity   int       `gorm:"not null;default:1" json:"quantity"`
+	CreatedAt  time.Time `json:"created_at"`
+}
+
+func (FeatureUsage) TableName() string { return "feature_usages" }
+
+func (u *FeatureUsage) BeforeCreate(_ *gorm.DB) error {
+	if u.ID == uuid.Nil {
+		u.ID = uuid.New()
+	}
+	return nil
+}
+
+// FreeResearchClaim enforces the one-lifetime deep-research allowance on both
+// account and device. DeviceHash is a one-way SHA-256 digest of an app-generated
+// Keychain identifier; no hardware identifier or IDFA is collected.
+type FreeResearchClaim struct {
+	ID               uuid.UUID  `gorm:"type:uuid;primaryKey" json:"id"`
+	UserID           *uuid.UUID `gorm:"type:uuid;uniqueIndex" json:"user_id,omitempty"`
+	DeviceHash       string     `gorm:"type:char(64);not null;uniqueIndex" json:"-"`
+	RequestKey       string     `gorm:"type:varchar(80);not null;uniqueIndex" json:"request_key"`
+	Scope            string     `gorm:"type:varchar(160);not null" json:"scope"`
+	ClaimedAt        time.Time  `gorm:"not null" json:"claimed_at"`
+	AccountDeletedAt *time.Time `json:"account_deleted_at,omitempty"`
+}
+
+func (FreeResearchClaim) TableName() string { return "free_research_claims" }
+
+func (c *FreeResearchClaim) BeforeCreate(_ *gorm.DB) error {
+	if c.ID == uuid.Nil {
+		c.ID = uuid.New()
+	}
+	return nil
+}
+
+// MarketResearchArchive stores the structured research response for the
+// retention window included in the active plan. Payload is JSON generated by
+// this backend and never rendered as executable HTML.
+type MarketResearchArchive struct {
+	ID          uuid.UUID `gorm:"type:uuid;primaryKey" json:"id"`
+	UserID      uuid.UUID `gorm:"type:uuid;not null;index:idx_research_archive_user_generated,priority:1;uniqueIndex:uq_research_archive_request,priority:1" json:"user_id"`
+	RequestKey  string    `gorm:"type:varchar(80);not null;uniqueIndex:uq_research_archive_request,priority:2" json:"request_key"`
+	Code        string    `gorm:"type:varchar(32);not null" json:"code"`
+	Payload     string    `gorm:"type:jsonb;not null" json:"payload"`
+	GeneratedAt time.Time `gorm:"not null;index:idx_research_archive_user_generated,priority:2" json:"generated_at"`
+	ExpiresAt   time.Time `gorm:"not null;index" json:"expires_at"`
+}
+
+func (MarketResearchArchive) TableName() string { return "market_research_archives" }
+
+func (a *MarketResearchArchive) BeforeCreate(_ *gorm.DB) error {
+	if a.ID == uuid.Nil {
+		a.ID = uuid.New()
+	}
+	return nil
+}
+
+// MarketResearchJob is the durable idempotency record for one deep-research
+// request. The unique (user, request) key means concurrent HTTP retries share
+// one provider job and one quota reservation. OwnerTokenHash is an unguessable
+// capability held only by the request that created the row; it is required to
+// refund a provider job that could not be started.
+type MarketResearchJob struct {
+	ID                 uuid.UUID  `gorm:"type:uuid;primaryKey" json:"id"`
+	UserID             uuid.UUID  `gorm:"type:uuid;not null;uniqueIndex:uq_research_job_request,priority:1;index" json:"user_id"`
+	RequestKey         string     `gorm:"type:varchar(80);not null;uniqueIndex:uq_research_job_request,priority:2" json:"request_key"`
+	Code               string     `gorm:"type:varchar(32);not null" json:"code"`
+	Status             string     `gorm:"type:varchar(24);not null;index" json:"status"`
+	ProviderResponseID string     `gorm:"type:varchar(160);index" json:"provider_response_id,omitempty"`
+	ResultPayload      string     `gorm:"type:text" json:"result_payload,omitempty"`
+	OwnerTokenHash     string     `gorm:"type:char(64);not null" json:"-"`
+	LeaseExpiresAt     *time.Time `gorm:"index" json:"lease_expires_at,omitempty"`
+	AttemptCount       int        `gorm:"not null;default:0" json:"attempt_count"`
+	FailureCode        string     `gorm:"type:varchar(64)" json:"failure_code,omitempty"`
+	CreatedAt          time.Time  `gorm:"not null" json:"created_at"`
+	UpdatedAt          time.Time  `gorm:"not null" json:"updated_at"`
+	CompletedAt        *time.Time `json:"completed_at,omitempty"`
+}
+
+func (MarketResearchJob) TableName() string { return "market_research_jobs" }
+
+func (j *MarketResearchJob) BeforeCreate(_ *gorm.DB) error {
+	if j.ID == uuid.Nil {
+		j.ID = uuid.New()
+	}
+	return nil
+}
+
+// FeatureArtifact persists the output of quota-metered deterministic features
+// (portfolio health reports and exports). An idempotent replay returns the
+// original bytes instead of recomputing against newer portfolio state.
+type FeatureArtifact struct {
+	ID             uuid.UUID  `gorm:"type:uuid;primaryKey" json:"id"`
+	UserID         uuid.UUID  `gorm:"type:uuid;not null;uniqueIndex:uq_feature_artifact_request,priority:1;index" json:"user_id"`
+	Feature        string     `gorm:"type:varchar(48);not null;uniqueIndex:uq_feature_artifact_request,priority:2" json:"feature"`
+	RequestKey     string     `gorm:"type:varchar(80);not null;uniqueIndex:uq_feature_artifact_request,priority:3" json:"request_key"`
+	Scope          string     `gorm:"type:varchar(160);not null" json:"scope"`
+	Status         string     `gorm:"type:varchar(24);not null" json:"status"`
+	Payload        []byte     `gorm:"type:bytea" json:"-"`
+	ContentType    string     `gorm:"type:varchar(96)" json:"content_type,omitempty"`
+	Filename       string     `gorm:"type:varchar(180)" json:"filename,omitempty"`
+	OwnerTokenHash string     `gorm:"type:char(64);not null" json:"-"`
+	LeaseExpiresAt *time.Time `gorm:"index" json:"lease_expires_at,omitempty"`
+	AttemptCount   int        `gorm:"not null;default:0" json:"attempt_count"`
+	CreatedAt      time.Time  `gorm:"not null" json:"created_at"`
+	UpdatedAt      time.Time  `gorm:"not null" json:"updated_at"`
+}
+
+func (FeatureArtifact) TableName() string { return "feature_artifacts" }
+
+func (a *FeatureArtifact) BeforeCreate(_ *gorm.DB) error {
+	if a.ID == uuid.Nil {
+		a.ID = uuid.New()
+	}
+	return nil
+}
+
+// BillingCapacityLock is a stable row locked inside resource-creation
+// transactions. It serializes count+insert per user/feature across API pods.
+type BillingCapacityLock struct {
+	UserID    uuid.UUID `gorm:"type:uuid;primaryKey" json:"user_id"`
+	Feature   string    `gorm:"type:varchar(48);primaryKey" json:"feature"`
+	UpdatedAt time.Time `gorm:"not null" json:"updated_at"`
+}
+
+func (BillingCapacityLock) TableName() string { return "billing_capacity_locks" }
+
+// AppAttestChallenge is a one-use server nonce already bound to the
+// authenticated account and concrete research request. Only its SHA-256 hash
+// is retained; the random challenge itself is returned once to the app.
+type AppAttestChallenge struct {
+	ID         uuid.UUID  `gorm:"type:uuid;primaryKey" json:"id"`
+	UserID     uuid.UUID  `gorm:"type:uuid;not null;index" json:"user_id"`
+	DeviceHash string     `gorm:"type:char(64);not null;index" json:"-"`
+	RequestKey string     `gorm:"type:varchar(80);not null" json:"request_key"`
+	Scope      string     `gorm:"type:varchar(160);not null" json:"scope"`
+	Purpose    string     `gorm:"type:varchar(32);not null" json:"purpose"`
+	NonceHash  string     `gorm:"type:char(64);not null" json:"-"`
+	ClientData []byte     `gorm:"type:bytea;not null" json:"-"`
+	ExpiresAt  time.Time  `gorm:"not null;index" json:"expires_at"`
+	UsedAt     *time.Time `json:"used_at,omitempty"`
+	CreatedAt  time.Time  `gorm:"not null" json:"created_at"`
+}
+
+func (AppAttestChallenge) TableName() string { return "app_attest_challenges" }
+
+func (c *AppAttestChallenge) BeforeCreate(_ *gorm.DB) error {
+	if c.ID == uuid.Nil {
+		c.ID = uuid.New()
+	}
+	return nil
+}
+
+// AppAttestKey is the Apple-certified P-256 key for one app installation.
+// DeviceHash is the privacy-preserving local installation binding while the
+// public key and monotonically increasing counter authenticate assertions.
+type AppAttestKey struct {
+	KeyID            string     `gorm:"type:varchar(128);primaryKey" json:"key_id"`
+	DeviceHash       string     `gorm:"type:char(64);not null;uniqueIndex" json:"-"`
+	RegisteredUserID *uuid.UUID `gorm:"type:uuid;index" json:"registered_user_id,omitempty"`
+	PublicKeyDER     []byte     `gorm:"type:bytea;not null" json:"-"`
+	Receipt          []byte     `gorm:"type:bytea;not null" json:"-"`
+	Environment      string     `gorm:"type:varchar(24);not null" json:"environment"`
+	Counter          uint32     `gorm:"not null;default:0" json:"counter"`
+	CreatedAt        time.Time  `gorm:"not null" json:"created_at"`
+	UpdatedAt        time.Time  `gorm:"not null" json:"updated_at"`
+}
+
+func (AppAttestKey) TableName() string { return "app_attest_keys" }
+
+// DeviceCheckRedemption is the crash-recovery journal around Apple's
+// reinstall-resistant DeviceCheck bit. "updating" is committed before the
+// irreversible Apple call, so a retry can query bit 0 and reconcile a response
+// lost between Apple and the database commit.
+type DeviceCheckRedemption struct {
+	ID             uuid.UUID  `gorm:"type:uuid;primaryKey" json:"id"`
+	UserID         uuid.UUID  `gorm:"type:uuid;not null;uniqueIndex:uq_device_check_request,priority:1;index" json:"user_id"`
+	RequestKey     string     `gorm:"type:varchar(80);not null;uniqueIndex:uq_device_check_request,priority:2" json:"request_key"`
+	DeviceHash     string     `gorm:"type:char(64);not null;index" json:"-"`
+	Scope          string     `gorm:"type:varchar(160);not null" json:"scope"`
+	TokenHash      string     `gorm:"type:char(64);not null;uniqueIndex" json:"-"`
+	Status         string     `gorm:"type:varchar(24);not null;index" json:"status"`
+	OwnerTokenHash string     `gorm:"type:char(64)" json:"-"`
+	LeaseExpiresAt *time.Time `gorm:"index" json:"lease_expires_at,omitempty"`
+	AttemptCount   int        `gorm:"not null;default:0" json:"attempt_count"`
+	CreatedAt      time.Time  `gorm:"not null" json:"created_at"`
+	UpdatedAt      time.Time  `gorm:"not null" json:"updated_at"`
+}
+
+func (DeviceCheckRedemption) TableName() string { return "device_check_redemptions" }
+
+func (r *DeviceCheckRedemption) BeforeCreate(_ *gorm.DB) error {
+	if r.ID == uuid.Nil {
+		r.ID = uuid.New()
+	}
+	return nil
+}
+
+// SubscriptionRestoreTombstone retains only one-way identity/token bindings
+// after account deletion. A recreated account may restore a still-billed
+// subscription only after proving the same Sign in with Apple subject; a
+// copied StoreKit transaction alone is insufficient.
+type SubscriptionRestoreTombstone struct {
+	OriginalTransactionID       string     `gorm:"type:varchar(96);primaryKey" json:"original_transaction_id"`
+	PreviousAppAccountTokenHash string     `gorm:"type:char(64);not null" json:"-"`
+	IdentityProvider            string     `gorm:"type:varchar(24)" json:"identity_provider,omitempty"`
+	ProviderSubjectHash         string     `gorm:"type:char(64)" json:"-"`
+	RecoveryTokenHash           string     `gorm:"type:char(64)" json:"-"`
+	DeletedAt                   time.Time  `gorm:"not null" json:"deleted_at"`
+	ReboundUserID               *uuid.UUID `gorm:"type:uuid;index" json:"rebound_user_id,omitempty"`
+	ReboundAt                   *time.Time `json:"rebound_at,omitempty"`
+}
+
+func (SubscriptionRestoreTombstone) TableName() string { return "subscription_restore_tombstones" }

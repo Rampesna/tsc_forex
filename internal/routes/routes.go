@@ -1,7 +1,9 @@
 package routes
 
 import (
+	"context"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -31,6 +33,8 @@ type Deps struct {
 	Gamification *api.GamificationHandler // streak/XP/badges/leaderboard; may be nil
 	Portfolio    *api.PortfolioHandler    // transaction ledger + analytics; may be nil
 	AI           *api.MarketAIHandler     // server-side market briefs; may be nil
+	Billing      *api.BillingHandler      // App Store plans/entitlements; may be nil
+	Ready        func(context.Context) error
 
 	AuthService *service.AuthService // for protected-route middleware; may be nil
 }
@@ -56,7 +60,20 @@ func NewEngine(d Deps) *gin.Engine {
 
 	// Kubernetes probes (unauthenticated, no rate limit).
 	r.GET("/livez", func(c *gin.Context) { c.String(200, "ok") })
-	r.GET("/readyz", func(c *gin.Context) { c.String(200, "ready") })
+	r.GET("/readyz", func(c *gin.Context) {
+		if d.Ready == nil {
+			c.JSON(http.StatusServiceUnavailable, gin.H{"status": "not_ready"})
+			return
+		}
+		ctx, cancel := context.WithTimeout(c.Request.Context(), 2*time.Second)
+		defer cancel()
+		if err := d.Ready(ctx); err != nil {
+			c.Header("Retry-After", "5")
+			c.JSON(http.StatusServiceUnavailable, gin.H{"status": "not_ready"})
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"status": "ready"})
+	})
 
 	// Well-known association files for passkeys / Google credential sharing.
 	registerWellKnown(r, d.Config)
@@ -82,6 +99,10 @@ func NewEngine(d Deps) *gin.Engine {
 		v1.GET("/health", d.System.Health)
 		v1.GET("/version", d.System.Version)
 		v1.GET("/providers", d.System.Providers)
+		if d.Billing != nil {
+			v1.GET("/billing/plans", d.Billing.Plans)
+			v1.POST("/billing/apple/notifications", d.Billing.AppleNotifications)
+		}
 
 		v1.GET("/gold/current", d.Gold.Current)
 		v1.GET("/gold/history", d.Gold.History)
@@ -121,6 +142,7 @@ func NewEngine(d Deps) *gin.Engine {
 				authed.PATCH("/me/profile", d.User.UpdateProfile)
 				authed.POST("/me/avatar", d.User.UploadAvatar)
 				authed.DELETE("/me/account", d.User.DeleteAccount)
+				authed.GET("/me/account/deletion-readiness", d.User.AccountDeletionReadiness)
 
 				// Multi-provider account linking (Google + Apple on one account).
 				authed.GET("/me/providers", d.Auth.LinkedProviders)
@@ -142,6 +164,14 @@ func NewEngine(d Deps) *gin.Engine {
 
 				authed.POST("/me/devices", d.User.RegisterDevice)
 
+				if d.Billing != nil {
+					authed.GET("/me/billing/status", d.Billing.Status)
+					authed.POST("/me/billing/apple/sync", d.Billing.SyncApple)
+					authed.POST("/me/device-attestation/challenge", d.Billing.AppAttestChallenge)
+					authed.POST("/me/device-attestation/register", d.Billing.RegisterAppAttest)
+					authed.GET("/me/ai/research-history", d.Billing.ResearchHistory)
+				}
+
 				if d.AI != nil {
 					authed.POST("/me/ai/market-insight", d.AI.MarketInsight)
 				}
@@ -158,6 +188,8 @@ func NewEngine(d Deps) *gin.Engine {
 					authed.PATCH("/me/portfolios/:portfolioID/transactions/:transactionID", d.Portfolio.UpdateTransaction)
 					authed.DELETE("/me/portfolios/:portfolioID/transactions/:transactionID", d.Portfolio.DeleteTransaction)
 					authed.GET("/me/portfolios/:portfolioID/performance", d.Portfolio.Performance)
+					authed.POST("/me/portfolios/:portfolioID/health-check", d.Portfolio.HealthCheck)
+					authed.POST("/me/portfolios/:portfolioID/export", d.Portfolio.Export)
 				}
 
 				// Gamification: daily streak, XP/levels, badges, leaderboard.

@@ -37,7 +37,7 @@ func TestMarketResearchLive(t *testing.T) {
 		Change1D: &day, Change1W: &week, Change1M: &month, Change3M: &quarter, Change1Y: &year,
 		Timestamp: price.Timestamp.Format(time.RFC3339),
 	}}
-	envelope, err := handler.startBackground(context.Background(), price, contextData, "tsc_live_schema_test")
+	envelope, err := handler.startBackground(context.Background(), price, contextData, "market_research_live_test", "live-test-request")
 	if err != nil {
 		t.Fatal(err)
 	}

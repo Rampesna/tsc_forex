@@ -195,10 +195,65 @@ export interface MarketInsight {
     timestamp: string;
   }>;
   sources: Array<{ title: string; url: string }>;
-  model: string;
   research_mode: string;
   generated_at: string;
   disclaimer: string;
+}
+
+// Billing is owned by the App Store. The web client only reflects the
+// server-verified entitlement and quota; it never starts or restores a sale.
+export type BillingPlanCode = "free" | "plus" | "pro" | "expert" | "elite" | (string & {});
+
+export interface UsageQuota {
+  used: number;
+  limit: number;
+  remaining: number;
+  period_end?: string;
+}
+
+export interface BillingPlanLimits {
+  ai_research: number;
+  active_alerts: number;
+  watchlist: number;
+  portfolios: number;
+  portfolio_health: number;
+  exports: number;
+  research_archive_days: number;
+}
+
+export interface BillingPlan {
+  code: BillingPlanCode;
+  name: string;
+  product_id: string;
+  price_hint_try?: number | string;
+  limits: BillingPlanLimits;
+}
+
+export interface StoreEntitlement {
+  product_id: string;
+  status: "active" | "grace_period" | "expired" | "revoked" | string;
+  environment: "Sandbox" | "Production" | string;
+  expires_at?: string;
+  will_renew?: boolean;
+}
+
+export interface BillingStatus {
+  plan: BillingPlan;
+  entitlement: StoreEntitlement | null;
+  usage: Record<string, UsageQuota>;
+  free_research_available: boolean;
+  purchase_channel: "ios_app_store";
+  manage_url?: string;
+}
+
+export interface BillingPlansResponse {
+  purchase_channel: "ios_app_store";
+  free_trial: {
+    ready: boolean;
+    user_limit: number;
+    device_limit: number;
+  };
+  plans: BillingPlan[];
 }
 
 // --- Gamification (streak / XP / badges / leaderboard) ---
@@ -417,6 +472,15 @@ export interface PortfolioOverview {
   day_change_pct: DecimalValue;
   net_deposits_try: DecimalValue;
   active_positions: number;
+}
+
+export interface PortfolioHealth {
+  score?: number;
+  grade?: string;
+  summary?: string;
+  findings?: Array<{ title?: string; detail?: string; severity?: "low" | "medium" | "high" | string }>;
+  generated_at?: string;
+  [key: string]: unknown;
 }
 
 export type PortfolioTransactionType =

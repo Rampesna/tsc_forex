@@ -1,5 +1,41 @@
 import SwiftUI
 
+struct GamificationProgressSummaryCard: View {
+    let experience: GamificationExperience
+
+    var body: some View {
+        Card {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text("Gelişim Özeti")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(Theme.text)
+                    Spacer()
+                    Text("v\(experience.ruleVersion)")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundStyle(Theme.textFaint)
+                }
+                HStack(spacing: 8) {
+                    compactStat("Ustalık", "\(experience.weeklySummary.masteredLessons)/\(experience.weeklySummary.totalLessons)")
+                    compactStat("Tekrar", "\(experience.weeklySummary.dueReviews)")
+                    compactStat("Karar", "\(experience.paperTrades.count)")
+                }
+                Text("Puanlama finansal getiriden bağımsızdır; öğrenme ve karar sürecini ölçer.")
+                    .font(.system(size: 10)).foregroundStyle(Theme.textFaint)
+            }
+        }
+    }
+
+    private func compactStat(_ label: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(label).font(.system(size: 9)).foregroundStyle(Theme.textFaint)
+            Text(value).font(Theme.number(16, weight: .bold)).foregroundStyle(Theme.text)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(9).background(Theme.surfaceHi, in: RoundedRectangle(cornerRadius: 10))
+    }
+}
+
 struct GamificationExperienceHub: View {
     @Binding var experience: GamificationExperience?
     let token: String?
@@ -7,7 +43,6 @@ struct GamificationExperienceHub: View {
     let onToast: (String) -> Void
 
     @EnvironmentObject private var prices: PriceStore
-    @State private var tab = 0
     @State private var busy = false
     @State private var risk = "moderate"
     @State private var watchCodes: [String] = []
@@ -39,22 +74,23 @@ struct GamificationExperienceHub: View {
     var body: some View {
         if let exp = experience {
             VStack(spacing: 12) {
-                summary(exp)
-                Picker("Gelişim alanı", selection: $tab) {
-                    Text("Bugün").tag(0)
-                    Text("Öğren").tag(1)
-                    Text("Sezon").tag(2)
-                    Text("Paper").tag(3)
-                    Text("Gizlilik").tag(4)
+                HStack(spacing: 10) {
+                    journeyLink("Günlük Plan", "İzleme ve risk planı", "scope") {
+                        journeyScreen("Günlük Plan") { today(exp) }
+                    }
+                    journeyLink("Öğrenme", "Mikro ders ve tekrar", "book.closed.fill") {
+                        journeyScreen("Öğrenme") { learning(exp) }
+                    }
                 }
-                .pickerStyle(.segmented)
-
-                switch tab {
-                case 0: today(exp)
-                case 1: learning(exp)
-                case 2: season(exp)
-                case 3: paper(exp)
-                default: privacy(exp)
+                HStack(spacing: 10) {
+                    journeyLink("Karar Günlüğü", "Süreç ve paper kararlar", "checklist") {
+                        journeyScreen("Karar Günlüğü") {
+                            VStack(spacing: 12) { discipline(exp); paper(exp) }
+                        }
+                    }
+                    journeyLink("Gizlilik", "Paylaşım tercihleri", "lock.shield.fill") {
+                        journeyScreen("Gizlilik") { privacy(exp) }
+                    }
                 }
             }
             .onAppear { sync(exp) }
@@ -68,32 +104,35 @@ struct GamificationExperienceHub: View {
         }
     }
 
-    private func summary(_ exp: GamificationExperience) -> some View {
-        Card {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    Text("Gelişim Özeti").font(.system(size: 15, weight: .bold)).foregroundStyle(Theme.text)
-                    Spacer()
-                    Text("v\(exp.ruleVersion)").font(.system(size: 10, weight: .bold)).foregroundStyle(Theme.textFaint)
+    private func journeyLink<Destination: View>(
+        _ title: String, _ subtitle: String, _ icon: String,
+        @ViewBuilder destination: () -> Destination
+    ) -> some View {
+        NavigationLink {
+            destination()
+        } label: {
+            Card(padding: 13) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Image(systemName: icon).font(.system(size: 18, weight: .bold)).foregroundStyle(Theme.accent)
+                    Text(title).font(.system(size: 13, weight: .bold)).foregroundStyle(Theme.text)
+                    Text(subtitle).font(.system(size: 10)).foregroundStyle(Theme.textDim).lineLimit(2)
+                    HStack { Spacer(); Image(systemName: "chevron.right").font(.system(size: 10, weight: .bold)).foregroundStyle(Theme.textFaint) }
                 }
-                HStack(spacing: 8) {
-                    compactStat("Ustalık", "\(exp.weeklySummary.masteredLessons)/\(exp.weeklySummary.totalLessons)")
-                    compactStat("Tekrar", "\(exp.weeklySummary.dueReviews)")
-                    compactStat("Sezon", "\(exp.weeklySummary.seasonPoints)")
-                }
-                Text("Puanlama finansal getiriden bağımsızdır; öğrenme ve karar sürecini ölçer.")
-                    .font(.system(size: 10)).foregroundStyle(Theme.textFaint)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
         }
+        .buttonStyle(.plain)
     }
 
-    private func compactStat(_ label: String, _ value: String) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(label).font(.system(size: 9)).foregroundStyle(Theme.textFaint)
-            Text(value).font(Theme.number(16, weight: .bold)).foregroundStyle(Theme.text)
+    private func journeyScreen<Content: View>(
+        _ title: String, @ViewBuilder content: () -> Content
+    ) -> some View {
+        ScrollView {
+            content().padding(.horizontal, 16).padding(.top, 12).padding(.bottom, 40)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(9).background(Theme.surfaceHi, in: RoundedRectangle(cornerRadius: 10))
+        .background(Theme.bg.ignoresSafeArea())
+        .navigationTitle(title)
+        .navigationBarTitleDisplayMode(.inline)
     }
 
     private func today(_ exp: GamificationExperience) -> some View {
@@ -121,24 +160,27 @@ struct GamificationExperienceHub: View {
                 }
             }
 
-            Card {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Portföy Disiplini").font(.system(size: 15, weight: .bold)).foregroundStyle(Theme.text)
-                    Text("Sonuca değil karar sürecine puan verilir.")
-                        .font(.system(size: 11)).foregroundStyle(Theme.textDim)
-                    Picker("Görev", selection: $disciplineCode) {
-                        ForEach(exp.disciplineQuests) { quest in Text(quest.title).tag(quest.code) }
-                    }.tint(Theme.accent)
-                    if let quest = exp.disciplineQuests.first(where: { $0.code == disciplineCode }) {
-                        Text(quest.description).font(.system(size: 11)).foregroundStyle(Theme.textFaint)
-                    }
-                    input("Risk, tez veya plan sapmasını değerlendir…", text: $disciplineNote, axis: .vertical)
-                    Button(busy ? "Kaydediliyor…" : "Süreç Değerlendirmesini Tamamla") {
-                        Task { await completeDiscipline() }
-                    }
-                    .buttonStyle(FilledButtonStyle())
-                    .disabled(busy || disciplineNote.trimmingCharacters(in: .whitespacesAndNewlines).count < 20)
+        }
+    }
+
+    private func discipline(_ exp: GamificationExperience) -> some View {
+        Card {
+            VStack(alignment: .leading, spacing: 10) {
+                Text("Portföy Disiplini").font(.system(size: 15, weight: .bold)).foregroundStyle(Theme.text)
+                Text("Sonuca değil karar sürecine puan verilir.")
+                    .font(.system(size: 11)).foregroundStyle(Theme.textDim)
+                Picker("Görev", selection: $disciplineCode) {
+                    ForEach(exp.disciplineQuests) { quest in Text(quest.title).tag(quest.code) }
+                }.tint(Theme.accent)
+                if let quest = exp.disciplineQuests.first(where: { $0.code == disciplineCode }) {
+                    Text(quest.description).font(.system(size: 11)).foregroundStyle(Theme.textFaint)
                 }
+                input("Risk, tez veya plan sapmasını değerlendir…", text: $disciplineNote, axis: .vertical)
+                Button(busy ? "Kaydediliyor…" : "Süreç Değerlendirmesini Tamamla") {
+                    Task { await completeDiscipline() }
+                }
+                .buttonStyle(FilledButtonStyle())
+                .disabled(busy || disciplineNote.trimmingCharacters(in: .whitespacesAndNewlines).count < 20)
             }
         }
     }
@@ -265,34 +307,6 @@ struct GamificationExperienceHub: View {
         }
     }
 
-    private func season(_ exp: GamificationExperience) -> some View {
-        Card {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    VStack(alignment: .leading) {
-                        Text(exp.season.name).font(.system(size: 15, weight: .bold)).foregroundStyle(Theme.text)
-                        Text("\(exp.season.code) · \(exp.season.league) Ligi")
-                            .font(.system(size: 11)).foregroundStyle(Theme.textDim)
-                    }
-                    Spacer()
-                    Text("#\(exp.season.rank) · \(exp.season.points)")
-                        .font(Theme.number(12, weight: .bold)).foregroundStyle(Theme.accent)
-                }
-                Text(exp.season.scoring).font(.system(size: 10)).foregroundStyle(Theme.textFaint)
-                ForEach(exp.season.standings.prefix(8)) { entry in
-                    HStack {
-                        Text("#\(entry.rank)").font(Theme.number(12, weight: .bold)).foregroundStyle(Theme.textDim)
-                            .frame(width: 32, alignment: .leading)
-                        Text(entry.displayName.isEmpty ? "Yatırımcı" : entry.displayName)
-                            .font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.text)
-                        Spacer()
-                        Text("\(entry.xp) puan").font(Theme.number(11, weight: .bold)).foregroundStyle(Theme.accent)
-                    }
-                }
-            }
-        }
-    }
-
     private func paper(_ exp: GamificationExperience) -> some View {
         VStack(spacing: 12) {
             Card {
@@ -359,7 +373,6 @@ struct GamificationExperienceHub: View {
                     Text("Para, pozisyon ve getiri sosyal yüzeylerde paylaşılmaz.")
                         .font(.system(size: 11)).foregroundStyle(Theme.textDim)
                     input("Takma ad", text: $alias)
-                    Toggle("Sezon sıralamasında görün", isOn: $leagueOptIn)
                     Toggle("Kişiselleştirilmiş öğrenme", isOn: $personalized)
                     Toggle("Öğrenme bildirimleri", isOn: $learningNotifications)
                     Toggle("Gizlilik güvenli çalışma grupları", isOn: $socialOptIn)

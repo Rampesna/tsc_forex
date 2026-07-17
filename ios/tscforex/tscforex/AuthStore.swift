@@ -1,7 +1,7 @@
 //
 //  AuthStore.swift
-//  Holds auth state + tokens, persisted in the Keychain-like UserDefaults store.
-//  (For production, migrate token storage to Keychain.)
+//  Holds auth state and keeps authentication secrets in the system Keychain.
+//  Non-sensitive profile presentation fields remain cached in UserDefaults.
 //
 
 import Foundation
@@ -12,6 +12,7 @@ import Combine
 final class AuthStore: ObservableObject {
     @Published var accessToken: String?
     @Published var refreshToken: String?
+    @Published var userID: String?
     @Published var email: String?
     @Published var displayName: String = ""
     @Published var avatarURL: String = ""
@@ -23,13 +24,15 @@ final class AuthStore: ObservableObject {
 
     private let accessKey = "access_token"
     private let refreshKey = "refresh_token"
+    private let userIDKey = "user_id"
     private let emailKey = "user_email"
     private let nameKey = "user_display_name"
     private let avatarKey = "user_avatar_url"
 
     init() {
-        accessToken = UserDefaults.standard.string(forKey: accessKey)
-        refreshToken = UserDefaults.standard.string(forKey: refreshKey)
+        accessToken = Self.secureValue(key: accessKey)
+        refreshToken = Self.secureValue(key: refreshKey)
+        userID = Self.secureValue(key: userIDKey)
         email = UserDefaults.standard.string(forKey: emailKey)
         displayName = UserDefaults.standard.string(forKey: nameKey) ?? ""
         avatarURL = UserDefaults.standard.string(forKey: avatarKey) ?? ""
@@ -47,8 +50,7 @@ final class AuthStore: ObservableObject {
             guard let rt = refreshToken else { return false }
             do {
                 let tok = try await APIClient().refresh(rt)
-                persist(tok, email: email ?? "")
-                return true
+                return persist(tok, email: email ?? "")
             } catch {
                 logout()
                 return false
@@ -74,7 +76,7 @@ final class AuthStore: ObservableObject {
         defer { isBusy = false }
         do {
             let tok = try await client.login(email: email, password: password)
-            persist(tok, email: email)
+            guard persist(tok, email: email) else { return }
             await loadProfile()
         } catch {
             errorMessage = error.localizedDescription
@@ -87,7 +89,7 @@ final class AuthStore: ObservableObject {
         do {
             let idToken = try await GoogleAuth.signIn()
             let tok = try await APIClient().googleLogin(idToken: idToken)
-            persist(tok, email: email ?? "")
+            guard persist(tok, email: email ?? "") else { return }
             await loadProfile()
         } catch GoogleAuthError.cancelled {
             // Silent: the user chose to cancel.
@@ -102,7 +104,7 @@ final class AuthStore: ObservableObject {
         do {
             let cred = try await AppleAuth.shared.signIn()
             let tok = try await APIClient().appleLogin(idToken: cred.idToken, fullName: cred.fullName)
-            persist(tok, email: email ?? "")
+            guard persist(tok, email: email ?? "") else { return }
             await loadProfile()
         } catch AppleAuthError.cancelled {
             // Silent: user chose to cancel.
@@ -119,7 +121,7 @@ final class AuthStore: ObservableObject {
         defer { isBusy = false }
         do {
             let tok = try await PasskeyAuth.shared.login()
-            persist(tok, email: email ?? "")
+            guard persist(tok, email: email ?? "") else { return }
             await loadProfile()
         } catch PasskeyError.cancelled {
             // Silent.
@@ -183,7 +185,7 @@ final class AuthStore: ObservableObject {
     }
 
     private func friendlyLinkError(_ error: Error) -> String {
-        if case APIError.http(409, _) = error {
+        if case APIError.http(409, _, _) = error {
             return "Bu hesap başka bir kullanıcıya bağlı."
         }
         return error.localizedDescription
@@ -194,7 +196,7 @@ final class AuthStore: ObservableObject {
         guard accessToken != nil else { return }
         do {
             let p = try await APIClient(token: accessToken).profile()
-            applyProfile(email: p.email, name: p.displayName, avatar: p.avatarURL)
+            applyProfile(p)
         } catch {
             // Non-fatal: keep cached values.
         }
@@ -203,7 +205,7 @@ final class AuthStore: ObservableObject {
     func updateDisplayName(_ name: String) async {
         do {
             let p = try await APIClient(token: accessToken).updateProfile(displayName: name)
-            applyProfile(email: p.email, name: p.displayName, avatar: p.avatarURL)
+            applyProfile(p)
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -222,8 +224,10 @@ final class AuthStore: ObservableObject {
 
     func logout() {
         accessToken = nil; refreshToken = nil; email = nil
+        userID = nil
         displayName = ""; avatarURL = ""
-        [accessKey, refreshKey, emailKey, nameKey, avatarKey].forEach {
+        [accessKey, refreshKey, userIDKey].forEach { KeychainStore.delete($0) }
+        [accessKey, refreshKey, userIDKey, emailKey, nameKey, avatarKey].forEach {
             UserDefaults.standard.removeObject(forKey: $0)
         }
     }
@@ -239,12 +243,47 @@ final class AuthStore: ObservableObject {
         UserDefaults.standard.set(avatar, forKey: avatarKey)
     }
 
-    private func persist(_ tok: TokenResponse, email: String) {
+    private func applyProfile(_ profile: ProfileResponse) {
+        userID = profile.id
+        if KeychainStore.write(profile.id, for: userIDKey) {
+            UserDefaults.standard.removeObject(forKey: userIDKey)
+        } else {
+            UserDefaults.standard.set(profile.id, forKey: userIDKey)
+        }
+        applyProfile(email: profile.email, name: profile.displayName, avatar: profile.avatarURL)
+    }
+
+    @discardableResult
+    private func persist(_ tok: TokenResponse, email: String) -> Bool {
+        let accessStored = KeychainStore.write(tok.accessToken, for: accessKey)
+        let refreshStored = KeychainStore.write(tok.refreshToken, for: refreshKey)
+        guard accessStored && refreshStored else {
+            [accessKey, refreshKey].forEach {
+                KeychainStore.delete($0)
+                UserDefaults.standard.removeObject(forKey: $0)
+            }
+            accessToken = nil
+            refreshToken = nil
+            self.email = nil
+            errorMessage = "Oturum güvenli alana kaydedilemedi. Cihazınızı yeniden başlatıp tekrar deneyin."
+            return false
+        }
+        UserDefaults.standard.removeObject(forKey: accessKey)
+        UserDefaults.standard.removeObject(forKey: refreshKey)
         accessToken = tok.accessToken
         refreshToken = tok.refreshToken
         self.email = email
-        UserDefaults.standard.set(tok.accessToken, forKey: accessKey)
-        UserDefaults.standard.set(tok.refreshToken, forKey: refreshKey)
         UserDefaults.standard.set(email, forKey: emailKey)
+        return true
+    }
+
+    /// Reads secure storage first and migrates legacy token/user-ID defaults
+    /// atomically enough to preserve existing signed-in sessions on upgrade.
+    private static func secureValue(key: String) -> String? {
+        if let value = KeychainStore.read(key), !value.isEmpty { return value }
+        guard let legacy = UserDefaults.standard.string(forKey: key), !legacy.isEmpty else { return nil }
+        UserDefaults.standard.removeObject(forKey: key)
+        guard KeychainStore.write(legacy, for: key) else { return nil }
+        return legacy
     }
 }

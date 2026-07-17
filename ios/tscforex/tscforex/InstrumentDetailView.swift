@@ -12,6 +12,7 @@ struct AssetDetailView: View {
     let code: String
     @EnvironmentObject var auth: AuthStore
     @EnvironmentObject var prices: PriceStore
+    @EnvironmentObject var billing: BillingStore
     @Environment(\.dismiss) private var dismiss
 
     @State private var candles: [Candle] = []
@@ -37,6 +38,9 @@ struct AssetDetailView: View {
     @State private var aiInsight: MarketInsight?
     @State private var aiLoading = false
     @State private var aiError: String?
+    @State private var showAIDisclosure = false
+    @State private var showPaywall = false
+    @State private var acceptedAIDisclosure = false
 
     // Binance-style time ranges. Long ranges use daily/weekly/monthly buckets to
     // match backfilled history; short ranges use intraday buckets from live data.
@@ -100,11 +104,40 @@ struct AssetDetailView: View {
         .task(id: tf) { await loadChart() }
         .task { await loadStats() }
         .task { await loadDetail() }
+        .task(id: auth.userID) {
+            acceptedAIDisclosure = AIResearchConsentStore.isAccepted(for: auth.userID)
+        }
         .sheet(isPresented: $showAlert) {
             AlertSheet(code: code, current: price?.price ?? stats?.last ?? 0)
                 .environmentObject(auth)
                 .presentationDetents([.height(380)])
                 .presentationBackground(Theme.bgElevated)
+        }
+        .sheet(isPresented: $showAIDisclosure) {
+            AIResearchDisclosureView {
+                guard let userID = auth.userID else {
+                    aiError = "AI araştırma onayı hesabınıza kaydedilemedi. Profilinizi yenileyip tekrar deneyin."
+                    showAIDisclosure = false
+                    return
+                }
+                AIResearchConsentStore.setAccepted(true, for: userID)
+                acceptedAIDisclosure = true
+                showAIDisclosure = false
+                Task { await loadAIInsight() }
+            }
+        }
+        .sheet(isPresented: $showPaywall) {
+            PaywallView()
+                .environmentObject(auth)
+                .environmentObject(billing)
+        }
+        .alert("Favoriler", isPresented: Binding(
+            get: { prices.favoriteMessage != nil },
+            set: { if !$0 { prices.favoriteMessage = nil } }
+        )) {
+            Button("Tamam") { prices.favoriteMessage = nil }
+        } message: {
+            Text(prices.favoriteMessage ?? "")
         }
     }
 
@@ -201,7 +234,7 @@ struct AssetDetailView: View {
         }
     }
 
-    // MARK: TSC AI insight
+    // MARK: AI insight
 
     private var aiInsightCard: some View {
         Card(padding: 16) {
@@ -209,15 +242,10 @@ struct AssetDetailView: View {
                 HStack(spacing: 7) {
                     Image(systemName: "sparkles")
                         .foregroundStyle(Theme.accent)
-                    Text("TSC DERİN ARAŞTIRMA")
+                    Text("AI PİYASA ARAŞTIRMASI")
                         .font(.system(size: 11, weight: .bold))
                         .foregroundStyle(Theme.accent)
                         .tracking(1)
-                    Text(aiInsight?.model?.uppercased() ?? "GPT-5.6 SOL")
-                        .font(.system(size: 8, weight: .bold))
-                        .foregroundStyle(Theme.textFaint)
-                        .padding(.horizontal, 5).padding(.vertical, 3)
-                        .background(Theme.surfaceHi, in: Capsule())
                     Spacer()
                     if let insight = aiInsight {
                         Text(insight.stanceLabel)
@@ -335,7 +363,7 @@ struct AssetDetailView: View {
                         .font(.system(size: 9))
                         .foregroundStyle(Theme.textFaint)
                 } else {
-                    Text("Çok zaman dilimli TSC verisini; döviz, ons altın ve ilişkili piyasalarla karşılaştırır. Gerektiğinde güncel makro ve jeopolitik gelişmeleri web üzerinden kaynaklı biçimde araştırır.")
+                    Text("Çok zaman dilimli piyasa verilerini ilişkili varlıklarla karşılaştırır; güncel makro ve jeopolitik gelişmeleri kaynaklarıyla araştırır. Sonuçlar hatalı veya eksik olabilir ve yatırım tavsiyesi değildir.")
                         .font(.system(size: 13))
                         .foregroundStyle(Theme.textDim)
                         .fixedSize(horizontal: false, vertical: true)
@@ -349,7 +377,8 @@ struct AssetDetailView: View {
 
                 Button {
                     Haptics.tap()
-                    Task { await loadAIInsight() }
+                    if acceptedAIDisclosure { Task { await loadAIInsight() } }
+                    else { showAIDisclosure = true }
                 } label: {
                     HStack(spacing: 8) {
                         if aiLoading { ProgressView().tint(Theme.bg).scaleEffect(0.75) }
@@ -625,11 +654,32 @@ struct AssetDetailView: View {
             aiError = "Bu özellik için hesabınızla giriş yapın."
             return
         }
+        if auth.userID == nil { await auth.loadProfile() }
+        guard let userID = auth.userID else {
+            aiError = "Hesap bilgileri doğrulanamadı. Profilinizi yenileyip tekrar deneyin."
+            return
+        }
+        if billing.serverStatus?.plan.code == "free",
+           billing.serverStatus?.freeResearchAvailable == true,
+           !billing.freeTrialReady {
+            aiError = "Ücretsiz araştırma için Apple cihaz doğrulama hizmeti şu anda hazır değil. Daha sonra tekrar deneyin."
+            return
+        }
         aiLoading = true
         aiError = nil
         defer { aiLoading = false }
         do {
-            aiInsight = try await APIClient(token: auth.accessToken).marketInsight(code: code)
+            aiInsight = try await APIClient(token: auth.accessToken).marketInsight(
+                code: code, userID: userID
+            )
+        } catch let error as APIError where error.statusCode == 402 {
+            aiError = "Bu dönem için AI araştırma hakkınız doldu. Bir plan seçerek devam edebilirsiniz."
+            showPaywall = true
+        } catch let error as APIError where error.statusCode == 429 {
+            aiError = "Çok sık istek gönderildi. Kısa bir süre bekleyip aynı araştırmayı yeniden deneyin."
+        } catch let error as APIError where
+            error.statusCode == 409 && error.serverCode == "operation_in_progress" {
+            aiError = "Araştırma işlemi halen tamamlanıyor. Biraz sonra tekrar deneyin; mevcut hakkınız yeniden kullanılmayacak."
         } catch {
             aiError = error.localizedDescription
         }
@@ -744,6 +794,49 @@ struct AssetDetailView: View {
     }
 }
 
+private struct AIResearchDisclosureView: View {
+    @Environment(\.dismiss) private var dismiss
+    let onAccept: () -> Void
+
+    var body: some View {
+        NavigationStack {
+            VStack(alignment: .leading, spacing: 18) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 36)).foregroundStyle(Theme.accent)
+                Text("AI araştırması hakkında")
+                    .font(.system(size: 23, weight: .bold)).foregroundStyle(Theme.text)
+                disclosure("Kaynaklı araştırma", "Seçtiğiniz varlık, ilgili piyasa verileri, güncel açık web kaynakları ve hesabınızdan tek yönlü türetilen takma adlı güvenlik kimliği analiz ile kötüye kullanım önleme için OpenAI'a gönderilir. Adınız, e-postanız, profil fotoğrafınız, ödeme bilgileriniz veya kişisel portföy pozisyonlarınız gönderilmez.")
+                disclosure("Hata payı", "Yapay zekâ yanlış, güncelliğini yitirmiş veya eksik bilgi üretebilir. Önemli kararlar öncesinde kaynakları ve verileri doğrulayın.")
+                disclosure("Yatırım tavsiyesi değildir", "İçerik yalnızca eğitim ve karar desteği amaçlıdır; alım, satım veya getiri garantisi sunmaz.")
+                Spacer()
+                HStack(spacing: 16) {
+                    Link("Gizlilik", destination: URL(string: "https://tsc.talhacan.com/privacy")!)
+                    Link("Kullanım Şartları", destination: URL(string: "https://tsc.talhacan.com/terms")!)
+                }
+                .font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.accent)
+                Button("Anladım ve Devam Et") { onAccept() }
+                    .buttonStyle(FilledButtonStyle())
+            }
+            .padding(22)
+            .background(Theme.bg.ignoresSafeArea())
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("Kapat") { dismiss() }.foregroundStyle(Theme.accent)
+                }
+            }
+        }
+        .preferredColorScheme(.dark)
+    }
+
+    private func disclosure(_ title: String, _ text: String) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title).font(.system(size: 14, weight: .bold)).foregroundStyle(Theme.text)
+            Text(text).font(.system(size: 12)).foregroundStyle(Theme.textDim)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+}
+
 // MARK: - Alert creation sheet
 
 struct AlertSheet: View {
@@ -800,6 +893,7 @@ struct AlertSheet: View {
         do {
             try await APIClient(token: auth.accessToken)
                 .createAlert(code: code, direction: direction, threshold: value)
+            PushManager.shared.requestPermission()
             status = "Alarm oluşturuldu ✅"
             try? await Task.sleep(nanoseconds: 700_000_000)
             dismiss()

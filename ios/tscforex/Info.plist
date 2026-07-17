@@ -2,17 +2,9 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<!-- Production talks to the API over HTTPS (tsc-api.talhacan.com), so App
-	     Transport Security stays enabled. NSAllowsLocalNetworking permits the
-	     DEBUG-only cleartext connection to a *.local backend on the same Wi-Fi. -->
-	<key>NSAppTransportSecurity</key>
-	<dict>
-		<key>NSAllowsLocalNetworking</key>
-		<true/>
-	</dict>
-	<!-- iOS prompts for local network access on first connection. -->
-	<key>NSLocalNetworkUsageDescription</key>
-	<string>TSC Forex canlı fiyatları yerel ağdaki sunucudan alır.</string>
+	<!-- The app uses only HTTPS/WSS and does not weaken App Transport Security. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<!-- Google Sign-In OAuth callback (reversed iOS client ID). -->
 	<key>CFBundleURLTypes</key>
 	<array>
