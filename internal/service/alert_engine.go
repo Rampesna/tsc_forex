@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/google/uuid"
 	"go.uber.org/zap"
 
 	"github.com/tsc-forex/tsc_forex/internal/domain"
@@ -22,26 +23,21 @@ import (
 type AlertEngine struct {
 	alerts   repository.AlertRepository
 	notifier *Notifier
-	cooldown time.Duration
 	log      *zap.Logger
 
 	queue chan domain.InstrumentPrice
 	wg    sync.WaitGroup
 }
 
-// NewAlertEngine subscribes to instrument updates. cooldown throttles repeated
-// firings of the same alert.
-func NewAlertEngine(bus *eventbus.Bus, alerts repository.AlertRepository, notifier *Notifier, cooldown time.Duration, log *zap.Logger) *AlertEngine {
+// NewAlertEngine subscribes to instrument updates. The duration parameter is
+// retained for configuration compatibility; alerts are now strictly one-shot.
+func NewAlertEngine(bus *eventbus.Bus, alerts repository.AlertRepository, notifier *Notifier, _ time.Duration, log *zap.Logger) *AlertEngine {
 	if log == nil {
 		log = zap.NewNop()
-	}
-	if cooldown <= 0 {
-		cooldown = time.Minute
 	}
 	e := &AlertEngine{
 		alerts:   alerts,
 		notifier: notifier,
-		cooldown: cooldown,
 		log:      log,
 		queue:    make(chan domain.InstrumentPrice, 2048),
 	}
@@ -97,15 +93,32 @@ func (e *AlertEngine) evaluate(ctx context.Context, ip domain.InstrumentPrice) {
 		if !crossed(a, ip.Price) {
 			continue
 		}
-		if a.LastFiredAt != nil && now.Sub(*a.LastFiredAt) < e.cooldown {
+		title, body := alertMessage(a, ip)
+		alertID := a.ID
+		notification := &models.Notification{
+			ID:        uuid.New(),
+			UserID:    a.UserID,
+			AlertID:   &alertID,
+			Code:      a.Code,
+			Title:     title,
+			Body:      body,
+			Price:     ip.Price,
+			CreatedAt: now,
+		}
+		// The conditional UPDATE and notification INSERT share one transaction.
+		// This is the cross-process deduplication boundary: only one API replica
+		// can transition an active alert to triggered, while a notification-write
+		// failure rolls the transition back for a later retry. An alert edited after
+		// this snapshot also cannot be claimed with stale threshold data.
+		claimed, err := e.alerts.ClaimTriggered(ctx, a, notification, now)
+		if err != nil {
+			e.log.Warn("claim triggered alert failed", zap.Error(err))
 			continue
 		}
-		title, body := alertMessage(a, ip)
-		id := a.ID
-		e.notifier.Notify(ctx, a.UserID, &id, a.Code, title, body, ip.Price)
-		if err := e.alerts.MarkFired(ctx, a.ID, now); err != nil {
-			e.log.Warn("mark alert fired failed", zap.Error(err))
+		if !claimed {
+			continue
 		}
+		e.notifier.deliver(ctx, notification)
 	}
 }
 

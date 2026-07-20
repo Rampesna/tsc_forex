@@ -8,44 +8,51 @@ import SwiftUI
 struct NotificationsView: View {
     @EnvironmentObject var auth: AuthStore
     @EnvironmentObject var prices: PriceStore
+    @Environment(\.dismiss) private var dismiss
     @State private var history: [AppNotification] = []
     @State private var showClearConfirm = false
+    @State private var loading = true
+    @State private var loadError: String?
 
     private var isEmpty: Bool { history.isEmpty && prices.liveNotifications.isEmpty }
 
     var body: some View {
-        NavigationStack {
-            ZStack {
-                Theme.bg.ignoresSafeArea()
-                VStack(spacing: 0) {
-                    header
-                    if isEmpty {
-                        emptyState
-                    } else {
-                        ScrollView {
-                            LazyVStack(spacing: 10) {
-                                ForEach(Array(prices.liveNotifications.enumerated()), id: \.offset) { idx, n in
-                                    notifCard(title: n.title, body: n.body, code: n.code, live: true, date: nil)
-                                        .overlay(alignment: .topTrailing) {
-                                            deleteButton { prices.removeLiveNotification(at: idx) }
-                                        }
-                                }
-                                ForEach(history) { n in
-                                    notifCard(title: n.title, body: n.body, code: n.code, live: false, date: n.createdAt)
-                                        .overlay(alignment: .topTrailing) {
-                                            deleteButton { await deleteHistory(n) }
-                                        }
-                                }
+        ZStack {
+            Theme.bg.ignoresSafeArea()
+            VStack(spacing: 0) {
+                header
+                if loading && isEmpty {
+                    ProgressView("Bildirimler yükleniyor…")
+                        .tint(Theme.accent)
+                        .foregroundStyle(Theme.textDim)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else if let loadError, isEmpty {
+                    errorState(loadError)
+                } else if isEmpty {
+                    emptyState
+                } else {
+                    ScrollView {
+                        LazyVStack(spacing: 10) {
+                            ForEach(Array(prices.liveNotifications.enumerated()), id: \.offset) { idx, n in
+                                notifCard(title: n.title, body: n.body, code: n.code, live: true, date: nil)
+                                    .overlay(alignment: .topTrailing) {
+                                        deleteButton { prices.removeLiveNotification(at: idx) }
+                                    }
                             }
-                            .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 100)
+                            ForEach(history) { n in
+                                notifCard(title: n.title, body: n.body, code: n.code, live: false, date: n.createdAt)
+                                    .overlay(alignment: .topTrailing) {
+                                        deleteButton { await deleteHistory(n) }
+                                    }
+                            }
                         }
-                        .refreshable { await load() }
+                        .padding(.horizontal, 16).padding(.top, 8).padding(.bottom, 24)
                     }
+                    .refreshable { await load() }
                 }
             }
-            .toolbar(.hidden, for: .navigationBar)
         }
-        .task { await load() }
+        .task(id: auth.accessToken) { await load() }
         .confirmationDialog("Tüm bildirimler silinsin mi?", isPresented: $showClearConfirm, titleVisibility: .visible) {
             Button("Tümünü Sil", role: .destructive) { Task { await clearAll() } }
             Button("Vazgeç", role: .cancel) {}
@@ -54,9 +61,20 @@ struct NotificationsView: View {
 
     private var header: some View {
         HStack(alignment: .center) {
+            Button {
+                Haptics.tap()
+                dismiss()
+            } label: {
+                Image(systemName: "chevron.left")
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundStyle(Theme.text)
+                    .frame(width: 38, height: 38)
+                    .background(Theme.surface, in: Circle())
+            }
+            .buttonStyle(.plain)
             VStack(alignment: .leading, spacing: 2) {
                 Text("Bildirimler").font(.system(size: 28, weight: .bold)).foregroundStyle(Theme.text)
-                Text("Tetiklenen alarmlar").font(.system(size: 12)).foregroundStyle(Theme.textDim)
+                Text("Alarmlar ve hesap hareketleri").font(.system(size: 12)).foregroundStyle(Theme.textDim)
             }
             Spacer()
             if !isEmpty {
@@ -100,6 +118,13 @@ struct NotificationsView: View {
                         }
                     }
                     Text(body).font(.system(size: 12)).foregroundStyle(Theme.textDim).lineLimit(2)
+                    if let date {
+                        Text(date.formatted(.relative(presentation: .named)))
+                            .font(.system(size: 10, weight: .medium))
+                            .foregroundStyle(Theme.textFaint)
+                    } else if !code.isEmpty {
+                        Text(code).font(Theme.number(10, weight: .semibold)).foregroundStyle(Theme.textFaint)
+                    }
                 }
                 Spacer()
             }
@@ -117,8 +142,31 @@ struct NotificationsView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
+    private func errorState(_ message: String) -> some View {
+        VStack(spacing: 12) {
+            Image(systemName: "wifi.exclamationmark")
+                .font(.system(size: 34)).foregroundStyle(Theme.textFaint)
+            Text("Bildirimler alınamadı")
+                .font(.system(size: 16, weight: .semibold)).foregroundStyle(Theme.text)
+            Text(message)
+                .font(.system(size: 12)).foregroundStyle(Theme.textDim)
+                .multilineTextAlignment(.center).padding(.horizontal, 40)
+            Button("Tekrar Dene") { Task { await load() } }
+                .buttonStyle(FilledButtonStyle())
+                .padding(.horizontal, 56)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
     private func load() async {
-        if let n = try? await APIClient(token: auth.accessToken).notifications() { history = n }
+        loading = true
+        defer { loading = false }
+        do {
+            history = try await APIClient(token: auth.accessToken).notifications()
+            loadError = nil
+        } catch {
+            loadError = error.localizedDescription
+        }
     }
 
     private func deleteHistory(_ n: AppNotification) async {

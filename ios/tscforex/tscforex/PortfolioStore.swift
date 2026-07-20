@@ -248,6 +248,7 @@ final class PortfolioStore: ObservableObject {
     @Published private(set) var overview: CloudPortfolioOverview?
     @Published private(set) var portfolios: [CloudPortfolioOverview] = []
     @Published private(set) var performance: [PortfolioPerformancePoint] = []
+    @Published private(set) var performanceErrorMessage: String?
     @Published private(set) var loading = false
     @Published private(set) var syncing = false
     @Published var errorMessage: String?
@@ -262,6 +263,7 @@ final class PortfolioStore: ObservableObject {
     private var token: String?
     private var outbox: [PortfolioOutboxItem] = []
     private var legacy: [Holding] = []
+    private var performancePortfolioID: String?
 
     init() {
         if let data = UserDefaults.standard.data(forKey: legacyKey) {
@@ -310,15 +312,18 @@ final class PortfolioStore: ObservableObject {
                 replacePortfolio(next)
                 selectLocally(next)
             }
-            performance = (try? await client.portfolioPerformance(id: next.portfolio.id, range: range)) ?? []
+            _ = await loadPerformance(client: client, portfolioID: next.portfolio.id, range: range)
         } catch {
             errorMessage = error.localizedDescription
         }
     }
 
-    func refreshPerformance(range: String) async {
-        guard let token, let id = overview?.portfolio.id else { return }
-        performance = (try? await APIClient(token: token).portfolioPerformance(id: id, range: range)) ?? []
+    @discardableResult
+    func refreshPerformance(range: String) async -> Bool {
+        guard let token, let id = overview?.portfolio.id else { return false }
+        return await loadPerformance(
+            client: APIClient(token: token), portfolioID: id, range: range
+        )
     }
 
     func selectPortfolio(id: String, range: String = "1y") async {
@@ -333,8 +338,9 @@ final class PortfolioStore: ObservableObject {
             }
             replacePortfolio(selected)
             selectLocally(selected)
-            performance = (try? await APIClient(token: token)
-                .portfolioPerformance(id: id, range: range)) ?? []
+            _ = await loadPerformance(
+                client: APIClient(token: token), portfolioID: id, range: range
+            )
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -354,7 +360,7 @@ final class PortfolioStore: ObservableObject {
             let selected = try await client.portfolio(id: created.id)
             replacePortfolio(selected)
             selectLocally(selected)
-            performance = (try? await client.portfolioPerformance(id: created.id, range: range)) ?? []
+            _ = await loadPerformance(client: client, portfolioID: created.id, range: range)
             return selected
         } catch {
             errorMessage = error.localizedDescription
@@ -393,8 +399,9 @@ final class PortfolioStore: ObservableObject {
             persistOutbox()
             guard let next = portfolios.first else { throw APIError.invalidResponse }
             selectLocally(next)
-            performance = (try? await APIClient(token: token)
-                .portfolioPerformance(id: next.portfolio.id, range: range)) ?? []
+            _ = await loadPerformance(
+                client: APIClient(token: token), portfolioID: next.portfolio.id, range: range
+            )
         } catch {
             errorMessage = error.localizedDescription
             throw error
@@ -533,6 +540,33 @@ final class PortfolioStore: ObservableObject {
         saveCache()
     }
 
+    // Performance is reconstructed by the API from the portfolio ledger and
+    // the same daily candle history used by instrument detail charts. A failed
+    // refresh must not blank a previously valid chart for the same portfolio;
+    // for a different portfolio it is safer to clear than show unrelated data.
+    @discardableResult
+    private func loadPerformance(
+        client: APIClient,
+        portfolioID: String,
+        range: String
+    ) async -> Bool {
+        do {
+            performance = try await client.portfolioPerformance(id: portfolioID, range: range)
+            performancePortfolioID = portfolioID
+            performanceErrorMessage = nil
+            return true
+        } catch {
+            if performancePortfolioID != portfolioID {
+                performance = []
+                performancePortfolioID = nil
+            }
+            performanceErrorMessage = performance.isEmpty
+                ? "Performans geçmişi şu anda yüklenemedi."
+                : "Performans yenilenemedi; son başarılı grafik gösteriliyor."
+            return false
+        }
+    }
+
     private func replacePortfolio(_ value: CloudPortfolioOverview) {
         if let index = portfolios.firstIndex(where: { $0.portfolio.id == value.portfolio.id }) {
             portfolios[index] = value
@@ -558,6 +592,8 @@ final class PortfolioStore: ObservableObject {
         overview = nil
         portfolios = []
         performance = []
+        performancePortfolioID = nil
+        performanceErrorMessage = nil
         legacyPreview = []
         outbox = []
         guard let userId else { return }

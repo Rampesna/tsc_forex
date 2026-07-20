@@ -84,6 +84,14 @@ type AlertRequest struct {
 	Threshold float64 `json:"threshold" binding:"required"`
 }
 
+// UpdateAlertRequest replaces the mutable settings of an active price alert.
+// The instrument itself remains immutable; users can delete and recreate an
+// alert when they want to monitor another instrument.
+type UpdateAlertRequest struct {
+	Direction string  `json:"direction" binding:"required,oneof=above below"`
+	Threshold float64 `json:"threshold" binding:"required"`
+}
+
 // AlertResponse describes a user alert.
 type AlertResponse struct {
 	ID          string     `json:"id"`

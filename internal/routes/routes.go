@@ -155,6 +155,7 @@ func NewEngine(d Deps) *gin.Engine {
 
 				authed.GET("/me/alerts", d.User.ListAlerts)
 				authed.POST("/me/alerts", d.User.CreateAlert)
+				authed.PATCH("/me/alerts/:id", d.User.UpdateAlert)
 				authed.DELETE("/me/alerts/:id", d.User.DeleteAlert)
 
 				authed.GET("/me/notifications", d.User.ListNotifications)

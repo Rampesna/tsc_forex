@@ -118,25 +118,26 @@ func (s *PortfolioService) Performance(
 
 	historyFrom := from.AddDate(0, 0, -10)
 	closeByCode := make(map[string]map[string]decimal.Decimal, len(codeSet))
+	lastClose := make(map[string]decimal.Decimal, len(codeSet))
 	for code := range codeSet {
 		candles, err := s.candles.Candles(ctx, code, "1d", historyFrom, to.AddDate(0, 0, 1), 2000)
 		if err != nil {
 			return nil, err
 		}
 		closeByCode[code] = dailyCloses(candles)
+		lastClose[code] = latestCloseBefore(candles, from)
 	}
 	usdCandles, err := s.candles.Candles(ctx, "USDTRY", "1d", historyFrom, to.AddDate(0, 0, 1), 2000)
 	if err != nil {
 		return nil, err
 	}
 	usdCloses := dailyCloses(usdCandles)
+	lastUSD := latestCloseBefore(usdCandles, from)
 
 	states := make(map[string]*performancePosition)
 	netDeposits := decimal.Zero
 	txIndex := 0
 	points := make([]PortfolioPerformancePoint, 0, int(to.Sub(from).Hours()/24)+1)
-	lastClose := make(map[string]decimal.Decimal)
-	lastUSD := decimal.Zero
 	for day := from; !day.After(to); day = day.AddDate(0, 0, 1) {
 		dayEnd := day.AddDate(0, 0, 1)
 		for txIndex < len(transactions) && transactions[txIndex].OccurredAt.Before(dayEnd) {
@@ -199,6 +200,20 @@ func dailyCloses(candles []models.OHLC) map[string]decimal.Decimal {
 		}
 	}
 	return out
+}
+
+func latestCloseBefore(candles []models.OHLC, before time.Time) decimal.Decimal {
+	latestAt := time.Time{}
+	latest := decimal.Zero
+	for _, candle := range candles {
+		at := candle.Bucket.UTC()
+		if candle.Close <= 0 || !at.Before(before) || (!latestAt.IsZero() && !at.After(latestAt)) {
+			continue
+		}
+		latestAt = at
+		latest = decimal.NewFromFloat(candle.Close)
+	}
+	return latest
 }
 
 func applyPerformanceTransaction(

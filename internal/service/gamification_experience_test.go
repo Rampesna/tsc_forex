@@ -77,6 +77,9 @@ func TestDailyPlanAndQuizAwardsAreIdempotent(t *testing.T) {
 	if after.XP != before.XP || !second.AlreadyCheckedIn {
 		t.Fatalf("plan retry changed XP: before=%d after=%d", before.XP, after.XP)
 	}
+	if second.NewBadges == nil {
+		t.Fatal("plan retry must return an empty new_badges array, not null")
+	}
 
 	quiz := QuizAttemptInput{
 		LessonCode: "risk_budget", QuestionCode: "risk_budget_q1",
@@ -156,5 +159,43 @@ func TestPaperScoreAndSocialPrivacyDoNotUseReturn(t *testing.T) {
 	}
 	if group.MemberCount != 1 || group.InviteCode == "" {
 		t.Fatalf("unexpected private group: %+v", group)
+	}
+}
+
+func TestLearningAndDecisionCatalogsAreExpandedAndTrackedIndependently(t *testing.T) {
+	svc, _, uid := newGamificationTestService(t)
+	ctx := context.Background()
+
+	initial, err := svc.Experience(ctx, uid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(initial.Lessons) < 6 {
+		t.Fatalf("expected at least 6 learning topics, got %d", len(initial.Lessons))
+	}
+	if len(initial.Discipline) < 6 {
+		t.Fatalf("expected at least 6 decision prompts, got %d", len(initial.Discipline))
+	}
+
+	_, err = svc.CompleteDiscipline(
+		ctx, uid, "allocation_review",
+		"En büyük portföy ağırlığımın kur hareketine duyarlılığını yeniden kontrol ettim.",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	after, err := svc.Experience(ctx, uid)
+	if err != nil {
+		t.Fatal(err)
+	}
+	completed := map[string]bool{}
+	for _, quest := range after.Discipline {
+		completed[quest.Code] = quest.Completed
+	}
+	if !completed["allocation_review"] {
+		t.Fatal("completed decision prompt was not marked complete")
+	}
+	if completed["thesis_review"] {
+		t.Fatal("completing one decision prompt must not complete every prompt")
 	}
 }

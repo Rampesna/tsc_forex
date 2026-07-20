@@ -853,7 +853,7 @@ struct AlertSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             Text("Alarm Kur").font(.system(size: 20, weight: .bold)).foregroundStyle(Theme.text)
-            Text("\(code) fiyatı eşiği geçtiğinde bildirim al.")
+            Text("\(code) fiyatı eşiği geçtiğinde bir kez bildirim al. Tetiklenen alarm otomatik kaldırılır.")
                 .font(.system(size: 13)).foregroundStyle(Theme.textDim)
 
             SegBar(items: [("above", "Üstüne çıkınca"), ("below", "Altına inince")],
@@ -880,7 +880,7 @@ struct AlertSheet: View {
                 if busy { ProgressView().tint(.black) } else { Text("Alarmı Oluştur") }
             }
             .buttonStyle(FilledButtonStyle())
-            .disabled(Double(threshold.replacingOccurrences(of: ",", with: ".")) == nil || busy)
+            .disabled(parsedThreshold == nil || busy)
 
             Spacer(minLength: 0)
         }
@@ -888,7 +888,7 @@ struct AlertSheet: View {
     }
 
     private func create() async {
-        guard let value = Double(threshold.replacingOccurrences(of: ",", with: ".")) else { return }
+        guard let value = parsedThreshold else { return }
         busy = true; defer { busy = false }
         do {
             try await APIClient(token: auth.accessToken)
@@ -900,6 +900,12 @@ struct AlertSheet: View {
         } catch {
             status = error.localizedDescription
         }
+    }
+
+    private var parsedThreshold: Double? {
+        guard let value = Double(threshold.replacingOccurrences(of: ",", with: ".")),
+              value > 0, value.isFinite else { return nil }
+        return value
     }
 }
 

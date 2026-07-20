@@ -25,11 +25,14 @@ type WatchlistRepository interface {
 // AlertRepository manages user price alerts.
 type AlertRepository interface {
 	Create(ctx context.Context, a *models.PriceAlert) error
-	Update(ctx context.Context, a *models.PriceAlert) error
+	Update(ctx context.Context, userID, id uuid.UUID, direction string, threshold float64) (models.PriceAlert, error)
 	Delete(ctx context.Context, userID, id uuid.UUID) error
 	ListByUser(ctx context.Context, userID uuid.UUID) ([]models.PriceAlert, error)
 	ActiveByCode(ctx context.Context, code string) ([]models.PriceAlert, error)
-	MarkFired(ctx context.Context, id uuid.UUID, at time.Time) error
+	// ClaimTriggered atomically deactivates an alert and persists its notification
+	// only when it still matches the snapshot evaluated by the alert engine. The
+	// boolean is true only for the single worker/process that won the claim.
+	ClaimTriggered(ctx context.Context, alert models.PriceAlert, notification *models.Notification, at time.Time) (bool, error)
 }
 
 // NotificationRepository stores user notifications.
@@ -122,11 +125,27 @@ func (r *alertRepository) Create(ctx context.Context, a *models.PriceAlert) erro
 	return err
 }
 
-func (r *alertRepository) Update(ctx context.Context, a *models.PriceAlert) error {
+func (r *alertRepository) Update(ctx context.Context, userID, id uuid.UUID, direction string, threshold float64) (models.PriceAlert, error) {
 	start := time.Now()
-	err := r.db.WithContext(ctx).Save(a).Error
+	var updated models.PriceAlert
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		res := tx.Model(&models.PriceAlert{}).
+			Where("id = ? AND user_id = ? AND active = ?", id, userID, true).
+			Updates(map[string]any{
+				"direction":  direction,
+				"threshold":  threshold,
+				"updated_at": time.Now().UTC(),
+			})
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return ErrNotFound
+		}
+		return tx.Where("id = ? AND user_id = ?", id, userID).First(&updated).Error
+	})
 	r.observe(start, err)
-	return err
+	return updated, err
 }
 
 func (r *alertRepository) Delete(ctx context.Context, userID, id uuid.UUID) error {
@@ -142,7 +161,8 @@ func (r *alertRepository) Delete(ctx context.Context, userID, id uuid.UUID) erro
 func (r *alertRepository) ListByUser(ctx context.Context, userID uuid.UUID) ([]models.PriceAlert, error) {
 	start := time.Now()
 	var rows []models.PriceAlert
-	err := r.db.WithContext(ctx).Where("user_id = ?", userID).Order("created_at DESC").Find(&rows).Error
+	err := r.db.WithContext(ctx).Where("user_id = ? AND active = ?", userID, true).
+		Order("created_at DESC").Find(&rows).Error
 	r.observe(start, err)
 	return rows, err
 }
@@ -155,12 +175,40 @@ func (r *alertRepository) ActiveByCode(ctx context.Context, code string) ([]mode
 	return rows, err
 }
 
-func (r *alertRepository) MarkFired(ctx context.Context, id uuid.UUID, at time.Time) error {
+func (r *alertRepository) ClaimTriggered(ctx context.Context, alert models.PriceAlert, notification *models.Notification, at time.Time) (bool, error) {
 	start := time.Now()
-	err := r.db.WithContext(ctx).Model(&models.PriceAlert{}).Where("id = ?", id).
-		Update("last_fired_at", at).Error
+	claimed := false
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		res := tx.Model(&models.PriceAlert{}).
+			Where(
+				"id = ? AND user_id = ? AND code = ? AND direction = ? AND threshold = ? AND active = ?",
+				alert.ID, alert.UserID, alert.Code, alert.Direction, alert.Threshold, true,
+			).
+			Updates(map[string]any{
+				"active":        false,
+				"last_fired_at": at,
+				"updated_at":    at,
+			})
+		if res.Error != nil {
+			return res.Error
+		}
+		if res.RowsAffected == 0 {
+			return nil
+		}
+		if notification == nil {
+			return errors.New("trigger notification is required")
+		}
+		if err := tx.Create(notification).Error; err != nil {
+			return err
+		}
+		claimed = true
+		return nil
+	})
 	r.observe(start, err)
-	return err
+	if err != nil {
+		claimed = false
+	}
+	return claimed, err
 }
 
 // Notifications --------------------------------------------------------------

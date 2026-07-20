@@ -97,8 +97,53 @@ func TestAlertAndNotificationRepository(t *testing.T) {
 	if err != nil || len(active) != 1 {
 		t.Fatalf("active=%d err=%v", len(active), err)
 	}
-	if err := alerts.MarkFired(ctx, a.ID, time.Now().UTC()); err != nil {
-		t.Fatal(err)
+	updated, err := alerts.Update(ctx, uid, a.ID, models.AlertBelow, 2500)
+	if err != nil {
+		t.Fatalf("update alert: %v", err)
+	}
+	if updated.Direction != models.AlertBelow || updated.Threshold != 2500 {
+		t.Fatalf("updated alert = %+v", updated)
+	}
+	if _, err := alerts.Update(ctx, uuid.New(), a.ID, models.AlertAbove, 2700); err != repository.ErrNotFound {
+		t.Fatalf("cross-user update error = %v, want ErrNotFound", err)
+	}
+
+	firedAt := time.Now().UTC()
+	triggeredNotification := &models.Notification{
+		ID: uuid.New(), UserID: uid, AlertID: &a.ID, Code: a.Code,
+		Title: "Alarm", Body: "Eşik geçildi", Price: 2490, CreatedAt: firedAt,
+	}
+	claimed, err := alerts.ClaimTriggered(ctx, *a, triggeredNotification, firedAt)
+	if err != nil {
+		t.Fatalf("claim stale alert snapshot: %v", err)
+	}
+	if claimed {
+		t.Fatal("stale pre-edit snapshot must not claim the alert")
+	}
+	claimed, err = alerts.ClaimTriggered(ctx, updated, triggeredNotification, firedAt)
+	if err != nil || !claimed {
+		t.Fatalf("first claim = %t, err=%v", claimed, err)
+	}
+	claimed, err = alerts.ClaimTriggered(ctx, updated, &models.Notification{
+		ID: uuid.New(), UserID: uid, AlertID: &a.ID, Code: a.Code,
+		Title: "Tekrar", Body: "Gönderilmemeli", Price: 2480, CreatedAt: firedAt.Add(time.Second),
+	}, firedAt.Add(time.Second))
+	if err != nil || claimed {
+		t.Fatalf("second claim = %t, err=%v; want false, nil", claimed, err)
+	}
+	active, err = alerts.ListByUser(ctx, uid)
+	if err != nil || len(active) != 0 {
+		t.Fatalf("triggered alert remained in active list: count=%d err=%v", len(active), err)
+	}
+	var stored models.PriceAlert
+	if err := db.First(&stored, "id = ?", a.ID).Error; err != nil {
+		t.Fatalf("read triggered alert audit row: %v", err)
+	}
+	if stored.Active || stored.LastFiredAt == nil {
+		t.Fatalf("triggered state not persisted: %+v", stored)
+	}
+	if _, err := alerts.Update(ctx, uid, a.ID, models.AlertAbove, 2700); err != repository.ErrNotFound {
+		t.Fatalf("triggered alert update error = %v, want ErrNotFound", err)
 	}
 	if err := alerts.Delete(ctx, uid, a.ID); err != nil {
 		t.Fatal(err)
@@ -107,16 +152,49 @@ func TestAlertAndNotificationRepository(t *testing.T) {
 		t.Fatalf("expected ErrNotFound, got %v", err)
 	}
 
-	n := &models.Notification{ID: uuid.New(), UserID: uid, Code: "GRAM_GOLD", Title: "t", Body: "b", Price: 2650, CreatedAt: time.Now().UTC()}
-	if err := notifs.Create(ctx, n); err != nil {
-		t.Fatal(err)
-	}
 	list, err := notifs.ListByUser(ctx, uid, 10)
 	if err != nil || len(list) != 1 {
 		t.Fatalf("notifs=%d err=%v", len(list), err)
 	}
-	if err := notifs.MarkRead(ctx, uid, n.ID); err != nil {
+	if list[0].ID != triggeredNotification.ID || list[0].AlertID == nil || *list[0].AlertID != a.ID {
+		t.Fatalf("trigger notification = %+v", list[0])
+	}
+	if err := notifs.MarkRead(ctx, uid, triggeredNotification.ID); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestClaimTriggeredRollsBackWhenNotificationCannotBePersisted(t *testing.T) {
+	t.Parallel()
+	db := newUserAssetsDB(t)
+	alerts := repository.NewAlertRepository(db, nil)
+	notifs := repository.NewNotificationRepository(db, nil)
+	ctx := context.Background()
+	uid := uuid.New()
+	alert := &models.PriceAlert{
+		ID: uuid.New(), UserID: uid, Code: "USDTRY", Direction: models.AlertAbove,
+		Threshold: 40, Active: true,
+	}
+	if err := alerts.Create(ctx, alert); err != nil {
+		t.Fatal(err)
+	}
+	duplicateID := uuid.New()
+	if err := notifs.Create(ctx, &models.Notification{
+		ID: duplicateID, UserID: uid, Code: "USDTRY", Title: "existing", CreatedAt: time.Now().UTC(),
+	}); err != nil {
+		t.Fatal(err)
+	}
+	firedAt := time.Now().UTC()
+	claimed, err := alerts.ClaimTriggered(ctx, *alert, &models.Notification{
+		ID: duplicateID, UserID: uid, AlertID: &alert.ID, Code: alert.Code,
+		Title: "duplicate", CreatedAt: firedAt,
+	}, firedAt)
+	if err == nil || claimed {
+		t.Fatalf("claim with failed notification insert = %t, err=%v", claimed, err)
+	}
+	active, err := alerts.ActiveByCode(ctx, alert.Code)
+	if err != nil || len(active) != 1 || active[0].ID != alert.ID || !active[0].Active {
+		t.Fatalf("alert transition was not rolled back: active=%+v err=%v", active, err)
 	}
 }
 

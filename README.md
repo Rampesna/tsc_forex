@@ -88,7 +88,7 @@ Base path: `/api/v1`
 | POST | `/auth/refresh` | Rotate refresh token |
 | POST | `/auth/logout` | Revoke refresh token |
 | GET/POST/DELETE | `/me/watchlist[/:code]` | Manage tracked instruments (JWT) |
-| GET/POST/DELETE | `/me/alerts[/:id]` | Manage price-threshold alerts (JWT) |
+| GET/POST/PATCH/DELETE | `/me/alerts[/:id]` | Manage editable, one-shot price-threshold alerts (JWT) |
 | GET | `/me/notifications` | Notification history (JWT) |
 | POST | `/me/devices` | Register APNs/FCM push token (JWT) |
 | GET (WS) | `/ws?token=<jwt>` | Live price stream + targeted notifications |

@@ -414,10 +414,34 @@ struct GamBadge: Codable, Identifiable {
     let icon: String
     let earned: Bool
     let earnedAt: Date?
+    let current: Int
+    let target: Int
+    let progress: Double
+
+    var normalizedProgress: Double {
+        earned ? 1 : min(max(progress, 0), 1)
+    }
+
+    var progressPercent: Int {
+        Int((normalizedProgress * 100).rounded())
+    }
 
     enum CodingKeys: String, CodingKey {
-        case code, name, description, icon, earned
+        case code, name, description, icon, earned, current, target, progress
         case earnedAt = "earned_at"
+    }
+
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        code = try values.decode(String.self, forKey: .code)
+        name = try values.decode(String.self, forKey: .name)
+        description = try values.decode(String.self, forKey: .description)
+        icon = try values.decode(String.self, forKey: .icon)
+        earned = try values.decode(Bool.self, forKey: .earned)
+        earnedAt = try values.decodeIfPresent(Date.self, forKey: .earnedAt)
+        target = try values.decodeIfPresent(Int.self, forKey: .target) ?? (earned ? 1 : 0)
+        current = try values.decodeIfPresent(Int.self, forKey: .current) ?? (earned ? target : 0)
+        progress = try values.decodeIfPresent(Double.self, forKey: .progress) ?? (earned ? 1 : 0)
     }
 }
 
@@ -457,7 +481,7 @@ struct GamProfile: Codable {
     }
 }
 
-struct GamCheckInResult: Codable {
+struct GamCheckInResult: Decodable {
     let profile: GamProfile
     let xpGained: Int
     let newBadges: [GamBadge]
@@ -468,6 +492,19 @@ struct GamCheckInResult: Codable {
         case xpGained = "xp_gained"
         case newBadges = "new_badges"
         case alreadyCheckedIn = "already_checked_in"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        profile = try container.decode(GamProfile.self, forKey: .profile)
+        xpGained = try container.decodeIfPresent(Int.self, forKey: .xpGained) ?? 0
+        // Go encodes a nil slice as `null` when a plan/check-in is repeated.
+        // Treat both null and a missing key as an empty list so an otherwise
+        // successful plan save never surfaces as a decoding failure.
+        newBadges = try container.decodeIfPresent([GamBadge].self, forKey: .newBadges) ?? []
+        alreadyCheckedIn = try container.decodeIfPresent(
+            Bool.self, forKey: .alreadyCheckedIn
+        ) ?? false
     }
 }
 

@@ -175,12 +175,65 @@ var lessonCatalog = []LessonStatus{
 			answer: 1,
 		},
 	},
+	{
+		Code: "macro_calendar", Title: "Veri takvimi ve olay riski",
+		Summary: "Faiz, enflasyon ve istihdam verileri öncesinde belirsizliği planına dahil et.",
+		Cards: []string{
+			"Önemli veri açıklamaları fiyatı iki yönde de hızla hareket ettirebilir; tahmin kadar zamanlama da risktir.",
+			"Olay öncesinde pozisyon büyüklüğü, geçersizleşme seviyesi ve işlem yapmama seçeneği birlikte düşünülmelidir.",
+			"İlk fiyat tepkisi kalıcı yön anlamına gelmez; veri, beklenti ve önceki değer birlikte okunur.",
+		},
+		Question: QuizQuestion{
+			Code: "macro_calendar_q1", Text: "Yüksek etkili veri öncesinde en disiplinli yaklaşım hangisidir?",
+			Choices: []string{
+				"İlk hareketi kaçırmamak için riski artırmak",
+				"Olay zamanını, risk sınırını ve işlem yapmama seçeneğini önceden belirlemek",
+				"Yalnızca sosyal medya tahminini izlemek",
+			},
+			answer: 1,
+		},
+	},
+	{
+		Code: "cross_market", Title: "Piyasalar arası ilişkiyi okumak",
+		Summary: "Bir varlığı yorumlarken kur, faiz, dolar ve risk iştahını aynı çerçevede değerlendir.",
+		Cards: []string{
+			"Gram altın, ons altın ile USD/TRY hareketinin birleşiminden etkilenir; tek grafiğe bakmak resmi eksik bırakır.",
+			"Korelasyonlar sabit değildir; farklı dönemlerde ilişkinin yönü ve gücü değişebilir.",
+			"Birden çok gösterge aynı tezi desteklese bile risk sınırı gereksiz hale gelmez.",
+		},
+		Question: QuizQuestion{
+			Code: "cross_market_q1", Text: "Gram altındaki hareketi değerlendirirken hangi ikili temel başlangıçtır?",
+			Choices: []string{"Yalnız BIST ve Bitcoin", "Ons altın ve USD/TRY", "Sadece günlük işlem hacmi"},
+			answer:  1,
+		},
+	},
+	{
+		Code: "source_quality", Title: "Kaynak ve iddia kalitesi",
+		Summary: "Bir yorumu karar girdisine çevirmeden önce tarihini, kaynağını ve karşı görüşü kontrol et.",
+		Cards: []string{
+			"Güncel olmayan doğru bir bilgi, bugünkü karar için yanıltıcı olabilir; yayın ve olay tarihini ayrı kontrol et.",
+			"Tek bir yorum yerine birincil veri ile bağımsız ikinci bir kaynağı karşılaştır.",
+			"Yapay zekâ çıktıları da hata içerebilir; kaynaklar kararın yerine değil, incelemenin başlangıcına konur.",
+		},
+		Question: QuizQuestion{
+			Code: "source_quality_q1", Text: "Bir piyasa iddiasını kullanmadan önce en güçlü kontrol hangisidir?",
+			Choices: []string{
+				"En çok paylaşılan yorumu doğru kabul etmek",
+				"Yayın/olay tarihini ve birincil veriyi bağımsız kaynakla karşılaştırmak",
+				"Yalnız başlığa bakmak",
+			},
+			answer: 1,
+		},
+	},
 }
 
 var disciplineCatalog = []DisciplineQuest{
 	{Code: "allocation_review", Title: "Yoğunlaşmayı gözden geçir", Description: "En büyük portföy ağırlığının oluşturduğu riski not et.", XP: 25},
 	{Code: "thesis_review", Title: "Yatırım tezini sınırla", Description: "Bir pozisyonun hangi koşulda geçersiz olacağını yaz.", XP: 25},
 	{Code: "monthly_review", Title: "Süreç günlüğü", Description: "Son kararında plana uyduğun ve sapma yaşadığın noktayı değerlendir.", XP: 25},
+	{Code: "evidence_review", Title: "Veri ile varsayımı ayır", Description: "Kararındaki doğrulanmış veriyi ve yalnızca varsayım olan kısmı ayrı ayrı yaz.", XP: 25},
+	{Code: "scenario_review", Title: "Alternatif senaryo kur", Description: "Ana beklentinin tersine gelişebilecek bir senaryoyu ve vereceğin tepkiyi not et.", XP: 25},
+	{Code: "emotion_review", Title: "Duygu kontrolü yap", Description: "Kararında acele, kayıp telafisi veya fırsatı kaçırma baskısı olup olmadığını değerlendir.", XP: 25},
 }
 
 func (g *GamificationService) Experience(ctx context.Context, uid uuid.UUID) (GamificationExperience, error) {
@@ -214,11 +267,14 @@ func (g *GamificationService) Experience(ctx context.Context, uid uuid.UUID) (Ga
 	} else if !errors.Is(planErr, gorm.ErrRecordNotFound) {
 		return GamificationExperience{}, planErr
 	}
-	todayTypes, _ := g.repo.TodayTypes(ctx, uid, g.today())
+	completedReviews, err := g.repo.DisciplineReviewCodes(ctx, uid, g.today())
+	if err != nil {
+		return GamificationExperience{}, err
+	}
 	discipline := make([]DisciplineQuest, len(disciplineCatalog))
 	copy(discipline, disciplineCatalog)
 	for i := range discipline {
-		discipline[i].Completed = todayTypes[EventDiscipline]
+		discipline[i].Completed = completedReviews[discipline[i].Code]
 	}
 	mastered, due := 0, 0
 	for _, lesson := range lessons {

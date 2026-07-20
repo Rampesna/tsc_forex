@@ -169,21 +169,30 @@ paths:
   /me/alerts:
     get:
       tags: [user]
-      summary: List price alerts
+      summary: List active one-shot price alerts
       security: [{ bearerAuth: [] }]
       responses: { "200": { description: Alerts } }
     post:
       tags: [user]
-      summary: Create a price-threshold alert
+      summary: Create a one-shot price-threshold alert
       security: [{ bearerAuth: [] }]
       responses: { "201": { description: Created } }
   /me/alerts/{id}:
+    patch:
+      tags: [user]
+      summary: Update the direction and threshold of an active alert
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
+      responses:
+        "200": { description: Updated }
+        "404": { description: Alert is missing, owned by another user, or already triggered }
     delete:
       tags: [user]
       summary: Delete an alert
       security: [{ bearerAuth: [] }]
       parameters:
-        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: id, in: path, required: true, schema: { type: string, format: uuid } }
       responses: { "200": { description: Deleted } }
   /me/notifications:
     get:
@@ -301,6 +310,16 @@ paths:
     get:
       tags: [portfolio]
       summary: Cash-flow-aware daily portfolio performance from indexed candles
+      description: >-
+        Replays the user's transaction ledger for each UTC day and values every
+        open position from the same indexed 1d candle history used by instrument
+        charts. USD-quoted holdings are converted with that day's USDTRY close;
+        weekends and market holidays carry the most recent known close forward.
+        Dates before the first available close remain zero instead of using a
+        fabricated price. The server caps history at five years and downsamples
+        chronologically when `points` is exceeded. Clients should keep the last
+        successful series for the same portfolio when a refresh is unavailable,
+        but must never reuse it for a different portfolio.
       security: [{ bearerAuth: [] }]
       parameters:
         - { name: portfolioID, in: path, required: true, schema: { type: string, format: uuid } }
@@ -538,7 +557,9 @@ components:
           maxItems: 3
           uniqueItems: true
           items: { type: string }
-        learning_goal: { type: string, enum: [risk_budget, diversification, fees_behavior] }
+        learning_goal:
+          type: string
+          enum: [risk_budget, diversification, fees_behavior, macro_calendar, cross_market, source_quality]
         reflection: { type: string, maxLength: 500 }
     QuizAttemptRequest:
       type: object

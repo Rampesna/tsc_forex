@@ -174,6 +174,17 @@ struct GamificationView: View {
                                 Circle()
                                     .fill(b.earned ? Theme.accentSoft : Theme.surfaceHi)
                                     .frame(width: 52, height: 52)
+                                Circle()
+                                    .stroke(Theme.stroke, lineWidth: 2.5)
+                                    .frame(width: 54, height: 54)
+                                Circle()
+                                    .trim(from: 0, to: b.normalizedProgress)
+                                    .stroke(
+                                        b.earned ? Theme.up : Theme.accent,
+                                        style: StrokeStyle(lineWidth: 2.5, lineCap: .round)
+                                    )
+                                    .rotationEffect(.degrees(-90))
+                                    .frame(width: 54, height: 54)
                                 Text(b.icon).font(.system(size: 24))
                                     .opacity(b.earned ? 1 : 0.35)
                                 if !b.earned {
@@ -191,6 +202,8 @@ struct GamificationView: View {
                                 .frame(height: 24)
                         } }
                         .buttonStyle(.plain)
+                        .accessibilityLabel("\(b.name), yüzde \(b.progressPercent) tamamlandı")
+                        .accessibilityHint("Kazanma koşulunu ve ilerlemeyi gösterir")
                     }
                 }
             }
@@ -198,15 +211,66 @@ struct GamificationView: View {
     }
 
     private func badgeDetail(_ badge: GamBadge) -> some View {
-        VStack(spacing: 16) {
-            Text(badge.icon).font(.system(size: 54))
+        VStack(spacing: 15) {
+            ZStack {
+                Circle()
+                    .fill(badge.earned ? Theme.accentSoft : Theme.surfaceHi)
+                    .frame(width: 88, height: 88)
+                Circle()
+                    .stroke(Theme.stroke, lineWidth: 5)
+                    .frame(width: 94, height: 94)
+                Circle()
+                    .trim(from: 0, to: badge.normalizedProgress)
+                    .stroke(
+                        badge.earned ? Theme.up : Theme.accent,
+                        style: StrokeStyle(lineWidth: 5, lineCap: .round)
+                    )
+                    .rotationEffect(.degrees(-90))
+                    .frame(width: 94, height: 94)
+                Text(badge.icon).font(.system(size: 44))
+                    .opacity(badge.earned ? 1 : 0.62)
+            }
             Text(badge.name).font(.system(size: 21, weight: .bold)).foregroundStyle(Theme.text)
             VStack(alignment: .leading, spacing: 6) {
                 Text("Kazanma koşulu").font(.system(size: 11, weight: .bold)).foregroundStyle(Theme.accent)
                 Text(badge.description).font(.system(size: 13)).foregroundStyle(Theme.textDim)
-            }.frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            if badge.target > 0 {
+                VStack(alignment: .leading, spacing: 9) {
+                    HStack {
+                        Text(badge.earned ? "Tamamlandı" : "İlerleme")
+                            .font(.system(size: 12, weight: .bold)).foregroundStyle(Theme.text)
+                        Spacer()
+                        Text("%\(badge.progressPercent)")
+                            .font(Theme.number(15, weight: .bold))
+                            .foregroundStyle(badge.earned ? Theme.up : Theme.accent)
+                    }
+                    ProgressView(value: badge.normalizedProgress)
+                        .tint(badge.earned ? Theme.up : Theme.accent)
+                    HStack {
+                        Text("\(min(badge.current, badge.target)) / \(badge.target)")
+                            .font(Theme.number(12, weight: .semibold)).foregroundStyle(Theme.textDim)
+                        Spacer()
+                        if badge.current > badge.target {
+                            Text("Mevcut: \(badge.current)")
+                                .font(.system(size: 10)).foregroundStyle(Theme.textFaint)
+                        } else if !badge.earned {
+                            Text("\(max(0, badge.target - badge.current)) kaldı")
+                                .font(.system(size: 10)).foregroundStyle(Theme.textFaint)
+                        }
+                    }
+                }
+                .padding(13)
+                .background(Theme.surfaceHi, in: RoundedRectangle(cornerRadius: 12))
+            }
+
             if badge.earned, let date = badge.earnedAt {
                 Label("Kazanıldı: \(date.formatted(date: .long, time: .omitted))", systemImage: "checkmark.seal.fill")
+                    .font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.up)
+            } else if badge.earned {
+                Label("Rozet kazanıldı", systemImage: "checkmark.seal.fill")
                     .font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.up)
             } else {
                 Label("Henüz kazanılmadı", systemImage: "lock.fill")
@@ -214,7 +278,10 @@ struct GamificationView: View {
             }
             Spacer()
         }
-        .padding(24).background(Theme.bg.ignoresSafeArea()).presentationDetents([.medium])
+        .padding(24)
+        .background(Theme.bg.ignoresSafeArea())
+        .presentationDetents([.medium, .large])
+        .presentationDragIndicator(.visible)
     }
 
     // MARK: Loading / error

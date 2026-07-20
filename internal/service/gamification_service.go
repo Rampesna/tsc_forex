@@ -98,6 +98,9 @@ type BadgeStatus struct {
 	Icon        string     `json:"icon"`
 	Earned      bool       `json:"earned"`
 	EarnedAt    *time.Time `json:"earned_at,omitempty"`
+	Current     int64      `json:"current"`
+	Target      int64      `json:"target"`
+	Progress    float64    `json:"progress"`
 }
 
 // QuestStatus is a daily quest plus today's completion state.
@@ -211,6 +214,8 @@ func (g *GamificationService) buildProfile(ctx context.Context, uid uuid.UUID, s
 	today := g.today()
 	todayTypes, _ := g.repo.TodayTypes(ctx, uid, today)
 	badges, _ := g.repo.Badges(ctx, uid)
+	favCount, _ := g.repo.CountByType(ctx, uid, EventFavorite)
+	alertCount, _ := g.repo.CountByType(ctx, uid, EventAlert)
 	earned := make(map[string]time.Time, len(badges))
 	for _, b := range badges {
 		earned[b.Code] = b.EarnedAt
@@ -237,7 +242,7 @@ func (g *GamificationService) buildProfile(ctx context.Context, uid uuid.UUID, s
 			t := at
 			atp = &t
 		}
-		bs = append(bs, BadgeStatus{def.Code, def.Name, def.Description, def.Icon, ok, atp})
+		bs = append(bs, badgeStatus(def, st, favCount, alertCount, ok, atp))
 	}
 	qs := make([]QuestStatus, 0, len(dailyQuests))
 	for _, q := range dailyQuests {
@@ -293,11 +298,16 @@ func (g *GamificationService) CheckIn(ctx context.Context, uid uuid.UUID) (Check
 	}
 	if !out.Created {
 		return CheckInResult{
-			Profile: g.buildProfile(ctx, uid, out.State), AlreadyCheckedIn: true,
+			Profile:          g.buildProfile(ctx, uid, out.State),
+			NewBadges:        make([]BadgeStatus, 0),
+			AlreadyCheckedIn: true,
 		}, nil
 	}
 
 	newBadges := g.evaluate(ctx, uid, out.State, today)
+	if newBadges == nil {
+		newBadges = make([]BadgeStatus, 0)
+	}
 	st, stateErr := g.repo.State(ctx, uid)
 	if stateErr != nil {
 		return CheckInResult{}, stateErr
@@ -357,7 +367,7 @@ func (g *GamificationService) evaluate(ctx context.Context, uid uuid.UUID, st mo
 			}
 		}
 		now := time.Now().UTC()
-		newly = append(newly, BadgeStatus{def.Code, def.Name, def.Description, def.Icon, true, &now})
+		newly = append(newly, badgeStatus(def, st, favCount, alertCount, true, &now))
 		if g.notifier != nil {
 			body := def.Description
 			if def.XP > 0 {
@@ -410,69 +420,111 @@ func (g *GamificationService) currentSeasonCode() string {
 }
 
 func badgeQualifies(code string, st *models.UserGamification, favCount, alertCount int64) bool {
+	current, target := badgeProgress(code, st, favCount, alertCount)
+	return target > 0 && current >= target
+}
+
+// badgeProgress uses the same server-authoritative counters as badge
+// qualification. Returning the counters with every badge keeps all clients in
+// sync and makes the remaining work transparent before a badge is earned.
+func badgeProgress(code string, st *models.UserGamification, favCount, alertCount int64) (int64, int64) {
 	switch code {
 	case "first_steps":
-		return st.TotalCheckIns >= 1
+		return int64(st.TotalCheckIns), 1
 	case "streak_3":
-		return st.LongestStreak >= 3
+		return int64(st.LongestStreak), 3
 	case "streak_7":
-		return st.LongestStreak >= 7
+		return int64(st.LongestStreak), 7
 	case "streak_14":
-		return st.LongestStreak >= 14
+		return int64(st.LongestStreak), 14
 	case "streak_30":
-		return st.LongestStreak >= 30
+		return int64(st.LongestStreak), 30
 	case "streak_60":
-		return st.LongestStreak >= 60
+		return int64(st.LongestStreak), 60
 	case "streak_100":
-		return st.LongestStreak >= 100
+		return int64(st.LongestStreak), 100
 	case "streak_180":
-		return st.LongestStreak >= 180
+		return int64(st.LongestStreak), 180
 	case "streak_365":
-		return st.LongestStreak >= 365
+		return int64(st.LongestStreak), 365
 	case "collector_1":
-		return favCount >= 1
+		return favCount, 1
 	case "collector":
-		return favCount >= 5
+		return favCount, 5
 	case "collector_10":
-		return favCount >= 10
+		return favCount, 10
 	case "collector_25":
-		return favCount >= 25
+		return favCount, 25
 	case "collector_50":
-		return favCount >= 50
+		return favCount, 50
 	case "watchful_1":
-		return alertCount >= 1
+		return alertCount, 1
 	case "watchful":
-		return alertCount >= 5
+		return alertCount, 5
 	case "watchful_10":
-		return alertCount >= 10
+		return alertCount, 10
 	case "watchful_25":
-		return alertCount >= 25
+		return alertCount, 25
 	case "watchful_50":
-		return alertCount >= 50
+		return alertCount, 50
 	case "level_3":
-		return st.Level >= 3
+		return int64(st.Level), 3
 	case "level_5":
-		return st.Level >= 5
+		return int64(st.Level), 5
 	case "level_10":
-		return st.Level >= 10
+		return int64(st.Level), 10
 	case "level_15":
-		return st.Level >= 15
+		return int64(st.Level), 15
 	case "level_25":
-		return st.Level >= 25
+		return int64(st.Level), 25
 	case "level_50":
-		return st.Level >= 50
+		return int64(st.Level), 50
 	case "committed_7":
-		return st.TotalCheckIns >= 7
+		return int64(st.TotalCheckIns), 7
 	case "committed":
-		return st.TotalCheckIns >= 30
+		return int64(st.TotalCheckIns), 30
 	case "committed_90":
-		return st.TotalCheckIns >= 90
+		return int64(st.TotalCheckIns), 90
 	case "committed_180":
-		return st.TotalCheckIns >= 180
+		return int64(st.TotalCheckIns), 180
 	case "committed_365":
-		return st.TotalCheckIns >= 365
+		return int64(st.TotalCheckIns), 365
 	}
-	return false
+	return 0, 0
+}
+
+func badgeStatus(
+	def BadgeDef,
+	st models.UserGamification,
+	favCount, alertCount int64,
+	earned bool,
+	earnedAt *time.Time,
+) BadgeStatus {
+	current, target := badgeProgress(def.Code, &st, favCount, alertCount)
+	progress := 0.0
+	if target > 0 {
+		progress = math.Max(0, math.Min(1, float64(current)/float64(target)))
+		// An earned badge is permanent. Even if a supporting counter is
+		// temporarily unavailable while the profile is built, never regress an
+		// earned badge below its completed target in the API response.
+		if earned {
+			progress = 1
+			if current < target {
+				current = target
+			}
+		}
+	}
+	return BadgeStatus{
+		Code:        def.Code,
+		Name:        def.Name,
+		Description: def.Description,
+		Icon:        def.Icon,
+		Earned:      earned,
+		EarnedAt:    earnedAt,
+		Current:     current,
+		Target:      target,
+		Progress:    progress,
+	}
 }
 
 // Leaderboard returns the top weekly-XP entries plus the caller's own rank.

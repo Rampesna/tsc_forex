@@ -184,6 +184,55 @@ func TestPortfolioPerformanceValuesMixedAssetClasses(t *testing.T) {
 	}
 }
 
+func TestPortfolioPerformanceCarriesPriorCloseAtRangeBoundary(t *testing.T) {
+	db, err := gorm.Open(sqlite.Open("file:performance-carry-"+uuid.NewString()+"?mode=memory&cache=shared"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AutoMigrate(
+		&models.Portfolio{},
+		&models.PortfolioPosition{},
+		&models.PortfolioTransaction{},
+	); err != nil {
+		t.Fatal(err)
+	}
+	repo := repository.NewPortfolioRepository(db, nil)
+	svc := NewPortfolioService(repo, fixedPortfolioPrices{}).WithHistory(fixedPortfolioCandles{})
+	userID := uuid.New()
+	portfolio, err := svc.Create(context.Background(), userID, "Weekend")
+	if err != nil {
+		t.Fatal(err)
+	}
+	thursday := time.Date(2026, 1, 1, 12, 0, 0, 0, time.UTC)
+	input := tx("buy", "THYAO", "TRY", "2", "100", "0", "0", "1", thursday)
+	input.ClientID = "weekend-buy"
+	if _, _, err := svc.CreateTransaction(context.Background(), userID, portfolio.ID, input); err != nil {
+		t.Fatal(err)
+	}
+	friday := time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)
+	saturday := time.Date(2026, 1, 3, 0, 0, 0, 0, time.UTC)
+	sunday := time.Date(2026, 1, 4, 0, 0, 0, 0, time.UTC)
+	svc.candles = fixedPortfolioCandles{
+		"THYAO": {{Bucket: friday, Close: 120}},
+	}
+
+	points, err := svc.Performance(context.Background(), userID, portfolio.ID, saturday, sunday, 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(points) != 2 {
+		t.Fatalf("points = %d, want two weekend days", len(points))
+	}
+	for _, point := range points {
+		if !point.ValueTRY.Equal(decimal.NewFromInt(240)) {
+			t.Fatalf("%s value TRY = %s, want carried Friday close value 240", point.Date, point.ValueTRY)
+		}
+		if !point.TotalPnLTRY.Equal(decimal.NewFromInt(40)) {
+			t.Fatalf("%s total P/L TRY = %s, want 40", point.Date, point.TotalPnLTRY)
+		}
+	}
+}
+
 type fixedPortfolioPrices map[string]domain.InstrumentPrice
 
 func (prices fixedPortfolioPrices) Get(code string) (domain.InstrumentPrice, bool) {

@@ -1,6 +1,30 @@
 import SwiftUI
 import UIKit
 
+private enum PortfolioChartMetric: String, CaseIterable, Identifiable {
+    case value
+    case totalPnL
+    case costBasis
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .value: return "Değer"
+        case .totalPnL: return "Toplam K/Z"
+        case .costBasis: return "Maliyet"
+        }
+    }
+
+    func value(in point: PortfolioPerformancePoint) -> Double {
+        switch self {
+        case .value: return point.valueTRY
+        case .totalPnL: return point.totalPnLTRY
+        case .costBasis: return point.costBasisTRY
+        }
+    }
+}
+
 struct PortfolioView: View {
     @EnvironmentObject private var portfolio: PortfolioStore
     @EnvironmentObject private var prices: PriceStore
@@ -8,6 +32,10 @@ struct PortfolioView: View {
     @EnvironmentObject private var billing: BillingStore
     @State private var showTransaction = false
     @State private var range = "1y"
+    @State private var chartMetric = PortfolioChartMetric.value
+    @State private var chartResetToken = 0
+    @State private var selectedPerformanceDate: Date?
+    @State private var performanceLoading = false
     @State private var showCreatePortfolio = false
     @State private var showRenamePortfolio = false
     @State private var confirmDeletePortfolio = false
@@ -251,6 +279,7 @@ struct PortfolioView: View {
                         Text(report.grade).font(.system(size: 9, weight: .bold)).foregroundStyle(healthColor(report.score))
                     }
                 }
+
                 Text(report.summary).font(.system(size: 12)).foregroundStyle(Theme.textDim)
                 ForEach(report.findings) { finding in
                     HStack(alignment: .top, spacing: 9) {
@@ -413,28 +442,128 @@ struct PortfolioView: View {
 
     private var performanceCard: some View {
         Card {
-            VStack(alignment: .leading, spacing: 12) {
+            VStack(alignment: .leading, spacing: 14) {
                 HStack {
-                    Text("Performans").font(.system(size: 15, weight: .semibold)).foregroundStyle(Theme.text)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Portföy Performansı")
+                            .font(.system(size: 15, weight: .semibold)).foregroundStyle(Theme.text)
+                        Text("Varlıkların gerçek günlük fiyat geçmişine göre")
+                            .font(.system(size: 9)).foregroundStyle(Theme.textFaint)
+                    }
                     Spacer()
-                    HStack(spacing: 4) {
-                        ForEach(["1m", "3m", "1y", "5y"], id: \.self) { item in
-                            Button(item.uppercased()) {
-                                range = item
-                                Task { await portfolio.refreshPerformance(range: item) }
-                            }
-                            .font(.system(size: 10, weight: .semibold))
-                            .foregroundStyle(range == item ? Theme.accent : Theme.textDim)
-                            .padding(.horizontal, 7).padding(.vertical, 5)
-                            .background(range == item ? Theme.accent.opacity(0.12) : Color.clear,
-                                        in: RoundedRectangle(cornerRadius: 7))
-                        }
+                    if performanceLoading {
+                        ProgressView().tint(Theme.accent).scaleEffect(0.8)
                     }
                 }
-                PortfolioPerformanceChart(points: portfolio.performance)
-                    .frame(height: 150)
+
+                if let message = portfolio.performanceErrorMessage {
+                    Label(message, systemImage: "exclamationmark.triangle.fill")
+                        .font(.system(size: 10, weight: .medium))
+                        .foregroundStyle(Theme.accent)
+                }
+
+                HStack(spacing: 5) {
+                    ForEach(PortfolioChartMetric.allCases) { metric in
+                        Button {
+                            chartMetric = metric
+                            selectedPerformanceDate = nil
+                            chartResetToken += 1
+                            Haptics.tap()
+                        } label: {
+                            Text(metric.title)
+                                .font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(chartMetric == metric ? .black : Theme.textDim)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 7)
+                                .background(
+                                    chartMetric == metric ? Theme.accent : Theme.surfaceHi,
+                                    in: RoundedRectangle(cornerRadius: 8)
+                                )
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+
+                performanceSnapshot
+
+                PortfolioPerformanceChart(
+                    points: portfolio.performance,
+                    metric: chartMetric,
+                    resetToken: chartResetToken,
+                    selectedDate: $selectedPerformanceDate
+                )
+
+                HStack(spacing: 4) {
+                    ForEach([
+                        ("1m", "1 AY"), ("3m", "3 AY"),
+                        ("1y", "1 YIL"), ("5y", "5 YIL")
+                    ], id: \.0) { item in
+                        Button(item.1) {
+                            guard range != item.0 else { return }
+                            performanceLoading = true
+                            Task {
+                                let loaded = await portfolio.refreshPerformance(range: item.0)
+                                if loaded {
+                                    range = item.0
+                                    selectedPerformanceDate = nil
+                                    chartResetToken += 1
+                                }
+                                performanceLoading = false
+                            }
+                        }
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(range == item.0 ? Theme.accent : Theme.textDim)
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, 7)
+                        .background(
+                            range == item.0 ? Theme.accent.opacity(0.12) : Theme.surfaceHi,
+                            in: RoundedRectangle(cornerRadius: 8)
+                        )
+                    }
+                }
+
+                Label("Yatay sürükle, sıkıştırarak yakınlaştır, dokunarak günü seç", systemImage: "hand.draw")
+                    .font(.system(size: 9)).foregroundStyle(Theme.textFaint)
             }
         }
+    }
+
+    @ViewBuilder private var performanceSnapshot: some View {
+        if let point = selectedPerformancePoint ?? portfolio.performance.last {
+            VStack(alignment: .leading, spacing: 8) {
+                Text((selectedPerformancePoint == nil ? "SON DURUM · " : "SEÇİLİ GÜN · ") + point.displayDate)
+                    .font(.system(size: 9, weight: .bold))
+                    .foregroundStyle(Theme.textFaint)
+                    .tracking(0.6)
+                LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
+                    performanceValue("Değer", point.valueTRY)
+                    performanceValue("Maliyet", point.costBasisTRY)
+                    performanceValue("Toplam K/Z", point.totalPnLTRY, trend: point.totalPnLTRY)
+                    performanceValue("Net Para Akışı", point.netDepositsTRY)
+                }
+            }
+            .padding(10)
+            .background(Theme.surfaceHi.opacity(0.72), in: RoundedRectangle(cornerRadius: 10))
+        }
+    }
+
+    private var selectedPerformancePoint: PortfolioPerformancePoint? {
+        guard let selectedPerformanceDate else { return nil }
+        return portfolio.performance.first { point in
+            guard let pointDate = point.chartDate else { return false }
+            return Calendar(identifier: .gregorian).isDate(pointDate, inSameDayAs: selectedPerformanceDate)
+        }
+    }
+
+    private func performanceValue(_ title: String, _ value: Double, trend: Double? = nil) -> some View {
+        let color = trend.map { Theme.trend($0) } ?? Theme.text
+        return VStack(alignment: .leading, spacing: 2) {
+            Text(title).font(.system(size: 9)).foregroundStyle(Theme.textFaint)
+            Text("₺\(Fmt.compactPrice(value))")
+                .font(Theme.number(12, weight: .semibold))
+                .foregroundStyle(color)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private var allocationCard: some View {
@@ -577,39 +706,75 @@ private struct PortfolioShareSheet: UIViewControllerRepresentable {
 
 private struct PortfolioPerformanceChart: View {
     let points: [PortfolioPerformancePoint]
+    let metric: PortfolioChartMetric
+    let resetToken: Int
+    @Binding var selectedDate: Date?
+
+    private var activePoints: [PortfolioPerformancePoint] {
+        guard let first = points.firstIndex(where: {
+            $0.valueTRY != 0 || $0.costBasisTRY != 0 || $0.netDepositsTRY != 0
+        }) else { return points }
+        return Array(points[first...])
+    }
+
+    private var candles: [Candle] {
+        let dated = activePoints.compactMap { point -> (PortfolioPerformancePoint, Date)? in
+            guard let date = point.chartDate else { return nil }
+            return (point, date)
+        }
+        return dated.enumerated().map { index, entry in
+            let close = metric.value(in: entry.0)
+            let open = index > 0 ? metric.value(in: dated[index - 1].0) : close
+            return Candle(
+                bucket: entry.1,
+                open: open,
+                high: max(open, close),
+                low: min(open, close),
+                close: close,
+                count: 0
+            )
+        }
+    }
+
+    private var trendUp: Bool {
+        guard let first = candles.first?.close, let last = candles.last?.close else { return true }
+        return last >= first
+    }
 
     var body: some View {
-        if points.count < 2 {
-            Text("Henüz yeterli performans verisi yok")
-                .font(.system(size: 12)).foregroundStyle(Theme.textFaint)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-        } else {
-            Canvas { context, size in
-                let firstActive = points.firstIndex {
-                    $0.valueTRY != 0 || $0.costBasisTRY != 0
-                } ?? 0
-                let values = Array(points.dropFirst(firstActive)).map(\.valueTRY)
-                let lo = values.min() ?? 0
-                let hi = values.max() ?? 1
-                let span = max(hi - lo, max(hi * 0.01, 1))
-                var line = Path()
-                for (index, value) in values.enumerated() {
-                    let x = CGFloat(index) / CGFloat(max(values.count - 1, 1)) * size.width
-                    let y = size.height - CGFloat((value - lo) / span) * (size.height - 12) - 6
-                    if index == 0 { line.move(to: CGPoint(x: x, y: y)) }
-                    else { line.addLine(to: CGPoint(x: x, y: y)) }
-                }
-                var fill = line
-                fill.addLine(to: CGPoint(x: size.width, y: size.height))
-                fill.addLine(to: CGPoint(x: 0, y: size.height))
-                fill.closeSubpath()
-                context.fill(fill, with: .linearGradient(
-                    Gradient(colors: [Theme.accent.opacity(0.22), Theme.accent.opacity(0)]),
-                    startPoint: .zero, endPoint: CGPoint(x: 0, y: size.height)
-                ))
-                context.stroke(line, with: .color(Theme.accent), lineWidth: 2)
-            }
-        }
+        PriceChart(
+            candles: candles,
+            mode: .line,
+            trendUp: trendUp,
+            resetToken: resetToken,
+            currency: "TRY",
+            height: 238,
+            seriesTitle: metric.title,
+            showsMovingAverages: false,
+            showsVolume: false,
+            showsOHLCSelection: false,
+            emptyTitle: "Henüz yeterli performans verisi yok",
+            emptySubtitle: "İşlem ekledikçe geçmiş portföy değeri burada oluşur.",
+            onSelectionChange: { selectedDate = $0 }
+        )
+    }
+}
+
+private extension PortfolioPerformancePoint {
+    var chartDate: Date? {
+        let parts = date.split(separator: "-").compactMap { Int($0) }
+        guard parts.count == 3 else { return nil }
+        var components = DateComponents()
+        components.calendar = Calendar(identifier: .gregorian)
+        components.timeZone = TimeZone(secondsFromGMT: 0)
+        components.year = parts[0]
+        components.month = parts[1]
+        components.day = parts[2]
+        return components.date
+    }
+
+    var displayDate: String {
+        chartDate?.formatted(date: .abbreviated, time: .omitted) ?? date
     }
 }
 

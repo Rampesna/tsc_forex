@@ -60,11 +60,15 @@ struct MainTabView: View {
     @State private var tab: AppTab = .markets
     @State private var marketCategory: MarketCategory = .all
     @State private var marketPath = NavigationPath()
+    @State private var showingNotifications = false
 
     var body: some View {
         Group {
             switch tab {
-            case .markets:        MarketsView(category: $marketCategory, path: $marketPath)
+            case .markets:
+                MarketsView(category: $marketCategory, path: $marketPath) {
+                    showingNotifications = true
+                }
             case .portfolio:      PortfolioView()
             case .rewards:        GamificationView()
             case .alerts:         AlertsView()
@@ -78,6 +82,12 @@ struct MainTabView: View {
                     withAnimation { marketPath = NavigationPath() }
                 }
             }
+        }
+        // The inbox is global application state rather than a market-detail
+        // route. Keeping it outside the market NavigationPath avoids nesting
+        // navigation stacks and leaves the selected market category untouched.
+        .fullScreenCover(isPresented: $showingNotifications) {
+            NotificationsView()
         }
         .onAppear {
             prices.connect(token: auth.accessToken)

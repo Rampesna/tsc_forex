@@ -73,23 +73,34 @@ func (n *Notifier) Notify(ctx context.Context, userID uuid.UUID, alertID *uuid.U
 			n.log.Warn("persist notification failed", zap.Error(err))
 		}
 	}
+	n.deliver(ctx, rec)
+}
+
+// deliver sends a notification that has already been constructed (and, for a
+// one-shot price alert, atomically persisted with the alert state transition).
+// Push/WebSocket delivery remains best-effort; the durable notification record
+// is the source of truth users can always see in their notification history.
+func (n *Notifier) deliver(ctx context.Context, rec *models.Notification) {
+	if rec == nil {
+		return
+	}
 
 	// Live WS push to the user's active connections.
 	if n.hub != nil {
 		if msg, err := ws.EncodeNotification(ws.NotificationPayload{
 			ID:    rec.ID.String(),
-			Code:  code,
-			Title: title,
-			Body:  body,
-			Price: price,
+			Code:  rec.Code,
+			Title: rec.Title,
+			Body:  rec.Body,
+			Price: rec.Price,
 		}); err == nil {
-			n.hub.SendToUser(userID.String(), msg)
+			n.hub.SendToUser(rec.UserID.String(), msg)
 		}
 	}
 
 	// Background push via APNs/FCM, routed per device platform.
 	if n.devices != nil && len(n.senders) > 0 {
-		tokens, err := n.devices.ListByUser(ctx, userID)
+		tokens, err := n.devices.ListByUser(ctx, rec.UserID)
 		if err == nil && len(tokens) > 0 {
 			byPlatform := make(map[string][]string, len(n.senders))
 			for _, t := range tokens {
@@ -100,7 +111,7 @@ func (n *Notifier) Notify(ctx context.Context, userID uuid.UUID, alertID *uuid.U
 				if !ok || len(addrs) == 0 {
 					continue
 				}
-				if err := sender.Send(ctx, addrs, title, body, map[string]string{"code": code}); err != nil {
+				if err := sender.Send(ctx, addrs, rec.Title, rec.Body, map[string]string{"code": rec.Code}); err != nil {
 					n.log.Warn("push send failed", zap.String("platform", platform), zap.Error(err))
 				}
 			}

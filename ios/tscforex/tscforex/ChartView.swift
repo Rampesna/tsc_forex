@@ -30,6 +30,14 @@ struct PriceChart: View {
     var canLoadNewer = false
     var resetToken = 0
     var currency: String?
+    var height: CGFloat = 342
+    var seriesTitle = "Fiyat"
+    var showsMovingAverages = true
+    var showsVolume = true
+    var showsOHLCSelection = true
+    var emptyTitle = "Grafik verisi birikiyor…"
+    var emptySubtitle = "Kısa süre içinde mum çubukları oluşacak."
+    var onSelectionChange: (Date?) -> Void = { _ in }
 
     var body: some View {
         if candles.count < 2 {
@@ -45,9 +53,14 @@ struct PriceChart: View {
                 canLoadOlder: canLoadOlder,
                 canLoadNewer: canLoadNewer,
                 resetToken: resetToken,
-                currency: currency
+                currency: currency,
+                seriesTitle: seriesTitle,
+                showsMovingAverages: showsMovingAverages,
+                showsVolume: showsVolume,
+                showsOHLCSelection: showsOHLCSelection,
+                onSelectionChange: onSelectionChange
             )
-            .frame(height: 342)
+            .frame(height: height)
         }
     }
 
@@ -56,14 +69,14 @@ struct PriceChart: View {
             Image(systemName: "chart.xyaxis.line")
                 .font(.system(size: 28))
                 .foregroundStyle(Theme.textFaint)
-            Text("Grafik verisi birikiyor…")
+            Text(emptyTitle)
                 .font(.system(size: 13))
                 .foregroundStyle(Theme.textDim)
-            Text("Kısa süre içinde mum çubukları oluşacak.")
+            Text(emptySubtitle)
                 .font(.system(size: 11))
                 .foregroundStyle(Theme.textFaint)
         }
-        .frame(maxWidth: .infinity, minHeight: 300)
+        .frame(maxWidth: .infinity, minHeight: height)
     }
 }
 
@@ -80,6 +93,11 @@ private struct TradingChartRepresentable: UIViewRepresentable {
     let canLoadNewer: Bool
     let resetToken: Int
     let currency: String?
+    let seriesTitle: String
+    let showsMovingAverages: Bool
+    let showsVolume: Bool
+    let showsOHLCSelection: Bool
+    let onSelectionChange: (Date?) -> Void
 
     func makeUIView(context: Context) -> TradingChartUIView {
         TradingChartUIView()
@@ -95,6 +113,11 @@ private struct TradingChartRepresentable: UIViewRepresentable {
             canLoadNewer: canLoadNewer,
             resetToken: resetToken,
             currency: currency,
+            seriesTitle: seriesTitle,
+            showsMovingAverages: showsMovingAverages,
+            showsVolume: showsVolume,
+            showsOHLCSelection: showsOHLCSelection,
+            onSelectionChange: onSelectionChange,
             onReachStart: onReachStart,
             onReachEnd: onReachEnd
         )
@@ -115,6 +138,11 @@ private final class TradingChartUIView: UIView, UIGestureRecognizerDelegate {
     private var trendUp = true
     private var livePrice: Double?
     private var currency: String?
+    private var seriesTitle = "Fiyat"
+    private var showsMovingAverages = true
+    private var showsVolume = true
+    private var showsOHLCSelection = true
+    private var onSelectionChange: (Date?) -> Void = { _ in }
     private var canLoadOlder = false
     private var canLoadNewer = false
     private var onReachStart: () -> Void = {}
@@ -145,10 +173,9 @@ private final class TradingChartUIView: UIView, UIGestureRecognizerDelegate {
     private var lastLiveDisplay = CACurrentMediaTime()
 
     private let headerHeight: CGFloat = 34
-    private let volumeHeight: CGFloat = 46
+    private let volumePaneHeight: CGFloat = 46
     private let timeAxisHeight: CGFloat = 22
     private let rightAxisWidth: CGFloat = 58
-    private let paneGap: CGFloat = 5
 
     private let ma7Color = UIColor(red: 0.95, green: 0.77, blue: 0.24, alpha: 1)
     private let ma25Color = UIColor(red: 0.90, green: 0.35, blue: 0.72, alpha: 1)
@@ -185,6 +212,11 @@ private final class TradingChartUIView: UIView, UIGestureRecognizerDelegate {
         canLoadNewer newCanLoadNewer: Bool,
         resetToken newResetToken: Int,
         currency newCurrency: String?,
+        seriesTitle newSeriesTitle: String,
+        showsMovingAverages newShowsMovingAverages: Bool,
+        showsVolume newShowsVolume: Bool,
+        showsOHLCSelection newShowsOHLCSelection: Bool,
+        onSelectionChange newOnSelectionChange: @escaping (Date?) -> Void,
         onReachStart newOnReachStart: @escaping () -> Void,
         onReachEnd newOnReachEnd: @escaping () -> Void
     ) {
@@ -192,16 +224,26 @@ private final class TradingChartUIView: UIView, UIGestureRecognizerDelegate {
         onReachEnd = newOnReachEnd
         canLoadOlder = newCanLoadOlder
         canLoadNewer = newCanLoadNewer
+        onSelectionChange = newOnSelectionChange
 
         let needsReset = resetToken != newResetToken
         let dataChanged = candleDataChanged(newCandles)
         let styleChanged = mode != newMode || trendUp != newTrendUp || currency != newCurrency
+            || seriesTitle != newSeriesTitle
+            || showsMovingAverages != newShowsMovingAverages
+            || showsVolume != newShowsVolume
+            || showsOHLCSelection != newShowsOHLCSelection
         let liveChanged = livePrice != newLivePrice
 
         mode = newMode
         trendUp = newTrendUp
         currency = newCurrency
+        seriesTitle = newSeriesTitle
+        showsMovingAverages = newShowsMovingAverages
+        showsVolume = newShowsVolume
+        showsOHLCSelection = newShowsOHLCSelection
         resetToken = newResetToken
+        accessibilityLabel = "Etkileşimli \(newSeriesTitle.lowercased()) grafiği"
 
         if dataChanged {
             replaceCandles(newCandles, reset: needsReset)
@@ -343,7 +385,7 @@ private final class TradingChartUIView: UIView, UIGestureRecognizerDelegate {
         switch recognizer.state {
         case .began:
             stopMomentum()
-            selectedIndex = nil
+            clearSelection()
             panLastX = recognizer.translation(in: self).x
         case .changed:
             let currentX = recognizer.translation(in: self).x
@@ -371,7 +413,7 @@ private final class TradingChartUIView: UIView, UIGestureRecognizerDelegate {
         switch recognizer.state {
         case .began:
             stopMomentum()
-            selectedIndex = nil
+            clearSelection()
             pinchStartBars = visibleBars
             pinchAnchorFraction = Double(fraction)
             pinchAnchorIndex = viewportStart + pinchAnchorFraction * visibleBars
@@ -390,23 +432,34 @@ private final class TradingChartUIView: UIView, UIGestureRecognizerDelegate {
     @objc private func handleLongPress(_ recognizer: UILongPressGestureRecognizer) {
         guard recognizer.state == .began || recognizer.state == .changed else { return }
         stopMomentum()
-        selectedIndex = index(atX: recognizer.location(in: self).x)
+        updateSelection(index(atX: recognizer.location(in: self).x))
         setNeedsDisplay()
     }
 
     @objc private func handleTap(_ recognizer: UITapGestureRecognizer) {
         stopMomentum()
         if selectedIndex == nil {
-            selectedIndex = index(atX: recognizer.location(in: self).x)
+            updateSelection(index(atX: recognizer.location(in: self).x))
         } else {
-            selectedIndex = nil
+            clearSelection()
         }
         setNeedsDisplay()
     }
 
     @objc private func handleDoubleTap(_ recognizer: UITapGestureRecognizer) {
         stopMomentum()
+        clearSelection()
         resetToLatest()
+    }
+
+    private func updateSelection(_ index: Int?) {
+        guard selectedIndex != index else { return }
+        selectedIndex = index
+        onSelectionChange(index.flatMap { candles.indices.contains($0) ? candles[$0].bucket : nil })
+    }
+
+    private func clearSelection() {
+        updateSelection(nil)
     }
 
     private func index(atX x: CGFloat) -> Int? {
@@ -507,18 +560,24 @@ private final class TradingChartUIView: UIView, UIGestureRecognizerDelegate {
         case .candle:
             drawCandles(in: context, range: visibleRange, domain: domain)
         }
-        drawMovingAverage(in: context, range: visibleRange, period: 7, color: ma7Color, domain: domain)
-        drawMovingAverage(in: context, range: visibleRange, period: 25, color: ma25Color, domain: domain)
+        if showsMovingAverages {
+            drawMovingAverage(in: context, range: visibleRange, period: 7, color: ma7Color, domain: domain)
+            drawMovingAverage(in: context, range: visibleRange, period: 25, color: ma25Color, domain: domain)
+        }
         drawLastPrice(in: context, domain: domain)
         drawCrosshair(in: context, domain: domain)
         context.restoreGState()
 
-        drawVolume(in: context, range: visibleRange)
+        if showsVolume {
+            drawVolume(in: context, range: visibleRange)
+        }
         drawTimeAxis(in: context)
         drawPriceTags(in: context, domain: domain)
     }
 
     private var plotRect: CGRect {
+        let volumeHeight = showsVolume ? volumePaneHeight : 0
+        let paneGap: CGFloat = showsVolume ? 5 : 0
         let height = max(1, bounds.height - headerHeight - volumeHeight - timeAxisHeight - paneGap)
         return CGRect(
             x: 0,
@@ -529,11 +588,12 @@ private final class TradingChartUIView: UIView, UIGestureRecognizerDelegate {
     }
 
     private var volumeRect: CGRect {
-        CGRect(
+        let paneGap: CGFloat = showsVolume ? 5 : 0
+        return CGRect(
             x: 0,
             y: plotRect.maxY + paneGap,
             width: plotRect.width,
-            height: volumeHeight
+            height: showsVolume ? volumePaneHeight : 0
         )
     }
 
@@ -578,7 +638,8 @@ private final class TradingChartUIView: UIView, UIGestureRecognizerDelegate {
         }
         if !low.isFinite || !high.isFinite || high <= low {
             let value = effectiveClose(at: range.upperBound)
-            return (value * 0.99, value * 1.01)
+            let pad = max(abs(value) * 0.01, 1)
+            return (value - pad, value + pad)
         }
         let pad = max((high - low) * 0.09, abs(high) * 0.0005)
         return (low - pad, high + pad)
@@ -588,21 +649,34 @@ private final class TradingChartUIView: UIView, UIGestureRecognizerDelegate {
         if let selectedIndex, candles.indices.contains(selectedIndex) {
             let candle = candles[selectedIndex]
             let close = effectiveClose(at: selectedIndex)
-            let percent = candle.open == 0 ? 0 : (close - candle.open) / candle.open * 100
+            let change = close - candle.open
 
             drawText(dateTimeLabel(candle.bucket), at: CGPoint(x: 0, y: 1),
                      color: UIColor(Theme.textDim), size: 10)
-            let values = "A \(Fmt.compactPrice(candle.open))   Y \(Fmt.compactPrice(effectiveHigh(at: selectedIndex)))   D \(Fmt.compactPrice(effectiveLow(at: selectedIndex)))   K \(Fmt.compactPrice(close))"
+            let values: String
+            if showsOHLCSelection {
+                values = "A \(Fmt.compactPrice(candle.open))   Y \(Fmt.compactPrice(effectiveHigh(at: selectedIndex)))   D \(Fmt.compactPrice(effectiveLow(at: selectedIndex)))   K \(Fmt.compactPrice(close))"
+            } else {
+                values = "\(seriesTitle)  \(Fmt.money(close, currency: currency))"
+            }
             drawText(values, at: CGPoint(x: 0, y: 16), color: UIColor(Theme.text), size: 10, monospaced: true)
-            drawText(Fmt.signedPct(percent), rightX: bounds.width, y: 15,
-                     color: UIColor(Theme.trend(percent)), size: 11, bold: true, monospaced: true)
+            if showsOHLCSelection {
+                let percent = candle.open == 0 ? 0 : change / candle.open * 100
+                drawText(Fmt.signedPct(percent), rightX: bounds.width, y: 15,
+                         color: UIColor(Theme.trend(percent)), size: 11, bold: true, monospaced: true)
+            } else {
+                drawText(Fmt.money(change, currency: currency), rightX: bounds.width, y: 15,
+                         color: UIColor(Theme.trend(change)), size: 11, bold: true, monospaced: true)
+            }
             return
         }
 
         var x: CGFloat = 0
-        x = drawLegend("Fiyat", color: lineColor, x: x)
-        x = drawLegend("MA7", color: ma7Color, x: x + 10)
-        _ = drawLegend("MA25", color: ma25Color, x: x + 10)
+        x = drawLegend(seriesTitle, color: lineColor, x: x)
+        if showsMovingAverages {
+            x = drawLegend("MA7", color: ma7Color, x: x + 10)
+            _ = drawLegend("MA25", color: ma25Color, x: x + 10)
+        }
 
         if let last = candles.indices.last {
             drawText(Fmt.money(effectiveClose(at: last), currency: currency),
@@ -646,7 +720,7 @@ private final class TradingChartUIView: UIView, UIGestureRecognizerDelegate {
         for index in 0...4 {
             let x = plotRect.minX + CGFloat(index) / 4 * plotRect.width
             context.move(to: CGPoint(x: x, y: plotRect.minY))
-            context.addLine(to: CGPoint(x: x, y: volumeRect.maxY))
+            context.addLine(to: CGPoint(x: x, y: showsVolume ? volumeRect.maxY : plotRect.maxY))
             context.strokePath()
         }
     }
@@ -827,7 +901,7 @@ private final class TradingChartUIView: UIView, UIGestureRecognizerDelegate {
         context.setLineWidth(0.8)
         context.setLineDash(phase: 0, lengths: [3, 3])
         context.move(to: CGPoint(x: x, y: plotRect.minY))
-        context.addLine(to: CGPoint(x: x, y: volumeRect.maxY))
+        context.addLine(to: CGPoint(x: x, y: showsVolume ? volumeRect.maxY : plotRect.maxY))
         context.move(to: CGPoint(x: plotRect.minX, y: y))
         context.addLine(to: CGPoint(x: plotRect.maxX, y: y))
         context.strokePath()

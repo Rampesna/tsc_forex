@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"math"
 	"net/http"
 	"strconv"
 	"strings"
@@ -438,6 +439,10 @@ func (h *UserHandler) CreateAlert(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "unknown instrument code"})
 		return
 	}
+	if req.Threshold <= 0 || math.IsNaN(req.Threshold) || math.IsInf(req.Threshold, 0) {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "threshold must be greater than zero"})
+		return
+	}
 	alert := &models.PriceAlert{
 		ID:        uuid.New(),
 		UserID:    uid,
@@ -461,14 +466,42 @@ func (h *UserHandler) CreateAlert(c *gin.Context) {
 		return
 	}
 	h.award(c.Request.Context(), uid, service.EventAlert, alert.ID.String())
-	c.JSON(http.StatusCreated, AlertResponse{
-		ID:        alert.ID.String(),
-		Code:      alert.Code,
-		Direction: alert.Direction,
-		Threshold: alert.Threshold,
-		Active:    alert.Active,
-		CreatedAt: alert.CreatedAt,
-	})
+	c.JSON(http.StatusCreated, newAlertResponse(*alert))
+}
+
+// UpdateAlert changes the direction and threshold of a user's active alert.
+// Triggered alerts cannot be edited because one-shot alerts are atomically
+// deactivated by the alert engine.
+func (h *UserHandler) UpdateAlert(c *gin.Context) {
+	uid, ok := currentUserID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, ErrorResponse{Error: "unauthorized"})
+		return
+	}
+	id, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "invalid id"})
+		return
+	}
+	var req UpdateAlertRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: err.Error()})
+		return
+	}
+	if req.Threshold <= 0 || math.IsNaN(req.Threshold) || math.IsInf(req.Threshold, 0) {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "threshold must be greater than zero"})
+		return
+	}
+	updated, err := h.alerts.Update(c.Request.Context(), uid, id, req.Direction, req.Threshold)
+	if errors.Is(err, repository.ErrNotFound) {
+		c.JSON(http.StatusNotFound, ErrorResponse{Error: "active alert not found"})
+		return
+	}
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "update failed"})
+		return
+	}
+	c.JSON(http.StatusOK, newAlertResponse(updated))
 }
 
 // DeleteAlert removes a user's alert.
@@ -488,6 +521,18 @@ func (h *UserHandler) DeleteAlert(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "deleted"})
+}
+
+func newAlertResponse(a models.PriceAlert) AlertResponse {
+	return AlertResponse{
+		ID:          a.ID.String(),
+		Code:        a.Code,
+		Direction:   a.Direction,
+		Threshold:   a.Threshold,
+		Active:      a.Active,
+		LastFiredAt: a.LastFiredAt,
+		CreatedAt:   a.CreatedAt,
+	}
 }
 
 // --- Notifications ---

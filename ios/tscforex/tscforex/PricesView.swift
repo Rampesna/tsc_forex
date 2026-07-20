@@ -11,7 +11,6 @@ enum MarketCategory: String, CaseIterable { case favorites, all, gold, currency,
 
 enum MarketRoute: Hashable {
     case asset(String)
-    case notifications
 }
 
 // Curated fixed order for the main list: gold, then majors, then crypto/stock.
@@ -55,11 +54,14 @@ struct MarketsView: View {
     @Binding var category: MarketCategory
     @State private var editMode: EditMode = .inactive
     @Binding var path: NavigationPath
+    let onNotifications: () -> Void
 
     init(category: Binding<MarketCategory> = .constant(.all),
-         path: Binding<NavigationPath> = .constant(NavigationPath())) {
+         path: Binding<NavigationPath> = .constant(NavigationPath()),
+         onNotifications: @escaping () -> Void = {}) {
         _category = category
         _path = path
+        self.onNotifications = onNotifications
     }
 
     private var tabs: [(value: MarketCategory, label: String, icon: String)] {
@@ -106,7 +108,6 @@ struct MarketsView: View {
             .navigationDestination(for: MarketRoute.self) { route in
                 switch route {
                 case .asset(let code): AssetDetailView(code: code)
-                case .notifications: NotificationsView()
                 }
             }
             .toolbar(.hidden, for: .navigationBar)
@@ -124,7 +125,7 @@ struct MarketsView: View {
             Spacer()
             Button {
                 Haptics.tap()
-                path.append(MarketRoute.notifications)
+                onNotifications()
             } label: {
                 ZStack(alignment: .topTrailing) {
                     Image(systemName: "bell")

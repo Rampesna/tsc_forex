@@ -71,6 +71,7 @@ type GamificationRepository interface {
 	DailyPlan(ctx context.Context, userID uuid.UUID, dayKey string) (models.DailyPlan, error)
 	LearningProgress(ctx context.Context, userID uuid.UUID) ([]models.LearningProgress, error)
 	SaveLearningAttempt(ctx context.Context, attempt *models.LearningAttempt, progress *models.LearningProgress) (bool, error)
+	DisciplineReviewCodes(ctx context.Context, userID uuid.UUID, dayKey string) (map[string]bool, error)
 	SaveDisciplineReview(ctx context.Context, review *models.DisciplineReview) (bool, error)
 	ListPaperTrades(ctx context.Context, userID uuid.UUID, limit int) ([]models.PaperTrade, error)
 	CreatePaperTrade(ctx context.Context, trade *models.PaperTrade) (bool, error)
@@ -425,6 +426,24 @@ func (r *gamificationRepository) SaveDisciplineReview(
 	result := r.db.WithContext(ctx).Clauses(clause.OnConflict{DoNothing: true}).Create(review)
 	r.observe(start, result.Error)
 	return result.RowsAffected > 0, result.Error
+}
+
+func (r *gamificationRepository) DisciplineReviewCodes(
+	ctx context.Context,
+	userID uuid.UUID,
+	dayKey string,
+) (map[string]bool, error) {
+	start := time.Now()
+	var codes []string
+	err := r.db.WithContext(ctx).Model(&models.DisciplineReview{}).
+		Where("user_id = ? AND day_key = ?", userID, dayKey).
+		Pluck("code", &codes).Error
+	r.observe(start, err)
+	completed := make(map[string]bool, len(codes))
+	for _, code := range codes {
+		completed[code] = true
+	}
+	return completed, err
 }
 
 func (r *gamificationRepository) ListPaperTrades(

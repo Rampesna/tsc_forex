@@ -112,7 +112,8 @@ type WebAuthnConfig struct {
 
 // NotifyConfig controls the alert/notification subsystem.
 type NotifyConfig struct {
-	// AlertCooldown is the minimum time between two firings of the same alert.
+	// AlertCooldown is retained for configuration compatibility. Price alerts
+	// are one-shot and atomically deactivate on their first trigger.
 	AlertCooldown time.Duration `mapstructure:"alert_cooldown"`
 	APNsEnabled   bool          `mapstructure:"apns_enabled"`
 	APNsTopic     string        `mapstructure:"apns_topic"` // iOS bundle id

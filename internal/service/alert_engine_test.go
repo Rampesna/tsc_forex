@@ -2,6 +2,7 @@ package service_test
 
 import (
 	"context"
+	"sync"
 	"testing"
 	"time"
 
@@ -13,14 +14,20 @@ import (
 	"github.com/tsc-forex/tsc_forex/pkg/eventbus"
 )
 
-// fakeAlertRepo returns a fixed active alert and records MarkFired calls.
+// fakeAlertRepo deliberately keeps returning the same active snapshot so the
+// engine test proves ClaimTriggered, rather than a refreshed list, prevents a
+// duplicate delivery.
 type fakeAlertRepo struct {
-	active []models.PriceAlert
-	fired  chan uuid.UUID
+	active  []models.PriceAlert
+	fired   chan uuid.UUID
+	mu      sync.Mutex
+	claimed map[uuid.UUID]bool
 }
 
 func (f *fakeAlertRepo) Create(context.Context, *models.PriceAlert) error { return nil }
-func (f *fakeAlertRepo) Update(context.Context, *models.PriceAlert) error { return nil }
+func (f *fakeAlertRepo) Update(context.Context, uuid.UUID, uuid.UUID, string, float64) (models.PriceAlert, error) {
+	return models.PriceAlert{}, nil
+}
 func (f *fakeAlertRepo) Delete(context.Context, uuid.UUID, uuid.UUID) error {
 	return nil
 }
@@ -36,12 +43,21 @@ func (f *fakeAlertRepo) ActiveByCode(_ context.Context, code string) ([]models.P
 	}
 	return out, nil
 }
-func (f *fakeAlertRepo) MarkFired(_ context.Context, id uuid.UUID, _ time.Time) error {
+func (f *fakeAlertRepo) ClaimTriggered(_ context.Context, alert models.PriceAlert, _ *models.Notification, _ time.Time) (bool, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.claimed == nil {
+		f.claimed = make(map[uuid.UUID]bool)
+	}
+	if f.claimed[alert.ID] {
+		return false, nil
+	}
+	f.claimed[alert.ID] = true
 	select {
-	case f.fired <- id:
+	case f.fired <- alert.ID:
 	default:
 	}
-	return nil
+	return true, nil
 }
 
 // alertFakeHub captures targeted sends.
@@ -57,7 +73,7 @@ func (h *alertFakeHub) SendToUser(userID string, _ []byte) {
 	}
 }
 
-func TestAlertEngineFiresOnCross(t *testing.T) {
+func TestAlertEngineFiresOnlyOnceOnCross(t *testing.T) {
 	bus := eventbus.New()
 	defer bus.Close()
 
@@ -98,7 +114,18 @@ func TestAlertEngineFiresOnCross(t *testing.T) {
 	select {
 	case <-repo.fired:
 	case <-time.After(2 * time.Second):
-		t.Fatal("MarkFired not called")
+		t.Fatal("ClaimTriggered not called")
+	}
+
+	// A later matching tick may still race with a stale in-memory list on this
+	// or another replica. The atomic claim must suppress a second delivery.
+	bus.Publish(eventbus.TopicInstrumentUpdated, domain.InstrumentPrice{
+		Code: "GRAM_GOLD", DisplayName: "Gram Altın", Price: 2700,
+	})
+	select {
+	case <-hub.direct:
+		t.Fatal("one-shot alert delivered more than once")
+	case <-time.After(300 * time.Millisecond):
 	}
 }
 

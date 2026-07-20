@@ -438,6 +438,14 @@ struct APIClient {
                               authed: true)
     }
 
+    func updateAlert(id: String, direction: String, threshold: Double) async throws -> Alert {
+        struct Body: Encodable { let direction: String; let threshold: Double }
+        let data = try await request("me/alerts/\(id)", method: "PATCH",
+                                     body: Body(direction: direction, threshold: threshold),
+                                     authed: true)
+        return try makeDecoder().decode(Alert.self, from: data)
+    }
+
     func deleteAlert(_ id: String) async throws {
         _ = try await request("me/alerts/\(id)", method: "DELETE", authed: true)
     }
