@@ -7,9 +7,14 @@ import SwiftUI
 
 struct LoginView: View {
     @EnvironmentObject var auth: AuthStore
+    var onContinueAsGuest: (() -> Void)?
     @State private var email = ""
     @State private var password = ""
     @State private var isRegister = false
+
+    init(onContinueAsGuest: (() -> Void)? = nil) {
+        self.onContinueAsGuest = onContinueAsGuest
+    }
 
     var body: some View {
         ZStack {
@@ -125,6 +130,16 @@ struct LoginView: View {
                 } label: {
                     Text(isRegister ? "Zaten hesabım var • Giriş yap" : "Hesabın yok mu? • Kayıt ol")
                         .font(.system(size: 13, weight: .medium)).foregroundStyle(Theme.accent)
+                }
+
+                if let onContinueAsGuest {
+                    Button(action: onContinueAsGuest) {
+                        Text("Üye olmadan piyasaları incele")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(Theme.textDim)
+                            .padding(.vertical, 6)
+                    }
+                    .accessibilityHint("Canlı piyasa listesine ve varlık detaylarına giriş yapmadan devam eder")
                 }
 
                 Spacer()

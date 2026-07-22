@@ -90,6 +90,18 @@ final class PriceStore: ObservableObject {
         liveNotifications.remove(at: index)
     }
 
+    /// Removes account-scoped state when the app is used as a guest. Public
+    /// price data remains connected and available without registration.
+    func clearAccountData() {
+        favorites.removeAll()
+        favoriteOrder.removeAll()
+        liveNotifications.removeAll()
+        favoriteMutations.removeAll()
+        favoriteMessage = nil
+        persistFavorites()
+        syncWidget(force: true)
+    }
+
     // MARK: Favorites
 
     func isFavorite(_ code: String) -> Bool { favorites.contains(code) }
@@ -226,6 +238,9 @@ final class PriceStore: ObservableObject {
     func updateToken(_ newToken: String?) {
         token = newToken
         guard shouldRun else { return }
+        if newToken != nil {
+            Task { await syncFavorites() }
+        }
         task?.cancel(with: .goingAway, reason: nil)
         openSocket()
     }

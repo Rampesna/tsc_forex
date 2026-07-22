@@ -14,6 +14,7 @@ struct AssetDetailView: View {
     @EnvironmentObject var prices: PriceStore
     @EnvironmentObject var billing: BillingStore
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.requestAuthentication) private var requestAuthentication
 
     @State private var candles: [Candle] = []
     @State private var stats: InstrumentStats?
@@ -88,11 +89,19 @@ struct AssetDetailView: View {
             }
             ToolbarItem(placement: .topBarTrailing) {
                 HStack(spacing: 18) {
-                    Button { Haptics.tap(); prices.toggleFavorite(code) } label: {
+                    Button {
+                        Haptics.tap()
+                        if auth.isLoggedIn { prices.toggleFavorite(code) }
+                        else { requestAuthentication() }
+                    } label: {
                         Image(systemName: prices.isFavorite(code) ? "star.fill" : "star")
                             .foregroundStyle(prices.isFavorite(code) ? Theme.accent : Theme.textDim)
                     }
-                    Button { Haptics.tap(); showAlert = true } label: {
+                    Button {
+                        Haptics.tap()
+                        if auth.isLoggedIn { showAlert = true }
+                        else { requestAuthentication() }
+                    } label: {
                         Image(systemName: "bell")
                             .foregroundStyle(Theme.textDim)
                     }
@@ -377,7 +386,8 @@ struct AssetDetailView: View {
 
                 Button {
                     Haptics.tap()
-                    if acceptedAIDisclosure { Task { await loadAIInsight() } }
+                    if !auth.isLoggedIn { requestAuthentication() }
+                    else if acceptedAIDisclosure { Task { await loadAIInsight() } }
                     else { showAIDisclosure = true }
                 } label: {
                     HStack(spacing: 8) {
@@ -392,8 +402,8 @@ struct AssetDetailView: View {
                     .background(Theme.accent, in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 }
                 .buttonStyle(.plain)
-                .disabled(aiLoading || !auth.isLoggedIn)
-                .opacity(auth.isLoggedIn ? 1 : 0.55)
+                .disabled(aiLoading)
+                .opacity(aiLoading ? 0.72 : 1)
             }
         }
     }

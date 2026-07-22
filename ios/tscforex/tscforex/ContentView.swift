@@ -6,19 +6,24 @@
 import SwiftUI
 
 struct RootView: View {
-    @EnvironmentObject var auth: AuthStore
-
     var body: some View {
         ZStack {
             Theme.bg.ignoresSafeArea()
-            if auth.isLoggedIn {
-                MainTabView()
-            } else {
-                LoginView()
-            }
+            MainTabView()
         }
         .preferredColorScheme(.dark)
         .tint(Theme.accent)
+    }
+}
+
+private struct RequestAuthenticationKey: EnvironmentKey {
+    static let defaultValue: () -> Void = {}
+}
+
+extension EnvironmentValues {
+    var requestAuthentication: () -> Void {
+        get { self[RequestAuthenticationKey.self] }
+        set { self[RequestAuthenticationKey.self] = newValue }
     }
 }
 
@@ -61,20 +66,30 @@ struct MainTabView: View {
     @State private var marketCategory: MarketCategory = .all
     @State private var marketPath = NavigationPath()
     @State private var showingNotifications = false
+    @State private var showingAuthentication = false
 
     var body: some View {
         Group {
             switch tab {
             case .markets:
                 MarketsView(category: $marketCategory, path: $marketPath) {
-                    showingNotifications = true
+                    if auth.isLoggedIn {
+                        showingNotifications = true
+                    } else {
+                        showingAuthentication = true
+                    }
                 }
-            case .portfolio:      PortfolioView()
-            case .rewards:        GamificationView()
-            case .alerts:         AlertsView()
-            case .settings:       SettingsView()
+            case .portfolio:
+                authenticated { PortfolioView() }
+            case .rewards:
+                authenticated { GamificationView() }
+            case .alerts:
+                authenticated { AlertsView() }
+            case .settings:
+                authenticated { SettingsView() }
             }
         }
+        .environment(\.requestAuthentication, { showingAuthentication = true })
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .safeAreaInset(edge: .bottom) {
             CustomTabBar(selection: $tab) { tapped in
@@ -89,9 +104,17 @@ struct MainTabView: View {
         .fullScreenCover(isPresented: $showingNotifications) {
             NotificationsView()
         }
+        .fullScreenCover(isPresented: $showingAuthentication) {
+            LoginView(onContinueAsGuest: { showingAuthentication = false })
+                .environmentObject(auth)
+        }
         .onAppear {
             prices.connect(token: auth.accessToken)
-            setupPush()
+            if auth.isLoggedIn {
+                setupPush()
+            } else {
+                prices.clearAccountData()
+            }
         }
         .task(id: auth.accessToken) {
             guard let token = auth.accessToken, !token.isEmpty else {
@@ -104,6 +127,28 @@ struct MainTabView: View {
         .onDisappear {
             if !auth.isLoggedIn {
                 billing.clearSession()
+            }
+        }
+        .onChange(of: auth.isLoggedIn) { _, isLoggedIn in
+            showingAuthentication = false
+            prices.updateToken(auth.accessToken)
+            if isLoggedIn {
+                setupPush()
+            } else {
+                showingNotifications = false
+                prices.clearAccountData()
+                billing.clearSession()
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func authenticated<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        if auth.isLoggedIn {
+            content()
+        } else {
+            AccountRequiredView(tab: tab) {
+                showingAuthentication = true
             }
         }
     }
@@ -122,6 +167,60 @@ struct MainTabView: View {
         }
         if let existing = PushManager.shared.deviceToken {
             Task { try? await APIClient(token: auth.accessToken).registerDevice(token: existing) }
+        }
+    }
+}
+
+private struct AccountRequiredView: View {
+    let tab: AppTab
+    let onSignIn: () -> Void
+
+    private var explanation: String {
+        switch tab {
+        case .portfolio: return "Portföyünüzü cihazlar arasında güvenle eşitlemek için hesabınızla giriş yapın."
+        case .rewards: return "Görevlerinizi, öğrenme ilerlemenizi ve rozetlerinizi hesabınıza kaydedin."
+        case .alerts: return "Fiyat alarmlarınızı oluşturmak ve bildirim almak için hesabınızla giriş yapın."
+        case .settings: return "Profilinizi, aboneliğinizi ve uygulama tercihlerinizi yönetmek için giriş yapın."
+        case .markets: return ""
+        }
+    }
+
+    var body: some View {
+        ZStack {
+            Theme.bg.ignoresSafeArea()
+            ScrollView {
+                VStack(spacing: 18) {
+                    Spacer(minLength: 80)
+                    Image(systemName: tab.iconFilled)
+                        .font(.system(size: 34, weight: .semibold))
+                        .foregroundStyle(Theme.accent)
+                        .frame(width: 74, height: 74)
+                        .background(Theme.accentSoft, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
+                    Text("\(tab.title) için giriş yapın")
+                        .font(.system(size: 23, weight: .bold))
+                        .foregroundStyle(Theme.text)
+                    Text(explanation)
+                        .font(.system(size: 14))
+                        .foregroundStyle(Theme.textDim)
+                        .multilineTextAlignment(.center)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Button("Giriş Yap veya Kayıt Ol", action: onSignIn)
+                        .buttonStyle(FilledButtonStyle())
+                        .padding(.top, 4)
+
+                    if tab == .settings {
+                        HStack(spacing: 18) {
+                            Link("Gizlilik", destination: URL(string: "https://tsc.talhacan.com/privacy")!)
+                            Link("Kullanım Şartları", destination: URL(string: "https://tsc.talhacan.com/terms")!)
+                        }
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(Theme.accent)
+                    }
+                }
+                .padding(.horizontal, 28)
+                .frame(maxWidth: 520)
+                .frame(maxWidth: .infinity)
+            }
         }
     }
 }
@@ -205,6 +304,7 @@ struct ContentView_Previews: PreviewProvider {
             .environmentObject(AuthStore())
             .environmentObject(PriceStore())
             .environmentObject(PortfolioStore())
+            .environmentObject(BillingStore())
     }
 }
 #endif

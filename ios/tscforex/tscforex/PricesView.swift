@@ -49,6 +49,8 @@ private func fixedRank(_ p: InstrumentPrice) -> Int {
 }
 
 struct MarketsView: View {
+    @EnvironmentObject var auth: AuthStore
+    @Environment(\.requestAuthentication) private var requestAuthentication
     @EnvironmentObject var prices: PriceStore
     @State private var query = ""
     @Binding var category: MarketCategory
@@ -182,6 +184,10 @@ struct MarketsView: View {
                 ForEach(tabs, id: \.value) { tab in
                     let active = category == tab.value
                     Button {
+                        if tab.value == .favorites, !auth.isLoggedIn {
+                            requestAuthentication()
+                            return
+                        }
                         withAnimation(.easeInOut(duration: 0.15)) { category = tab.value }
                         Haptics.tap(); editMode = .inactive
                     } label: {
