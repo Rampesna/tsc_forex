@@ -6,11 +6,14 @@ import (
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/json"
+	"encoding/pem"
 	"errors"
 	"fmt"
 	"math/big"
 	"strings"
 	"time"
+
+	"github.com/tsc-forex/tsc_forex/internal/service/applecerts"
 )
 
 const (
@@ -56,11 +59,46 @@ type AppleJWSVerifier struct {
 }
 
 func NewAppleJWSVerifier() (*AppleJWSVerifier, error) {
-	roots, err := x509.SystemCertPool()
-	if err != nil || roots == nil {
-		return nil, fmt.Errorf("load system certificate roots: %w", err)
+	roots, err := appleRootCertPool()
+	if err != nil {
+		return nil, err
 	}
 	return &AppleJWSVerifier{roots: roots, now: time.Now}, nil
+}
+
+func appleRootCertPool() (*x509.CertPool, error) {
+	roots := x509.NewCertPool()
+	entries, err := applecerts.RootPEMs.ReadDir(".")
+	if err != nil {
+		return nil, fmt.Errorf("read embedded Apple root certificates: %w", err)
+	}
+	loaded := 0
+	for _, entry := range entries {
+		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".pem") {
+			continue
+		}
+		raw, readErr := applecerts.RootPEMs.ReadFile(entry.Name())
+		if readErr != nil {
+			return nil, fmt.Errorf("read Apple root %s: %w", entry.Name(), readErr)
+		}
+		block, _ := pem.Decode(raw)
+		if block == nil || block.Type != "CERTIFICATE" {
+			return nil, fmt.Errorf("decode Apple root %s: missing certificate PEM", entry.Name())
+		}
+		cert, parseErr := x509.ParseCertificate(block.Bytes)
+		if parseErr != nil {
+			return nil, fmt.Errorf("parse Apple root %s: %w", entry.Name(), parseErr)
+		}
+		if !appleRootOrgContains(cert.Subject.Organization, "Apple Inc.") {
+			return nil, fmt.Errorf("embedded root %s is not an Apple Inc. certificate", entry.Name())
+		}
+		roots.AddCert(cert)
+		loaded++
+	}
+	if loaded == 0 {
+		return nil, errors.New("no embedded Apple root certificates loaded")
+	}
+	return roots, nil
 }
 
 type appleJWSHeader struct {

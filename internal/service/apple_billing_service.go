@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"fmt"
 	"strings"
 	"time"
 
@@ -21,10 +22,10 @@ func (s *SubscriptionService) SyncAppleTransaction(ctx context.Context, userID u
 	}
 	info, err := s.verifier.VerifyTransaction(strings.TrimSpace(signedJWS))
 	if err != nil {
-		return BillingStatus{}, ErrInvalidAppleTransaction
+		return BillingStatus{}, fmt.Errorf("%w: %v", ErrInvalidAppleTransaction, err)
 	}
 	if err := s.validateAppleInfo(info); err != nil {
-		return BillingStatus{}, err
+		return BillingStatus{}, fmt.Errorf("%w: validate transaction", err)
 	}
 	if info.AppAccountToken == "" {
 		return BillingStatus{}, ErrInvalidAppleTransaction
@@ -53,19 +54,25 @@ func (s *SubscriptionService) ProcessAppleNotification(ctx context.Context, sign
 		return ErrBillingDisabled
 	}
 	notification, err := s.verifier.VerifyNotification(strings.TrimSpace(signedPayload))
-	if err != nil || notification.BundleID != s.cfg.BundleID || !s.environmentAllowed(notification.Environment) {
-		return ErrInvalidAppleTransaction
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalidAppleTransaction, err)
+	}
+	if notification.BundleID != s.cfg.BundleID || !s.environmentAllowed(notification.Environment) {
+		return fmt.Errorf("%w: notification bundle/environment rejected", ErrInvalidAppleTransaction)
 	}
 	// TEST notifications intentionally contain no transaction.
 	if strings.TrimSpace(notification.SignedTransactionInfo) == "" {
 		return nil
 	}
 	info, err := s.verifier.VerifyTransaction(notification.SignedTransactionInfo)
-	if err != nil || info.BundleID != notification.BundleID || !strings.EqualFold(info.Environment, notification.Environment) {
-		return ErrInvalidAppleTransaction
+	if err != nil {
+		return fmt.Errorf("%w: %v", ErrInvalidAppleTransaction, err)
+	}
+	if info.BundleID != notification.BundleID || !strings.EqualFold(info.Environment, notification.Environment) {
+		return fmt.Errorf("%w: notification transaction mismatch", ErrInvalidAppleTransaction)
 	}
 	if err := s.validateAppleInfo(info); err != nil {
-		return err
+		return fmt.Errorf("%w: validate notification transaction", err)
 	}
 	var userID *uuid.UUID
 	if info.AppAccountToken != "" {

@@ -62,6 +62,7 @@ func (h *BillingHandler) SyncApple(c *gin.Context) {
 	}
 	status, err := h.service.SyncAppleTransaction(c.Request.Context(), uid, request.SignedTransaction, request.RecoveryToken)
 	if err != nil {
+		_ = c.Error(err)
 		writeSubscriptionError(c, err, "")
 		return
 	}
@@ -87,6 +88,7 @@ func (h *BillingHandler) AppleNotifications(c *gin.Context) {
 		return
 	}
 	if err := h.service.ProcessAppleNotification(c.Request.Context(), request.SignedPayload); err != nil {
+		_ = c.Error(err)
 		writeSubscriptionError(c, err, "")
 		return
 	}
