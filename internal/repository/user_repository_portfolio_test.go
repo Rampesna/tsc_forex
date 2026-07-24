@@ -46,6 +46,7 @@ func TestDeleteUserRemovesPortfolioLedger(t *testing.T) {
 		&models.StudyGroupMember{},
 		&models.SubscriptionEntitlement{},
 		&models.AppleTransaction{},
+		&models.GooglePlayTransaction{},
 		&models.FeatureUsage{},
 		&models.FreeResearchClaim{},
 		&models.MarketResearchArchive{},
