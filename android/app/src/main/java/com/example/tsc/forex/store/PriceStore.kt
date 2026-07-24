@@ -36,8 +36,23 @@ class PriceStore(private val prefs: Prefs, private val auth: AuthStore) {
     fun start() {
         if (started) return
         started = true
-        auth.onAccessTokenChanged = { token -> socket?.updateToken(token) }
+        // Mirror iOS: token change reconnects WS and pulls server watchlist;
+        // logout clears device-local favorites so the previous account's list
+        // does not linger on this phone.
+        auth.onAccessTokenChanged = { token ->
+            socket?.updateToken(token)
+            if (token.isNullOrBlank()) {
+                clearAccountData()
+            } else {
+                scope.launch { syncFavorites() }
+            }
+        }
         bootstrap()
+        if (auth.isLoggedIn) {
+            scope.launch { syncFavorites() }
+        } else {
+            clearAccountData()
+        }
         socket = PriceSocket(
             onPrice = { ip -> applyPrice(ip) },
             onNotification = { n -> liveNotifications.add(0, n) },
@@ -56,6 +71,28 @@ class PriceStore(private val prefs: Prefs, private val auth: AuthStore) {
     }
 
     fun refresh() = bootstrap()
+
+    /** Drops account-scoped favorites (guest / logout). Prices stay connected. */
+    fun clearAccountData() {
+        favorites = emptySet()
+        favoriteOrder = emptyList()
+        liveNotifications.clear()
+        prefs.favorites = emptySet()
+        prefs.favoriteOrder = emptyList()
+    }
+
+    /** Replaces local favorites with the authenticated user's server watchlist. */
+    suspend fun syncFavorites() {
+        if (!auth.isLoggedIn) return
+        val remote = runCatching { auth.newApiClient().watchlist() }.getOrNull() ?: return
+        val remoteSet = remote.toSet()
+        val keptOrder = favoriteOrder.filter { remoteSet.contains(it) }
+        val appended = remote.filter { !keptOrder.contains(it) }
+        favorites = remoteSet
+        favoriteOrder = keptOrder + appended
+        prefs.favorites = remoteSet
+        prefs.favoriteOrder = favoriteOrder
+    }
 
     private fun applyPrice(ip: InstrumentPrice) {
         prices[ip.code] = ip

@@ -309,6 +309,8 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("billing.device_check_enabled", false)
 	v.SetDefault("billing.device_check_key_id", "")
 	v.SetDefault("billing.device_check_private_key_path", "")
+	v.SetDefault("billing.google_package_name", "com.talhacan.tscforex")
+	v.SetDefault("billing.google_credentials_path", "")
 
 	v.SetDefault("webauthn.enabled", false)
 	v.SetDefault("webauthn.rp_display_name", "TSC Forex")

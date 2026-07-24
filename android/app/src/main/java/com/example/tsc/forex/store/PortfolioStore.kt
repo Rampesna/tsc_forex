@@ -13,10 +13,6 @@ import com.example.tsc.forex.data.PortfolioPositionDetail
 import com.example.tsc.forex.data.Prefs
 import org.json.JSONArray
 import org.json.JSONObject
-import java.text.SimpleDateFormat
-import java.util.Date
-import java.util.Locale
-import java.util.TimeZone
 import java.util.UUID
 
 data class Holding(val code: String, val amount: Double, val cost: Double)
@@ -27,15 +23,17 @@ class PortfolioStore(
 ) {
     var overview by mutableStateOf<PortfolioOverview?>(null)
         private set
+    var portfolios by mutableStateOf<List<PortfolioOverview>>(emptyList())
+        private set
     var performance by mutableStateOf<List<PortfolioPerformancePoint>>(emptyList())
         private set
     var loading by mutableStateOf(false)
         private set
     var errorMessage by mutableStateOf<String?>(null)
-        private set
     var legacyPreview by mutableStateOf<List<Holding>>(emptyList())
         private set
     private var userScope: String? = null
+    private var preferredPortfolioId: String? = null
 
     val activePositions: List<PortfolioPosition>
         get() = overview?.positions?.filter { it.quantity > 0 } ?: emptyList()
@@ -47,12 +45,15 @@ class PortfolioStore(
         errorMessage = null
         try {
             val api = auth.newApiClient()
-            var portfolios = api.portfolios()
-            if (portfolios.isEmpty()) {
+            var available = api.portfolios()
+            if (available.isEmpty()) {
                 val created = api.createPortfolio("Ana Portföy")
-                portfolios = listOf(api.portfolio(created.id))
+                available = listOf(api.portfolio(created.id))
             }
-            var next = portfolios.first()
+            portfolios = available
+            val preferred = preferredPortfolioId
+                ?: overview?.portfolio?.id
+            var next = available.firstOrNull { it.portfolio.id == preferred } ?: available.first()
             if (userScope == null) activateScope(next.portfolio.userId)
             migrateLegacyStorage(next)
             val legacy = legacyHoldings()
@@ -64,11 +65,11 @@ class PortfolioStore(
                     next = api.portfolio(next.portfolio.id)
                 }
             }
-            overview = next
+            selectLocally(next)
             persistCache(next)
             if (flushOutbox()) {
                 next = api.portfolio(next.portfolio.id)
-                overview = next
+                selectLocally(next)
                 persistCache(next)
             }
             performance = runCatching {
@@ -79,6 +80,92 @@ class PortfolioStore(
         } finally {
             loading = false
         }
+    }
+
+    suspend fun selectPortfolio(id: String, prices: Map<String, InstrumentPrice>, range: String = "1y") {
+        errorMessage = null
+        preferredPortfolioId = id
+        try {
+            val selected = portfolios.firstOrNull { it.portfolio.id == id }
+                ?: auth.newApiClient().portfolio(id)
+            selectLocally(selected)
+            performance = runCatching {
+                auth.newApiClient().portfolioPerformance(id, range)
+            }.getOrDefault(emptyList())
+            // Refresh full detail for selected portfolio
+            val fresh = auth.newApiClient().portfolio(id)
+            selectLocally(fresh)
+            portfolios = portfolios.map { if (it.portfolio.id == fresh.portfolio.id) fresh else it }
+                .let { list -> if (list.any { it.portfolio.id == fresh.portfolio.id }) list else list + fresh }
+        } catch (e: Exception) {
+            errorMessage = e.message ?: "Portföy seçilemedi."
+        }
+    }
+
+    suspend fun createPortfolio(name: String, prices: Map<String, InstrumentPrice>, range: String = "1y"): Boolean {
+        val cleaned = name.trim()
+        if (cleaned.isEmpty()) {
+            errorMessage = "Geçerli bir portföy adı girin."
+            return false
+        }
+        return try {
+            val created = auth.newApiClient().createPortfolio(cleaned)
+            val selected = auth.newApiClient().portfolio(created.id)
+            portfolios = portfolios.filter { it.portfolio.id != selected.portfolio.id } + selected
+            selectLocally(selected)
+            performance = runCatching {
+                auth.newApiClient().portfolioPerformance(selected.portfolio.id, range)
+            }.getOrDefault(emptyList())
+            true
+        } catch (e: Exception) {
+            errorMessage = e.message ?: "Portföy oluşturulamadı."
+            false
+        }
+    }
+
+    suspend fun renameCurrentPortfolio(name: String): Boolean {
+        val id = overview?.portfolio?.id ?: return false
+        val cleaned = name.trim()
+        if (cleaned.isEmpty()) {
+            errorMessage = "Geçerli bir portföy adı girin."
+            return false
+        }
+        return try {
+            auth.newApiClient().updatePortfolio(id, cleaned)
+            val refreshed = auth.newApiClient().portfolio(id)
+            selectLocally(refreshed)
+            portfolios = portfolios.map { if (it.portfolio.id == id) refreshed else it }
+            true
+        } catch (e: Exception) {
+            errorMessage = e.message ?: "Yeniden adlandırılamadı."
+            false
+        }
+    }
+
+    suspend fun deleteCurrentPortfolio(prices: Map<String, InstrumentPrice>, range: String = "1y"): Boolean {
+        val currentId = overview?.portfolio?.id ?: return false
+        if (portfolios.size <= 1) {
+            errorMessage = "En az bir portföy bulunmalıdır."
+            return false
+        }
+        return try {
+            auth.newApiClient().deletePortfolio(currentId)
+            portfolios = portfolios.filter { it.portfolio.id != currentId }
+            val next = portfolios.first()
+            selectLocally(next)
+            performance = runCatching {
+                auth.newApiClient().portfolioPerformance(next.portfolio.id, range)
+            }.getOrDefault(emptyList())
+            true
+        } catch (e: Exception) {
+            errorMessage = e.message ?: "Portföy silinemedi."
+            false
+        }
+    }
+
+    private fun selectLocally(value: PortfolioOverview) {
+        overview = value
+        preferredPortfolioId = value.portfolio.id
     }
 
     suspend fun refreshPerformance(range: String) {
@@ -318,18 +405,37 @@ class PortfolioStore(
             .put("client_id", clientId)
             .put("code", code)
             .put("type", type)
-            .put("quantity", quantity.toString())
-            .put("unit_price_native", unitPrice.toString())
-            .put("amount_native", amount.toString())
-            .put("fee_native", fee.toString())
+            .put("quantity", plainDecimal(quantity))
+            .put("unit_price_native", plainDecimal(unitPrice))
+            .put("amount_native", plainDecimal(amount))
+            .put("fee_native", plainDecimal(fee))
             .put("currency", currency)
-            .put("usdtry", usdtry.toString())
+            .put("usdtry", plainDecimal(usdtry))
             .put("occurred_at", occurredAt)
             .put("note", note)
 
+        /**
+         * Builds RFC3339 `occurred_at` that is never in the future.
+         * iOS sends `Date()` for today; Android used to hardcode noon UTC which
+         * is still "future" in the morning (TR) and the API rejects it.
+         */
+        fun occurredAtIso(dateYmd: String): String {
+            val zone = java.time.ZoneId.systemDefault()
+            val date = runCatching { java.time.LocalDate.parse(dateYmd) }.getOrNull()
+                ?: return isoNow()
+            val today = java.time.LocalDate.now(zone)
+            val instant = if (!date.isBefore(today)) {
+                java.time.Instant.now()
+            } else {
+                date.atTime(12, 0).atZone(zone).toInstant()
+            }
+            return java.time.format.DateTimeFormatter.ISO_INSTANT.format(instant)
+        }
+
+        private fun plainDecimal(v: Double): String =
+            java.math.BigDecimal.valueOf(v).stripTrailingZeros().toPlainString()
+
         private fun isoNow(): String =
-            SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss.SSS'Z'", Locale.US).apply {
-                timeZone = TimeZone.getTimeZone("UTC")
-            }.format(Date())
+            java.time.format.DateTimeFormatter.ISO_INSTANT.format(java.time.Instant.now())
     }
 }

@@ -177,8 +177,10 @@ oauth:
   apple_revoke_client_id: talhacan.tscforex
   apple_key_id: ""
   apple_private_key_path: ""
-  android_package_name: com.example.tsc.forex
-  android_sha256: []
+  android_package_name: com.talhacan.tscforex
+  # Debug keystore SHA-256 (local release installs). Add Play App Signing SHA-256 before store release.
+  android_sha256:
+    - "0A:AB:C2:DD:D5:A9:70:55:0A:8C:45:E9:A6:5B:82:29:91:28:0B:04:AD:34:3A:BE:FF:0E:1D:CB:F8:31:62:38"
   # Sign in with Apple (web) domain verification file content (from the Services
   # ID config screen). Served at
   # /.well-known/apple-developer-domain-association.txt. Set via
@@ -234,6 +236,10 @@ billing:
   device_check_enabled: false
   device_check_key_id: ""
   device_check_private_key_path: ""
+  # Google Play Billing (Android). Leave credentials empty until a Play Console
+  # service account JSON is mounted; Apple StoreKit continues to work alone.
+  google_package_name: com.talhacan.tscforex
+  google_credentials_path: ""
 
 log:
   level: info

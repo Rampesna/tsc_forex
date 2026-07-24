@@ -109,6 +109,7 @@ func migrateSchema(db *gorm.DB) error {
 		&models.PortfolioTransaction{},
 		&models.SubscriptionEntitlement{},
 		&models.AppleTransaction{},
+		&models.GooglePlayTransaction{},
 		&models.FeatureUsage{},
 		&models.FreeResearchClaim{},
 		&models.MarketResearchArchive{},

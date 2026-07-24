@@ -165,6 +165,10 @@ func (r *userRepository) DeleteUser(ctx context.Context, id uuid.UUID, subscript
 			Updates(map[string]any{"user_id": nil, "app_account_token": ""}).Error; err != nil {
 			return err
 		}
+		if err := tx.Model(&models.GooglePlayTransaction{}).Where("user_id = ?", id).
+			Updates(map[string]any{"user_id": nil, "obfuscated_account_id": ""}).Error; err != nil {
+			return err
+		}
 		portfolioIDs := tx.Model(&models.Portfolio{}).
 			Select("id").
 			Where("user_id = ?", id)

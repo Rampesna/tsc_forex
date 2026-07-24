@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
@@ -22,8 +23,11 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material.icons.filled.KeyboardArrowUp
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material.icons.outlined.StarBorder
+import androidx.compose.material3.Badge
+import androidx.compose.material3.BadgedBox
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedTextField
@@ -38,14 +42,15 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.tsc.forex.data.InstrumentPrice
+import com.example.tsc.forex.store.AuthStore
 import com.example.tsc.forex.store.PriceStore
 import com.example.tsc.forex.ui.AssetIcon
 import com.example.tsc.forex.ui.ChangePill
-import com.example.tsc.forex.ui.ConnectionDot
 import com.example.tsc.forex.ui.Fmt
 import com.example.tsc.forex.ui.Sparkline
 import com.example.tsc.forex.ui.theme.Th
@@ -55,10 +60,17 @@ private enum class Cat(val label: String) {
 }
 
 @Composable
-fun MarketsScreen(store: PriceStore, onOpen: (String) -> Unit) {
+fun MarketsScreen(
+    store: PriceStore,
+    auth: AuthStore,
+    onOpen: (String) -> Unit,
+    onNotifications: () -> Unit,
+    onRequestAuth: () -> Unit,
+) {
     var query by remember { mutableStateOf("") }
     var cat by remember { mutableStateOf(Cat.ALL) }
     var editFavs by remember { mutableStateOf(false) }
+    val notifCount = store.liveNotifications.size
 
     val base: List<InstrumentPrice> = when (cat) {
         Cat.FAV -> store.orderedFavorites()
@@ -80,21 +92,36 @@ fun MarketsScreen(store: PriceStore, onOpen: (String) -> Unit) {
         Row(
             Modifier
                 .fillMaxWidth()
-                .padding(start = 16.dp, end = 16.dp, top = 14.dp, bottom = 6.dp),
+                .statusBarsPadding()
+                .padding(start = 16.dp, end = 8.dp, top = 14.dp, bottom = 6.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
-            Text("Piyasalar", color = Th.text, fontSize = 24.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
-            ConnectionDot(store.connected)
-            Text(
-                if (store.connected) " Canlı" else " Bağlanıyor",
-                color = Th.textDim, fontSize = 12.sp,
-            )
+            Column(Modifier.weight(1f)) {
+                Text("Piyasalar", color = Th.text, fontSize = 28.sp, fontWeight = FontWeight.Bold)
+                Text("Altın · Döviz · Kripto · Hisse", color = Th.textDim, fontSize = 12.sp)
+            }
+            if (cat == Cat.FAV && list.isNotEmpty()) {
+                TextButton(onClick = { editFavs = !editFavs }) {
+                    Text(if (editFavs) "Bitti" else "Düzenle", color = Th.accent, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                }
+            }
+            IconButton(onClick = onNotifications) {
+                BadgedBox(badge = {
+                    if (notifCount > 0) {
+                        Badge(containerColor = Th.down) {
+                            Text(if (notifCount > 9) "9+" else "$notifCount", fontSize = 9.sp)
+                        }
+                    }
+                }) {
+                    Icon(Icons.Filled.Notifications, "Bildirimler", tint = Th.textDim)
+                }
+            }
         }
 
         OutlinedTextField(
             value = query,
             onValueChange = { query = it },
-            placeholder = { Text("Sembol veya isim ara", color = Th.textFaint) },
+            placeholder = { Text("Ara: Gram Altın, Dolar, Euro…", color = Th.textFaint) },
             singleLine = true,
             keyboardOptions = KeyboardOptions.Default,
             colors = OutlinedTextFieldDefaults.colors(
@@ -125,33 +152,23 @@ fun MarketsScreen(store: PriceStore, onOpen: (String) -> Unit) {
                 Box(
                     Modifier
                         .clip(RoundedCornerShape(10.dp))
-                        .background(if (selected) Th.accent.copy(alpha = 0.18f) else Th.surface)
-                        .clickable { cat = c; editFavs = false }
+                        .background(if (selected) Th.accent else Th.surface)
+                        .clickable {
+                            if (c == Cat.FAV && !auth.isLoggedIn) {
+                                onRequestAuth()
+                                return@clickable
+                            }
+                            cat = c
+                            editFavs = false
+                        }
                         .padding(horizontal = 14.dp, vertical = 8.dp),
                 ) {
                     Text(
                         c.label,
-                        color = if (selected) Th.accent else Th.textDim,
+                        color = if (selected) Color.White else Th.textDim,
                         fontSize = 13.sp,
-                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
+                        fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
                     )
-                }
-            }
-        }
-
-        if (cat == Cat.ALL && store.topGainers().isNotEmpty()) {
-            GainersStrip(store, onOpen)
-        }
-
-        if (cat == Cat.FAV && list.isNotEmpty()) {
-            Row(
-                Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp),
-                horizontalArrangement = Arrangement.End,
-            ) {
-                TextButton(onClick = { editFavs = !editFavs }) {
-                    Text(if (editFavs) "Bitti" else "Sırala", color = Th.accent, fontSize = 13.sp)
                 }
             }
         }
@@ -176,44 +193,12 @@ fun MarketsScreen(store: PriceStore, onOpen: (String) -> Unit) {
                     items(list, key = { it.code }) { ip ->
                         MarketRow(ip, store.sparklines[ip.code].orEmpty(),
                             isFav = store.isFavorite(ip.code),
-                            onFav = { store.toggleFavorite(ip.code) },
+                            onFav = {
+                                if (!auth.isLoggedIn) onRequestAuth()
+                                else store.toggleFavorite(ip.code)
+                            },
                             onClick = { onOpen(ip.code) })
                     }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun GainersStrip(store: PriceStore, onOpen: (String) -> Unit) {
-    Column(Modifier.padding(bottom = 10.dp)) {
-        Text(
-            "Günün en çok kazandıranları",
-            color = Th.textDim, fontSize = 12.sp, fontWeight = FontWeight.SemiBold,
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 6.dp),
-        )
-        LazyRow(
-            contentPadding = PaddingValues(horizontal = 16.dp),
-            horizontalArrangement = Arrangement.spacedBy(10.dp),
-        ) {
-            items(store.topGainers(), key = { it.code }) { ip ->
-                Column(
-                    Modifier
-                        .clip(RoundedCornerShape(12.dp))
-                        .background(Th.surface)
-                        .clickable { onOpen(ip.code) }
-                        .padding(12.dp)
-                        .width(130.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    Row(verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        AssetIcon(ip, size = 24)
-                        Text(ip.displayName, color = Th.textDim, fontSize = 11.sp, maxLines = 1)
-                    }
-                    Text(Fmt.money(ip.price, ip.currency), color = Th.text, fontSize = 14.sp, fontWeight = FontWeight.Bold, maxLines = 1)
-                    ChangePill(ip.changePct)
                 }
             }
         }

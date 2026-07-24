@@ -5,9 +5,7 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.getValue
 import com.example.tsc.forex.ui.RootScaffold
-import com.example.tsc.forex.ui.screens.LoginScreen
 import com.example.tsc.forex.ui.theme.TscForexTheme
 
 class MainActivity : ComponentActivity() {
@@ -18,13 +16,21 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             TscForexTheme {
-                val loggedIn = app.auth.isLoggedIn
-                if (loggedIn) {
-                    LaunchedEffect(Unit) { app.prices.start() }
-                    RootScaffold(app.auth, app.prices, app.portfolio, app.prefs)
-                } else {
-                    LoginScreen(app.auth, onLoggedIn = { app.prices.start() })
+                // Markets are public; other tabs soft-gate to login (iOS parity).
+                LaunchedEffect(Unit) {
+                    app.prices.start()
+                    if (app.auth.isLoggedIn) {
+                        app.auth.loadProfile()
+                        app.billing.refreshNow()
+                    }
                 }
+                RootScaffold(
+                    auth = app.auth,
+                    prices = app.prices,
+                    portfolio = app.portfolio,
+                    billing = app.billing,
+                    prefs = app.prefs,
+                )
             }
         }
     }

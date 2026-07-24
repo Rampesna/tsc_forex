@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.get_login_creds"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.talhacan.tscforex",
+      "sha256_cert_fingerprints": [
+        "0A:AB:C2:DD:D5:A9:70:55:0A:8C:45:E9:A6:5B:82:29:91:28:0B:04:AD:34:3A:BE:FF:0E:1D:CB:F8:31:62:38"
+      ]
+    }
+  }
+]

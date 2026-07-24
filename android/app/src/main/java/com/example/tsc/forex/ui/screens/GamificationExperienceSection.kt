@@ -1,30 +1,46 @@
 package com.example.tsc.forex.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.automirrored.outlined.MenuBook
+import androidx.compose.material.icons.outlined.Checklist
+import androidx.compose.material.icons.outlined.MyLocation
+import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
@@ -39,6 +55,7 @@ import com.example.tsc.forex.ui.Card
 import com.example.tsc.forex.ui.theme.Th
 import kotlinx.coroutines.launch
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun GamificationExperienceSection(
     auth: AuthStore,
@@ -50,7 +67,7 @@ fun GamificationExperienceSection(
 ) {
     val scope = rememberCoroutineScope()
     var exp by remember { mutableStateOf(initial) }
-    var tab by remember { mutableIntStateOf(0) }
+    var openJourney by remember { mutableStateOf<Int?>(null) }
     var busy by remember { mutableStateOf(false) }
     var risk by remember { mutableStateOf("moderate") }
     var codes by remember { mutableStateOf<List<String>>(emptyList()) }
@@ -62,12 +79,17 @@ fun GamificationExperienceSection(
     var disciplineCode by remember { mutableStateOf(initial.disciplineQuests.firstOrNull()?.code.orEmpty()) }
     var disciplineNote by remember { mutableStateOf("") }
     var paperCode by remember { mutableStateOf("GRAM_GOLD") }
+    var paperKind by remember { mutableStateOf("gold") }
+    var showPaperKindPicker by remember { mutableStateOf(false) }
+    var showPaperAssetPicker by remember { mutableStateOf(false) }
     var paperSide by remember { mutableStateOf("buy") }
     var paperQuantity by remember { mutableStateOf("1") }
     var paperPrice by remember { mutableStateOf("") }
     var paperRisk by remember { mutableStateOf("1") }
     var paperThesis by remember { mutableStateOf("") }
     var paperInvalidation by remember { mutableStateOf("") }
+    val paperInstrument = prices.prices[paperCode]
+    val paperLabel = paperInstrument?.displayName ?: paperCode
     var reviewTradeId by remember { mutableStateOf("") }
     var retrospective by remember { mutableStateOf("") }
     var followedPlan by remember { mutableStateOf(true) }
@@ -102,32 +124,40 @@ fun GamificationExperienceSection(
     }
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Card(Modifier.fillMaxWidth()) {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                    Text("GELİŞİM ÖZETİ", color = Th.textDim, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                    Text("v${exp.ruleVersion}", color = Th.textFaint, fontSize = 10.sp)
-                }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    SummaryTile("Ustalık", "${exp.weeklySummary.masteredLessons}/${exp.weeklySummary.totalLessons}", Modifier.weight(1f))
-                    SummaryTile("Tekrar", "${exp.weeklySummary.dueReviews}", Modifier.weight(1f))
-                    SummaryTile("Sezon", "${exp.weeklySummary.seasonPoints}", Modifier.weight(1f))
-                }
-                Text("Puanlama finansal getiriden bağımsızdır; öğrenme ve karar sürecini ölçer.",
-                    color = Th.textFaint, fontSize = 10.sp)
-            }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            JourneyHubCard(Icons.Outlined.MyLocation, "Günlük Plan", "3 adım · yaklaşık 1 dakika", Modifier.weight(1f)) { openJourney = 0 }
+            JourneyHubCard(Icons.AutoMirrored.Outlined.MenuBook, "Öğrenme", "Kısa ders · tek soru", Modifier.weight(1f)) { openJourney = 1 }
         }
-
-        Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-            horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-            listOf("Bugün", "Öğren", "Sezon", "Paper", "Gizlilik").forEachIndexed { index, title ->
-                TextButton(onClick = { tab = index }, colors = ButtonDefaults.textButtonColors(
-                    contentColor = if (tab == index) Th.accent else Th.textDim,
-                )) { Text(title, fontWeight = FontWeight.Bold) }
-            }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            JourneyHubCard(Icons.Outlined.Checklist, "Karar Günlüğü", "Sanal karar ve sonradan değerlendirme", Modifier.weight(1f)) { openJourney = 2 }
+            JourneyHubCard(Icons.Outlined.Shield, "Gizlilik", "Paylaşım tercihleri", Modifier.weight(1f)) { openJourney = 3 }
         }
+    }
 
-        when (tab) {
+    openJourney?.let { tab ->
+        val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        val title = when (tab) {
+            0 -> "Günlük Plan"
+            1 -> "Öğrenme"
+            2 -> "Karar Günlüğü"
+            else -> "Gizlilik"
+        }
+        ModalBottomSheet(
+            onDismissRequest = { openJourney = null },
+            sheetState = sheetState,
+            containerColor = Th.bg,
+        ) {
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 640.dp)
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp)
+                    .padding(bottom = 28.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp),
+            ) {
+                Text(title, color = Th.text, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                when (tab) {
             0 -> {
                 Card(Modifier.fillMaxWidth()) {
                     Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
@@ -204,29 +234,21 @@ fun GamificationExperienceSection(
                         busy = false
                     }
                 })
-            2 -> Card(Modifier.fillMaxWidth()) {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text(exp.season.name, color = Th.text, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                    Text("${exp.season.code} · ${exp.season.league} Ligi · #${exp.season.rank} · ${exp.season.points} puan",
-                        color = Th.accent, fontSize = 12.sp, fontWeight = FontWeight.Bold)
-                    Text(exp.season.scoring, color = Th.textFaint, fontSize = 10.sp)
-                    exp.season.standings.take(8).forEach {
-                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                            Text("#${it.rank}  ${it.displayName.ifEmpty { "Yatırımcı" }}",
-                                color = Th.text, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                            Text("${it.xp} puan", color = Th.accent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                        }
-                    }
-                }
-            }
-            3 -> {
+            2 -> {
                 Card(Modifier.fillMaxWidth()) {
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Text("PAPER KARAR LABORATUVARI", color = Th.textDim, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         Text("Getiri değil tez, risk, geçersizleşme ve retrospektif puanlanır.", color = Th.textDim, fontSize = 12.sp)
+                        TextButton(onClick = { showPaperKindPicker = true }) {
+                            Text(
+                                "Varlık: $paperLabel (${instrumentKindTitle(paperKind)})  · seç",
+                                color = Th.accent,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                        }
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            GamField(paperCode, { paperCode = it.uppercase() }, "Kod", Modifier.weight(1f))
-                            ChoiceRow(listOf("buy" to "Alış", "sell" to "Satış"), paperSide, Modifier.weight(2f)) { paperSide = it }
+                            ChoiceRow(listOf("buy" to "Alış", "sell" to "Satış"), paperSide, Modifier.fillMaxWidth()) { paperSide = it }
                         }
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             GamField(paperQuantity, { paperQuantity = it }, "Miktar", Modifier.weight(1f), keyboard = KeyboardType.Decimal)
@@ -296,7 +318,7 @@ fun GamificationExperienceSection(
                         Text("GİZLİLİK KONTROLLERİ", color = Th.textDim, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         Text("Para, pozisyon ve getiri sosyal yüzeylerde paylaşılmaz.", color = Th.textDim, fontSize = 12.sp)
                         GamField(alias, { alias = it }, "Takma ad")
-                        SettingToggle("Sezon sıralamasında görün", leagueOptIn) { leagueOptIn = it }
+                        SettingToggle("Anonim ligde görün", leagueOptIn) { leagueOptIn = it }
                         SettingToggle("Kişiselleştirilmiş öğrenme", personalized) { personalized = it }
                         SettingToggle("Öğrenme bildirimleri", notifications) { notifications = it }
                         SettingToggle("Gizlilik güvenli çalışma grupları", socialOptIn) { socialOptIn = it }
@@ -353,8 +375,11 @@ fun GamificationExperienceSection(
                     }
                 }
             }
+                }
+            }
         }
     }
+
     if (showInstrumentPicker) {
         InstrumentMultiPickerDialog(
             instruments = prices.all(),
@@ -362,6 +387,62 @@ fun GamificationExperienceSection(
             maxSelection = 3,
             onDismiss = { showInstrumentPicker = false },
         ) { codes = it }
+    }
+    if (showPaperKindPicker) {
+        InstrumentKindPickerDialog(
+            instruments = prices.all(),
+            selectedKind = paperKind,
+            onDismiss = { showPaperKindPicker = false },
+            onSelect = {
+                paperKind = it
+                showPaperKindPicker = false
+                showPaperAssetPicker = true
+            },
+        )
+    }
+    if (showPaperAssetPicker) {
+        InstrumentPickerDialog(
+            instruments = prices.all(),
+            kind = paperKind,
+            selectedCode = paperCode,
+            onDismiss = { showPaperAssetPicker = false },
+            onSelect = {
+                paperCode = it.code
+                paperPrice = it.price.toString()
+                showPaperAssetPicker = false
+            },
+        )
+    }
+}
+
+@Composable
+private fun JourneyHubCard(
+    icon: ImageVector,
+    title: String,
+    subtitle: String,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit,
+) {
+    Column(
+        modifier
+            .clip(RoundedCornerShape(16.dp))
+            .background(Th.surface)
+            .clickable(onClick = onClick)
+            .padding(14.dp)
+            .heightIn(min = 96.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
+            Icon(icon, contentDescription = null, tint = Th.accent, modifier = Modifier.size(22.dp))
+            Icon(
+                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                contentDescription = null,
+                tint = Th.textFaint,
+                modifier = Modifier.size(18.dp),
+            )
+        }
+        Text(title, color = Th.text, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+        Text(subtitle, color = Th.textDim, fontSize = 11.sp, lineHeight = 14.sp)
     }
 }
 

@@ -44,6 +44,8 @@ var (
 	ErrOperationInProgress          = errors.New("idempotent operation is still in progress")
 	ErrTransactionAccount           = errors.New("app store transaction belongs to another account")
 	ErrInvalidAppleTransaction      = errors.New("invalid apple transaction")
+	ErrInvalidGooglePurchase        = errors.New("invalid google play purchase")
+	ErrGoogleBillingUnavailable     = errors.New("google play billing unavailable")
 	ErrDeviceAttestationNeeded      = errors.New("verified iOS App Attest assertion required")
 	ErrDeviceAttestationUnavailable = errors.New("iOS App Attest verification unavailable")
 	ErrInvalidDeviceAttestation     = errors.New("invalid iOS App Attest assertion")
@@ -170,12 +172,13 @@ type ResearchArchiveItem struct {
 // It deliberately uses one database transaction for each consumption so a
 // concurrent retry cannot overspend the same allowance.
 type SubscriptionService struct {
-	db          *gorm.DB
-	cfg         config.BillingConfig
-	verifier    AppleSignedDataVerifier
-	appAttest   AppAttestVerifier
-	deviceCheck DeviceCheckVerifier
-	now         func() time.Time
+	db             *gorm.DB
+	cfg            config.BillingConfig
+	verifier       AppleSignedDataVerifier
+	googleVerifier GooglePlayPurchaseVerifier
+	appAttest      AppAttestVerifier
+	deviceCheck    DeviceCheckVerifier
+	now            func() time.Time
 }
 
 func NewSubscriptionService(db *gorm.DB, cfg config.BillingConfig, verifier AppleSignedDataVerifier, appAttest ...AppAttestVerifier) *SubscriptionService {
@@ -187,6 +190,15 @@ func NewSubscriptionService(db *gorm.DB, cfg config.BillingConfig, verifier Appl
 		db: db, cfg: cfg, verifier: verifier, appAttest: attestationVerifier,
 		deviceCheck: NewAppleDeviceCheckVerifier(cfg), now: func() time.Time { return time.Now().UTC() },
 	}
+}
+
+// WithGooglePlay attaches an optional Play purchase verifier. Apple paths are
+// unchanged when this is nil or not ready.
+func (s *SubscriptionService) WithGooglePlay(verifier GooglePlayPurchaseVerifier) *SubscriptionService {
+	if s != nil {
+		s.googleVerifier = verifier
+	}
+	return s
 }
 
 func (s *SubscriptionService) Enabled() bool { return s != nil && s.db != nil && s.cfg.Enabled }
@@ -235,6 +247,10 @@ func (s *SubscriptionService) Status(ctx context.Context, userID uuid.UUID, devi
 			state = "expired"
 		}
 		status.Entitlement = &EntitlementView{ProductID: ent.ProductID, Status: state, Environment: ent.Environment, ExpiresAt: ent.ExpiresAt}
+		if strings.EqualFold(ent.Provider, "google") {
+			status.PurchaseChannel = "google_play"
+			status.ManageURL = "https://play.google.com/store/account/subscriptions?package=com.talhacan.tscforex"
+		}
 	}
 
 	periodKey, periodEnd := quotaPeriod(ent, active, now)

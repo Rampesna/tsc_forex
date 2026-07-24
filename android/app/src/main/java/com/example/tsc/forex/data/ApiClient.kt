@@ -18,7 +18,26 @@ import java.util.TimeZone
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 
-class ApiException(val code: Int, message: String) : Exception(message)
+class ApiException(
+    val code: Int,
+    message: String,
+    val serverCode: String? = null,
+) : Exception(message) {
+    /** Keep idempotency key for in-flight / rate-limited operations. */
+    val shouldRetainRequestId: Boolean
+        get() = (code == 409 && serverCode == "operation_in_progress") || code == 429
+
+    companion object {
+        fun from(code: Int, body: String): ApiException {
+            val obj = runCatching { JSONObject(body) }.getOrNull()
+            val msg = obj?.optString("error")?.ifBlank { null }
+                ?: obj?.optString("message")?.ifBlank { null }
+                ?: body.ifBlank { "HTTP $code" }
+            val serverCode = obj?.optString("code")?.ifBlank { null }
+            return ApiException(code, msg, serverCode)
+        }
+    }
+}
 
 /**
  * Hand-rolled REST client over OkHttp. Transparently refreshes the access token
@@ -98,18 +117,76 @@ class ApiClient(
     suspend fun detail(code: String): InstrumentDetail =
         InstrumentDetail.from(unwrap(JSONObject(getRaw("instruments/$code/detail"))))
 
-    suspend fun marketInsight(code: String): MarketInsight {
+    suspend fun marketInsight(
+        code: String,
+        deviceId: String,
+        requestId: String,
+        onJobId: (String) -> Unit = {},
+    ): MarketInsight {
         var jobId = ""
-        repeat(120) {
-            val body = JSONObject().put("code", code)
-            if (jobId.isNotEmpty()) body.put("job_id", jobId)
-            val response = unwrap(postJson("me/ai/market-insight", body))
-            val pendingJob = response.optString("job_id")
-            if (pendingJob.isEmpty()) return MarketInsight.from(response)
-            jobId = pendingJob
-            delay(3_000)
+        for (i in 0 until 120) {
+            try {
+                val body = JSONObject()
+                    .put("code", code)
+                    .put("device_id", deviceId)
+                    .put("request_id", requestId)
+                if (jobId.isNotEmpty()) body.put("job_id", jobId)
+                val response = unwrap(postJson("me/ai/market-insight", body))
+                val pendingJob = response.optString("job_id")
+                if (pendingJob.isEmpty()) return MarketInsight.from(response)
+                jobId = pendingJob
+                onJobId(jobId)
+                delay(3_000)
+            } catch (e: ApiException) {
+                if (e.code == 409 && e.serverCode == "operation_in_progress") {
+                    delay(1_500)
+                } else {
+                    throw e
+                }
+            }
         }
         throw ApiException(504, "Derin araştırma beklenenden uzun sürdü; biraz sonra yeniden deneyin.")
+    }
+
+    suspend fun billingPlans(): BillingPlansResponse =
+        BillingPlansResponse.from(unwrap(JSONObject(getRaw("billing/plans"))))
+
+    suspend fun billingStatus(deviceId: String): BillingStatus {
+        val enc = java.net.URLEncoder.encode(deviceId, "UTF-8")
+        return BillingStatus.from(unwrap(JSONObject(getRaw("me/billing/status?device_id=$enc"))))
+    }
+
+    /** Verifies a Google Play purchase token with the backend (Android only). */
+    suspend fun syncGooglePurchase(
+        packageName: String,
+        productId: String,
+        purchaseToken: String,
+        deviceId: String,
+    ): BillingStatus {
+        val body = JSONObject()
+            .put("package_name", packageName)
+            .put("product_id", productId)
+            .put("purchase_token", purchaseToken)
+            .put("device_id", deviceId)
+        return BillingStatus.from(unwrap(postJson("me/billing/google/sync", body)))
+    }
+
+    suspend fun researchHistory(limit: Int = 50): List<ResearchArchiveItem> {
+        val bounded = limit.coerceIn(1, 100)
+        return parseArray(getRaw("me/ai/research-history?limit=$bounded"), "items") {
+            ResearchArchiveItem.from(it)
+        }
+    }
+
+    suspend fun portfolioHealth(id: String, requestId: String): PortfolioHealth =
+        PortfolioHealth.from(unwrap(postJson(
+            "me/portfolios/$id/health-check",
+            JSONObject().put("request_id", requestId),
+        )))
+
+    suspend fun exportPortfolio(id: String, requestId: String): ByteArray {
+        val body = JSONObject().put("request_id", requestId).toString().toRequestBody(json)
+        return executeBytes(Request.Builder().url(url("me/portfolios/$id/export")).post(body))
     }
 
     suspend fun sparklines(points: Int = 30): Map<String, List<Double>> {
@@ -125,6 +202,18 @@ class ApiClient(
 
     // ---- Watchlist ----
 
+    /** Server-side favorites for the authenticated user (`GET /me/watchlist`). */
+    suspend fun watchlist(): List<String> {
+        val o = JSONObject(getRaw("me/watchlist"))
+        val arr = o.optJSONArray("codes") ?: return emptyList()
+        return buildList {
+            for (i in 0 until arr.length()) {
+                val code = arr.optString(i).trim()
+                if (code.isNotEmpty()) add(code)
+            }
+        }
+    }
+
     suspend fun addWatch(code: String) { postJson("me/watchlist", JSONObject().put("code", code)) }
     suspend fun removeWatch(code: String) { delete("me/watchlist/$code") }
 
@@ -136,6 +225,13 @@ class ApiClient(
     suspend fun createAlert(code: String, threshold: Double, direction: String): PriceAlert =
         PriceAlert.from(unwrap(postJson("me/alerts",
             JSONObject().put("code", code).put("threshold", threshold).put("direction", direction))))
+
+    suspend fun updateAlert(id: String, direction: String, threshold: Double): PriceAlert =
+        PriceAlert.from(unwrap(postJson(
+            "me/alerts/$id",
+            JSONObject().put("direction", direction).put("threshold", threshold),
+            method = "PATCH",
+        )))
 
     suspend fun deleteAlert(id: String) { delete("me/alerts/$id") }
 
@@ -249,6 +345,17 @@ class ApiClient(
     suspend fun createPortfolio(name: String): PortfolioMeta =
         PortfolioMeta.from(unwrap(postJson("me/portfolios", JSONObject().put("name", name))))
 
+    suspend fun updatePortfolio(id: String, name: String): PortfolioMeta =
+        PortfolioMeta.from(unwrap(postJson(
+            "me/portfolios/$id",
+            JSONObject().put("name", name),
+            method = "PATCH",
+        )))
+
+    suspend fun deletePortfolio(id: String) {
+        delete("me/portfolios/$id")
+    }
+
     suspend fun portfolio(id: String): PortfolioOverview =
         PortfolioOverview.from(unwrap(JSONObject(getRaw("me/portfolios/$id"))))
 
@@ -310,12 +417,12 @@ class ApiClient(
                         .header("Accept", "application/json").header("Authorization", "Bearer $nt")
                     return@withContext client.newCall(retry.build()).execute().use { r2 ->
                         val t2 = r2.body?.string().orEmpty()
-                        if (!r2.isSuccessful) throw ApiException(r2.code, t2.ifBlank { r2.message })
+                        if (!r2.isSuccessful) throw ApiException.from(r2.code, t2.ifBlank { r2.message })
                         JSONObject(t2).optString("avatar_url")
                     }
                 }
             }
-            if (!resp.isSuccessful) throw ApiException(resp.code, text.ifBlank { resp.message })
+            if (!resp.isSuccessful) throw ApiException.from(resp.code, text.ifBlank { resp.message })
             JSONObject(text).optString("avatar_url")
         }
     }
@@ -344,6 +451,33 @@ class ApiClient(
         execute(Request.Builder().url(url(path)).delete())
     }
 
+    private suspend fun executeBytes(builder: Request.Builder, auth: Boolean = true, isRetry: Boolean = false): ByteArray =
+        withContext(Dispatchers.IO) {
+            val b = builder.header("Accept", "*/*")
+            if (auth) tokenProvider()?.let { b.header("Authorization", "Bearer $it") }
+            client.newCall(b.build()).execute().use { resp ->
+                val bytes = resp.body?.bytes() ?: ByteArray(0)
+                if (resp.code == 401 && auth && !isRetry && onRefresh != null) {
+                    val newToken = onRefresh.invoke()
+                    if (!newToken.isNullOrEmpty()) {
+                        val retry = builder.header("Accept", "*/*")
+                            .header("Authorization", "Bearer $newToken")
+                        return@withContext client.newCall(retry.build()).execute().use { r2 ->
+                            val b2 = r2.body?.bytes() ?: ByteArray(0)
+                            if (!r2.isSuccessful) {
+                                throw ApiException.from(r2.code, b2.toString(Charsets.UTF_8).ifBlank { r2.message })
+                            }
+                            b2
+                        }
+                    }
+                }
+                if (!resp.isSuccessful) {
+                    throw ApiException.from(resp.code, bytes.toString(Charsets.UTF_8).ifBlank { resp.message })
+                }
+                bytes
+            }
+        }
+
     private suspend fun execute(builder: Request.Builder, auth: Boolean = true, isRetry: Boolean = false): String =
         withContext(Dispatchers.IO) {
             val b = builder.header("Accept", "application/json")
@@ -358,12 +492,12 @@ class ApiClient(
                             .header("Authorization", "Bearer $newToken")
                         return@withContext client.newCall(retry.build()).execute().use { r2 ->
                             val t2 = r2.body?.string().orEmpty()
-                            if (!r2.isSuccessful) throw ApiException(r2.code, t2.ifBlank { r2.message })
+                            if (!r2.isSuccessful) throw ApiException.from(r2.code, t2.ifBlank { r2.message })
                             t2
                         }
                     }
                 }
-                if (!resp.isSuccessful) throw ApiException(resp.code, text.ifBlank { resp.message })
+                if (!resp.isSuccessful) throw ApiException.from(resp.code, text.ifBlank { resp.message })
                 text
             }
         }

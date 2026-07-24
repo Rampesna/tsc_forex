@@ -75,6 +75,41 @@ func (h *BillingHandler) SyncApple(c *gin.Context) {
 	c.JSON(http.StatusOK, status)
 }
 
+// SyncGoogle verifies a Google Play Billing purchase token. This is additive to
+// the Apple StoreKit path and does not change SyncApple request/response shapes.
+func (h *BillingHandler) SyncGoogle(c *gin.Context) {
+	uid, ok := currentUserID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, ErrorResponse{Error: "unauthorized"})
+		return
+	}
+	c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 64<<10)
+	var request struct {
+		PackageName   string `json:"package_name"`
+		ProductID     string `json:"product_id" binding:"required"`
+		PurchaseToken string `json:"purchase_token" binding:"required"`
+		DeviceID      string `json:"device_id"`
+	}
+	if err := c.ShouldBindJSON(&request); err != nil || strings.TrimSpace(request.PurchaseToken) == "" || strings.TrimSpace(request.ProductID) == "" {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "Google Play satın alma bilgisi gerekli"})
+		return
+	}
+	status, err := h.service.SyncGooglePurchase(
+		c.Request.Context(), uid, request.PackageName, request.ProductID, request.PurchaseToken,
+	)
+	if err != nil {
+		_ = c.Error(err)
+		writeSubscriptionError(c, err, "")
+		return
+	}
+	if request.DeviceID != "" {
+		if refreshed, statusErr := h.service.Status(c.Request.Context(), uid, request.DeviceID); statusErr == nil {
+			status = refreshed
+		}
+	}
+	c.JSON(http.StatusOK, status)
+}
+
 // AppleNotifications is the public App Store Server Notifications V2 URL.
 // Authenticity comes from the nested Apple JWS certificate/signature chain;
 // an arbitrary JSON POST cannot mutate an entitlement.
@@ -198,9 +233,13 @@ func writeSubscriptionError(c *gin.Context, err error, feature string) {
 	case errors.Is(err, service.ErrRequestConflict):
 		c.JSON(http.StatusConflict, gin.H{"error": "istek kimliği farklı bir işlem için kullanılmış", "code": "request_conflict", "feature": feature})
 	case errors.Is(err, service.ErrTransactionAccount):
-		c.JSON(http.StatusConflict, gin.H{"error": "Bu App Store aboneliği başka bir hesaba bağlı.", "code": "transaction_account_conflict"})
+		c.JSON(http.StatusConflict, gin.H{"error": "Bu abonelik başka bir hesaba bağlı.", "code": "transaction_account_conflict"})
 	case errors.Is(err, service.ErrInvalidAppleTransaction):
 		c.JSON(http.StatusBadRequest, gin.H{"error": "App Store işlemi doğrulanamadı", "code": "invalid_apple_transaction"})
+	case errors.Is(err, service.ErrInvalidGooglePurchase):
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Google Play satın alma doğrulanamadı", "code": "invalid_google_purchase"})
+	case errors.Is(err, service.ErrGoogleBillingUnavailable):
+		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "Google Play abonelik doğrulaması henüz yapılandırılmadı", "code": "google_billing_unavailable"})
 	case errors.Is(err, service.ErrBillingDisabled):
 		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "abonelik hizmeti geçici olarak kullanılamıyor", "code": "billing_unavailable"})
 	default:

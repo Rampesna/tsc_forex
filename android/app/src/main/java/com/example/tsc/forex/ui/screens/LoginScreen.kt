@@ -9,7 +9,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
@@ -37,16 +36,69 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import com.example.tsc.forex.R
+import com.example.tsc.forex.auth.findActivity
 import com.example.tsc.forex.store.AuthStore
+import com.example.tsc.forex.ui.appToast
 import com.example.tsc.forex.ui.theme.Th
 
 @Composable
-fun LoginScreen(auth: AuthStore, onLoggedIn: () -> Unit) {
+fun LoginScreen(
+    auth: AuthStore,
+    onLoggedIn: () -> Unit,
+    asModal: Boolean = false,
+    onContinueAsGuest: (() -> Unit)? = null,
+) {
+    // Use an in-Activity full-screen overlay (not Compose Dialog). Credential
+    // Manager attaches to the Activity window; a separate Dialog window often
+    // cancels the Google / passkey result after the account picker closes.
+    if (asModal) {
+        Box(
+            Modifier
+                .fillMaxSize()
+                .zIndex(100f)
+                .background(Th.bg.copy(alpha = 0.96f)),
+        ) {
+            LoginBody(auth, onLoggedIn, onContinueAsGuest)
+        }
+    } else {
+        LoginBody(auth, onLoggedIn, onContinueAsGuest)
+    }
+}
+
+@Composable
+private fun LoginBody(
+    auth: AuthStore,
+    onLoggedIn: () -> Unit,
+    onContinueAsGuest: (() -> Unit)?,
+) {
     var isRegister by remember { mutableStateOf(false) }
     var email by remember { mutableStateOf(auth.email) }
     var password by remember { mutableStateOf("") }
     val context = LocalContext.current
+    // Credential Manager requires a real Activity; Dialog LocalContext alone is not enough.
+    val activity = context.findActivity()
+
+    fun startGoogle() {
+        val host = activity
+        if (host == null) {
+            auth.errorMessage = "Google girişi için Activity bulunamadı."
+            context.appToast(auth.errorMessage!!)
+            return
+        }
+        auth.loginWithGoogle(host, onLoggedIn)
+    }
+
+    fun startPasskey() {
+        val host = activity
+        if (host == null) {
+            auth.errorMessage = "Geçiş anahtarı için Activity bulunamadı."
+            context.appToast(auth.errorMessage!!)
+            return
+        }
+        auth.loginWithPasskey(host, onLoggedIn)
+    }
 
     Box(
         Modifier
@@ -71,7 +123,7 @@ fun LoginScreen(auth: AuthStore, onLoggedIn: () -> Unit) {
 
             Text("TSC Forex", color = Th.text, fontSize = 26.sp, fontWeight = FontWeight.Bold)
             Text(
-                if (isRegister) "Yeni hesap oluştur" else "Hesabına giriş yap",
+                "Canlı Altın & Döviz Piyasası",
                 color = Th.textDim, fontSize = 13.sp,
             )
 
@@ -97,8 +149,15 @@ fun LoginScreen(auth: AuthStore, onLoggedIn: () -> Unit) {
                 modifier = Modifier.fillMaxWidth(),
             )
 
-            auth.errorMessage?.let {
-                Text(it, color = Th.down, fontSize = 12.sp, modifier = Modifier.fillMaxWidth())
+            // Keep errors sticky on the login form. Do NOT use ToastOnChange here —
+            // it cleared errorMessage immediately so the UI looked "dead".
+            auth.errorMessage?.let { msg ->
+                Text(
+                    msg,
+                    color = Th.down,
+                    fontSize = 12.sp,
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
 
             Button(
@@ -109,9 +168,7 @@ fun LoginScreen(auth: AuthStore, onLoggedIn: () -> Unit) {
                 enabled = !auth.isBusy && email.isNotBlank() && password.length >= 8,
                 colors = ButtonDefaults.buttonColors(containerColor = Th.accent, contentColor = Th.bg),
                 shape = RoundedCornerShape(12.dp),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 4.dp),
+                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
             ) {
                 if (auth.isBusy) {
                     CircularProgressIndicator(color = Th.bg, strokeWidth = 2.dp, modifier = Modifier.size(20.dp))
@@ -121,7 +178,7 @@ fun LoginScreen(auth: AuthStore, onLoggedIn: () -> Unit) {
             }
 
             Button(
-                onClick = { auth.loginWithGoogle(context, onLoggedIn) },
+                onClick = ::startGoogle,
                 enabled = !auth.isBusy,
                 colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color.Black),
                 shape = RoundedCornerShape(12.dp),
@@ -132,12 +189,12 @@ fun LoginScreen(auth: AuthStore, onLoggedIn: () -> Unit) {
             }
 
             OutlinedButton(
-                onClick = { auth.loginWithPasskey(context, onLoggedIn) },
+                onClick = ::startPasskey,
                 enabled = !auth.isBusy,
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.fillMaxWidth(),
             ) {
-                Text("🔑  Geçiş anahtarı ile giriş", color = Th.text, fontWeight = FontWeight.SemiBold)
+                Text("Geçiş anahtarı ile giriş", color = Th.text, fontWeight = FontWeight.SemiBold)
             }
 
             TextButton(onClick = { isRegister = !isRegister; auth.errorMessage = null }) {
@@ -145,6 +202,12 @@ fun LoginScreen(auth: AuthStore, onLoggedIn: () -> Unit) {
                     if (isRegister) "Zaten hesabım var • Giriş yap" else "Hesabın yok mu? • Kayıt ol",
                     color = Th.accent, fontSize = 13.sp,
                 )
+            }
+
+            if (onContinueAsGuest != null) {
+                TextButton(onClick = onContinueAsGuest) {
+                    Text("Üye olmadan piyasaları incele", color = Th.textDim, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                }
             }
         }
     }

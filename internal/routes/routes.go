@@ -168,6 +168,7 @@ func NewEngine(d Deps) *gin.Engine {
 				if d.Billing != nil {
 					authed.GET("/me/billing/status", d.Billing.Status)
 					authed.POST("/me/billing/apple/sync", d.Billing.SyncApple)
+					authed.POST("/me/billing/google/sync", d.Billing.SyncGoogle)
 					authed.POST("/me/device-attestation/challenge", d.Billing.AppAttestChallenge)
 					authed.POST("/me/device-attestation/register", d.Billing.RegisterAppAttest)
 					authed.GET("/me/ai/research-history", d.Billing.ResearchHistory)

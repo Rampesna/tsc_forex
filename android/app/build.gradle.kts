@@ -24,8 +24,22 @@ android {
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
 
+    signingConfigs {
+        // Local release installs reuse the debug keystore so we can ship a
+        // non-debuggable APK to the phone without Play signing secrets.
+        create("release") {
+            val debugStore = file("${System.getProperty("user.home")}/.android/debug.keystore")
+            storeFile = debugStore
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
         release {
+            isDebuggable = false
+            signingConfig = signingConfigs.getByName("release")
             optimization {
                 enable = false
             }
@@ -61,6 +75,7 @@ dependencies {
     implementation(libs.androidx.credentials)
     implementation(libs.androidx.credentials.play.services)
     implementation(libs.googleid)
+    implementation(libs.billing.ktx)
     testImplementation(libs.junit)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)

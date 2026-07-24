@@ -3,6 +3,7 @@ package com.example.tsc.forex.ui
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.gestures.detectTransformGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -34,6 +35,7 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
@@ -51,18 +53,24 @@ import kotlin.math.min
 
 enum class ChartMode { LINE, CANDLE }
 
+/** Extra polyline drawn on the same time/price axes as the primary series. */
+data class ChartOverlaySeries(
+    val title: String,
+    val color: Color,
+    /** Epoch ms → value pairs (same time base as candles). */
+    val points: List<Pair<Long, Double>>,
+)
+
 private val MA7_COLOR = Color(0xFFF3C43D)   // gold
 private val MA25_COLOR = Color(0xFFE559B7)  // pink
 
 /**
- * Binance-grade interactive price chart drawn on a Compose Canvas:
+ * Interactive price chart drawn on a Compose Canvas:
  *   • one-finger drag = pan, two-finger pinch = zoom
- *   • long-press + drag = crosshair scrub with an OHLC readout
- *   • line/area and candlestick modes with MA7 + MA25 overlays and a volume pane
+ *   • tap / long-press + drag = crosshair scrub
+ *   • optional MA overlays, volume pane, and extra line series
  *
- * The viewport is anchored by TIME (epoch ms), so paging older/newer candles into
- * the sliding window never disturbs the user's scroll position. When the user
- * pans to an edge, [onReachStart] / [onReachEnd] let the parent page the window.
+ * Viewport is time-anchored (epoch ms). Edge paging via [onReachStart]/[onReachEnd].
  */
 @Composable
 fun PriceChart(
@@ -71,31 +79,47 @@ fun PriceChart(
     trendUp: Boolean,
     currency: String?,
     resetToken: Int,
-    canLoadOlder: Boolean,
-    canLoadNewer: Boolean,
-    onReachStart: () -> Unit,
-    onReachEnd: () -> Unit,
+    canLoadOlder: Boolean = false,
+    canLoadNewer: Boolean = false,
+    onReachStart: () -> Unit = {},
+    onReachEnd: () -> Unit = {},
     modifier: Modifier = Modifier,
+    heightDp: Int = 250,
+    seriesTitle: String = "Fiyat",
+    seriesColor: Color? = null,
+    overlaySeries: List<ChartOverlaySeries> = emptyList(),
+    showsMovingAverages: Boolean = true,
+    showsVolume: Boolean = true,
+    showsOHLCSelection: Boolean = true,
+    stickySelection: Boolean = false,
+    emptyTitle: String = "Grafik verisi birikiyor…",
+    emptySubtitle: String = "Kısa süre içinde mum çubukları oluşacak.",
+    interactionHint: String = "Kaydır • İki parmakla yakınlaştır • Basılı tut: detay",
+    onSelectionChange: ((Long?) -> Unit)? = null,
 ) {
     if (candles.size < 2) {
         Box(
-            modifier.fillMaxWidth().height(300.dp),
+            modifier.fillMaxWidth().height(heightDp.dp),
             contentAlignment = Alignment.Center,
         ) {
             Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text("Grafik verisi birikiyor…", color = Th.textDim, fontSize = 13.sp)
-                Text("Kısa süre içinde mum çubukları oluşacak.", color = Th.textFaint, fontSize = 11.sp)
+                Text(emptyTitle, color = Th.textDim, fontSize = 13.sp)
+                Text(emptySubtitle, color = Th.textFaint, fontSize = 11.sp)
             }
         }
         return
     }
 
     val measurer = rememberTextMeasurer()
-    val lineColor = if (trendUp) Th.up else Th.down
+    val hostView = LocalView.current
+    val lineColor = seriesColor ?: if (trendUp) Th.up else Th.down
+    val multiSeries = overlaySeries.isNotEmpty()
 
     val firstMs = candles.first().epochMs.toDouble()
     val lastMs = candles.last().epochMs.toDouble()
-    val step = remember(candles) { candleStep(candles) }
+    val step = remember(candles.size, candles.firstOrNull()?.epochMs, candles.lastOrNull()?.epochMs) {
+        candleStep(candles)
+    }
     val fullSpan = max(lastMs - firstMs, step)
 
     // Time-anchored viewport.
@@ -116,6 +140,10 @@ fun PriceChart(
     LaunchedEffect(resetToken) { recenter() }
     if (viewSpanMs <= 0.0) recenter()
 
+    LaunchedEffect(selectedIdx, candles) {
+        onSelectionChange?.invoke(selectedIdx?.let { candles.getOrNull(it)?.epochMs })
+    }
+
     // Clamp the viewport into the loaded range.
     fun clamp() {
         viewSpanMs = viewSpanMs.coerceIn(minSpan, maxSpan)
@@ -129,27 +157,63 @@ fun PriceChart(
         if (canLoadNewer && viewStartMs + viewSpanMs >= lastMs - step * 3) onReachEnd()
     }
 
-    val ma7 = remember(candles) { movingAverage(candles, 7) }
-    val ma25 = remember(candles) { movingAverage(candles, 25) }
+    val ma7 = remember(candles.size, candles.firstOrNull()?.epochMs, candles.lastOrNull()?.close, showsMovingAverages) {
+        if (showsMovingAverages) movingAverage(candles, 7) else emptyList()
+    }
+    val ma25 = remember(candles.size, candles.firstOrNull()?.epochMs, candles.lastOrNull()?.close, showsMovingAverages) {
+        if (showsMovingAverages) movingAverage(candles, 25) else emptyList()
+    }
 
-    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-        // Header: legend or crosshair OHLC readout.
+    Column(
+        modifier
+            .fillMaxWidth()
+            .pointerInput(Unit) {
+                // Keep parent vertical scroll from stealing chart pan/pinch.
+                awaitPointerEventScope {
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        if (event.changes.any { it.pressed }) {
+                            (hostView.parent as? android.view.ViewParent)
+                                ?.requestDisallowInterceptTouchEvent(true)
+                        }
+                    }
+                }
+            },
+        verticalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        // Header: legend or crosshair readout.
         val sel = selectedIdx?.let { candles.getOrNull(it) }
         Row(Modifier.fillMaxWidth().height(30.dp), verticalAlignment = Alignment.CenterVertically) {
             if (sel != null) {
-                val chgPct = if (sel.open != 0.0) (sel.close - sel.open) / sel.open * 100 else 0.0
-                Column {
-                    Text(fmtDateTime(sel.epochMs, fullSpan), color = Th.textDim, fontSize = 10.sp)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        ohlc("A", sel.open); ohlc("Y", sel.high); ohlc("D", sel.low); ohlc("K", sel.close)
+                if (showsOHLCSelection) {
+                    val chgPct = if (sel.open != 0.0) (sel.close - sel.open) / sel.open * 100 else 0.0
+                    Column {
+                        Text(fmtDateTime(sel.epochMs, fullSpan), color = Th.textDim, fontSize = 10.sp)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            ohlc("A", sel.open); ohlc("Y", sel.high); ohlc("D", sel.low); ohlc("K", sel.close)
+                        }
                     }
+                    Spacer(Modifier.weight(1f))
+                    Text(Fmt.signedPct(chgPct), color = Th.trend(chgPct), fontSize = 12.sp, fontWeight = FontWeight.Bold)
+                } else {
+                    Text(fmtDateTime(sel.epochMs, fullSpan), color = Th.textDim, fontSize = 11.sp)
+                    Spacer(Modifier.weight(1f))
+                    Text(Fmt.money(sel.close, currency), color = Th.text, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                }
+            } else if (multiSeries) {
+                LegendDot(lineColor, seriesTitle)
+                overlaySeries.forEach { series ->
+                    Spacer(Modifier.size(8.dp))
+                    LegendDot(series.color, series.title)
                 }
                 Spacer(Modifier.weight(1f))
-                Text(Fmt.signedPct(chgPct), color = Th.trend(chgPct), fontSize = 12.sp, fontWeight = FontWeight.Bold)
             } else {
-                LegendDot(lineColor, "Fiyat"); Spacer(Modifier.size(10.dp))
-                LegendDot(MA7_COLOR, "MA7"); Spacer(Modifier.size(10.dp))
-                LegendDot(MA25_COLOR, "MA25")
+                LegendDot(lineColor, seriesTitle)
+                if (showsMovingAverages) {
+                    Spacer(Modifier.size(10.dp))
+                    LegendDot(MA7_COLOR, "MA7"); Spacer(Modifier.size(10.dp))
+                    LegendDot(MA25_COLOR, "MA25")
+                }
                 Spacer(Modifier.weight(1f))
                 Text(Fmt.money(candles.last().close, currency), color = Th.text, fontSize = 13.sp, fontWeight = FontWeight.Bold)
             }
@@ -159,13 +223,11 @@ fun PriceChart(
         Canvas(
             Modifier
                 .fillMaxWidth()
-                .height(250.dp)
+                .height(heightDp.dp)
                 .pointerInput(resetToken, candles.size) {
                     detectTransformGestures { _, pan, zoom, _ ->
                         val w = size.width.toFloat().coerceAtLeast(1f)
-                        // Pan: convert x drag to a time shift.
                         viewStartMs -= pan.x / w * viewSpanMs
-                        // Zoom: scale the visible span around the centre.
                         if (zoom != 1f) {
                             val center = viewStartMs + viewSpanMs / 2
                             viewSpanMs = (viewSpanMs / zoom)
@@ -176,12 +238,24 @@ fun PriceChart(
                         maybePage()
                     }
                 }
-                .pointerInput(resetToken, candles.size) {
+                .pointerInput(resetToken, candles.size, stickySelection) {
+                    detectTapGestures { pos ->
+                        val hit = nearestIndex(candles, pos.x, size.width.toFloat(), viewStartMs, viewSpanMs)
+                        selectedIdx = if (stickySelection && selectedIdx == hit) null else hit
+                    }
+                }
+                .pointerInput(resetToken, candles.size, stickySelection) {
                     detectDragGesturesAfterLongPress(
-                        onDragStart = { pos -> selectedIdx = nearestIndex(candles, pos.x, size.width.toFloat(), viewStartMs, viewSpanMs) },
-                        onDrag = { change, _ -> selectedIdx = nearestIndex(candles, change.position.x, size.width.toFloat(), viewStartMs, viewSpanMs) },
-                        onDragEnd = { selectedIdx = null },
-                        onDragCancel = { selectedIdx = null },
+                        onDragStart = { pos ->
+                            selectedIdx = nearestIndex(candles, pos.x, size.width.toFloat(), viewStartMs, viewSpanMs)
+                        },
+                        onDrag = { change, _ ->
+                            selectedIdx = nearestIndex(
+                                candles, change.position.x, size.width.toFloat(), viewStartMs, viewSpanMs,
+                            )
+                        },
+                        onDragEnd = { if (!stickySelection) selectedIdx = null },
+                        onDragCancel = { if (!stickySelection) selectedIdx = null },
                     )
                 },
         ) {
@@ -189,18 +263,21 @@ fun PriceChart(
                 candles = candles, mode = mode, trendUp = trendUp,
                 viewStartMs = viewStartMs, viewSpanMs = viewSpanMs, step = step,
                 lineColor = lineColor, ma7 = ma7, ma25 = ma25,
+                overlaySeries = overlaySeries,
+                showsMovingAverages = showsMovingAverages && !multiSeries,
                 selected = selectedIdx?.let { candles.getOrNull(it) },
                 currency = currency, measurer = measurer, fullSpan = fullSpan,
             )
         }
 
-        // Volume pane.
-        Canvas(Modifier.fillMaxWidth().height(44.dp)) {
-            drawVolumePane(candles, viewStartMs, viewSpanMs, step)
+        if (showsVolume) {
+            Canvas(Modifier.fillMaxWidth().height(44.dp)) {
+                drawVolumePane(candles, viewStartMs, viewSpanMs, step)
+            }
         }
 
         Text(
-            "Kaydır • İki parmakla yakınlaştır • Basılı tut: detay",
+            interactionHint,
             color = Th.textFaint, fontSize = 9.sp,
             modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
         )
@@ -235,6 +312,8 @@ private fun DrawScope.drawPricePane(
     lineColor: Color,
     ma7: List<Pair<Long, Double>>,
     ma25: List<Pair<Long, Double>>,
+    overlaySeries: List<ChartOverlaySeries>,
+    showsMovingAverages: Boolean,
     selected: Candle?,
     currency: String?,
     measurer: androidx.compose.ui.text.TextMeasurer,
@@ -256,6 +335,12 @@ private fun DrawScope.drawPricePane(
 
     var lo = Double.MAX_VALUE; var hi = -Double.MAX_VALUE
     for (c in visible) { lo = min(lo, c.low); hi = max(hi, c.high) }
+    for (series in overlaySeries) {
+        for ((ms, v) in series.points) {
+            if (ms.toDouble() < viewStartMs - step || ms.toDouble() > viewStartMs + viewSpanMs + step) continue
+            lo = min(lo, v); hi = max(hi, v)
+        }
+    }
     if (hi <= lo) { hi = lo + 1 }
     val pad = (hi - lo) * 0.10
     lo -= pad; hi += pad
@@ -295,8 +380,9 @@ private fun DrawScope.drawPricePane(
                 else { line.lineTo(x, y); area.lineTo(x, y) }
             }
             area.lineTo(xOf(visible.last().epochMs.toDouble()), h); area.close()
+            val areaAlpha = if (overlaySeries.isEmpty()) 0.22f else 0.10f
             drawPath(area, Brush.verticalGradient(
-                listOf(lineColor.copy(alpha = 0.22f), lineColor.copy(alpha = 0f)), startY = 0f, endY = h))
+                listOf(lineColor.copy(alpha = areaAlpha), lineColor.copy(alpha = 0f)), startY = 0f, endY = h))
             drawPath(line, color = lineColor, style = Stroke(width = 2.5f, cap = StrokeCap.Round))
         }
         ChartMode.CANDLE -> {
@@ -315,17 +401,24 @@ private fun DrawScope.drawPricePane(
         }
     }
 
-    // MA overlays.
-    drawMa(ma7, MA7_COLOR, viewStartMs, viewSpanMs, plotRight, lo, range, h)
-    drawMa(ma25, MA25_COLOR, viewStartMs, viewSpanMs, plotRight, lo, range, h)
+    for (series in overlaySeries) {
+        drawMa(series.points, series.color, viewStartMs, viewSpanMs, plotRight, lo, range, h)
+    }
 
-    // Last price dashed line + tag.
-    val last = candles.last()
-    val lastY = yOf(last.close)
-    if (lastY in 0f..h) {
-        drawLine(lineColor.copy(alpha = 0.4f), Offset(0f, lastY), Offset(plotRight, lastY),
-            strokeWidth = 1f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(4f, 4f)))
-        drawTag(measurer, Fmt.compactPrice(last.close), plotRight + 2f, lastY, lineColor, Color.White)
+    if (showsMovingAverages) {
+        drawMa(ma7, MA7_COLOR, viewStartMs, viewSpanMs, plotRight, lo, range, h)
+        drawMa(ma25, MA25_COLOR, viewStartMs, viewSpanMs, plotRight, lo, range, h)
+    }
+
+    // Last price dashed line + tag (skip when multi-series — too noisy).
+    if (overlaySeries.isEmpty()) {
+        val last = candles.last()
+        val lastY = yOf(last.close)
+        if (lastY in 0f..h) {
+            drawLine(lineColor.copy(alpha = 0.4f), Offset(0f, lastY), Offset(plotRight, lastY),
+                strokeWidth = 1f, pathEffect = PathEffect.dashPathEffect(floatArrayOf(4f, 4f)))
+            drawTag(measurer, Fmt.compactPrice(last.close), plotRight + 2f, lastY, lineColor, Color.White)
+        }
     }
 
     // Crosshair.

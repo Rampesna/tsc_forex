@@ -240,6 +240,12 @@ func run() error {
 			}
 		}
 		subscriptionSvc = service.NewSubscriptionService(db, cfg.Billing, appleVerifier)
+		if googleVerifier, googleErr := service.NewGooglePlayVerifier(cfg.Billing); googleErr != nil {
+			log.Warn("google play billing verifier unavailable", zap.Error(googleErr))
+		} else if googleVerifier != nil {
+			subscriptionSvc.WithGooglePlay(googleVerifier)
+			log.Info("google play billing verifier enabled", zap.String("package", cfg.Billing.GooglePackageName))
+		}
 		billingH = api.NewBillingHandler(subscriptionSvc)
 
 		portfolioRepo := repository.NewPortfolioRepository(db, m)

@@ -3,6 +3,7 @@ package com.example.tsc.forex
 import android.app.Application
 import com.example.tsc.forex.data.Prefs
 import com.example.tsc.forex.store.AuthStore
+import com.example.tsc.forex.store.BillingStore
 import com.example.tsc.forex.store.PortfolioStore
 import com.example.tsc.forex.store.PriceStore
 
@@ -16,6 +17,8 @@ class TscApp : Application() {
         private set
     lateinit var portfolio: PortfolioStore
         private set
+    lateinit var billing: BillingStore
+        private set
 
     override fun onCreate() {
         super.onCreate()
@@ -24,5 +27,6 @@ class TscApp : Application() {
         auth = AuthStore(prefs)
         prices = PriceStore(prefs, auth)
         portfolio = PortfolioStore(prefs, auth)
+        billing = BillingStore(this, prefs, auth)
     }
 }

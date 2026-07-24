@@ -33,8 +33,9 @@ class Prefs(context: Context) {
         set(v) = sp.edit().putString(KEY_HOST, v).apply()
 
     var favorites: Set<String>
-        get() = sp.getStringSet(KEY_FAVS, emptySet()) ?: emptySet()
-        set(v) = sp.edit().putStringSet(KEY_FAVS, v).apply()
+        get() = sp.getStringSet(KEY_FAVS, emptySet())?.toSet() ?: emptySet()
+        // Copy required: SharedPreferences may reuse the same Set instance.
+        set(v) = sp.edit().putStringSet(KEY_FAVS, HashSet(v)).apply()
 
     /** Ordered favorites (drag-to-reorder), stored as a delimited list. */
     var favoriteOrder: List<String>
@@ -87,6 +88,31 @@ class Prefs(context: Context) {
             .apply()
     }
 
+    var deviceId: String?
+        get() = sp.getString(KEY_DEVICE_ID, null)
+        set(v) = sp.edit().putString(KEY_DEVICE_ID, v).apply()
+
+    fun aiResearchConsent(userId: String): Boolean =
+        userId.isNotBlank() && sp.getBoolean("$KEY_AI_CONSENT.$userId", false)
+
+    fun setAiResearchConsent(userId: String, accepted: Boolean) {
+        if (userId.isBlank()) return
+        sp.edit().putBoolean("$KEY_AI_CONSENT.$userId", accepted).apply()
+    }
+
+    fun pendingRequestId(userId: String, operation: String, resource: String): String {
+        val key = "$KEY_PENDING.$userId.$operation.$resource"
+        val existing = sp.getString(key, null)
+        if (!existing.isNullOrBlank()) return existing
+        val created = java.util.UUID.randomUUID().toString()
+        sp.edit().putString(key, created).apply()
+        return created
+    }
+
+    fun clearPendingRequestId(userId: String, operation: String, resource: String) {
+        sp.edit().remove("$KEY_PENDING.$userId.$operation.$resource").apply()
+    }
+
     fun clearSession() {
         sp.edit().remove(KEY_ACCESS).remove(KEY_REFRESH).remove(KEY_NAME).remove(KEY_AVATAR).apply()
     }
@@ -104,5 +130,8 @@ class Prefs(context: Context) {
         private const val KEY_PORTFOLIO_CACHE = "portfolio_cloud_cache_v2"
         private const val KEY_PORTFOLIO_OUTBOX = "portfolio_outbox_v1"
         private const val KEY_PORTFOLIO_MIGRATED = "portfolio_legacy_migrated_v2"
+        private const val KEY_DEVICE_ID = "device_id_v1"
+        private const val KEY_AI_CONSENT = "ai_research_consent_v1"
+        private const val KEY_PENDING = "pending_op_v1"
     }
 }

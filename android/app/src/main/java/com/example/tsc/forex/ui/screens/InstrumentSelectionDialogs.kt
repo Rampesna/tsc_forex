@@ -4,18 +4,38 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material3.AlertDialog
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.material.icons.outlined.AccountBalance
+import androidx.compose.material.icons.outlined.CurrencyBitcoin
+import androidx.compose.material.icons.outlined.CurrencyExchange
+import androidx.compose.material.icons.outlined.Diamond
+import androidx.compose.material.icons.outlined.RadioButtonChecked
+import androidx.compose.material.icons.outlined.RadioButtonUnchecked
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -23,28 +43,33 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.tsc.forex.data.InstrumentPrice
+import com.example.tsc.forex.ui.Fmt
 import com.example.tsc.forex.ui.theme.Th
 
 internal data class InstrumentKindOption(
     val id: String,
     val title: String,
     val subtitle: String,
+    val icon: ImageVector,
 )
 
 internal val instrumentKindOptions = listOf(
-    InstrumentKindOption("gold", "Altın", "Gram, çeyrek, tam ve diğer altınlar"),
-    InstrumentKindOption("currency", "Döviz", "Dolar, euro ve diğer para birimleri"),
-    InstrumentKindOption("crypto", "Kripto Para", "Bitcoin, Ethereum ve diğer kriptolar"),
-    InstrumentKindOption("stock", "Hisse Senedi", "BIST ve global şirket hisseleri"),
+    InstrumentKindOption("gold", "Altın", "Gram, çeyrek, tam ve diğer altınlar", Icons.Outlined.Diamond),
+    InstrumentKindOption("currency", "Döviz", "Dolar, euro ve diğer para birimleri", Icons.Outlined.CurrencyExchange),
+    InstrumentKindOption("crypto", "Kripto Para", "Bitcoin, Ethereum ve diğer kriptolar", Icons.Outlined.CurrencyBitcoin),
+    InstrumentKindOption("stock", "Hisse Senedi", "BIST ve global şirket hisseleri", Icons.Outlined.AccountBalance),
 )
 
 internal fun instrumentKindTitle(kind: String) =
     instrumentKindOptions.firstOrNull { it.id == kind }?.title.orEmpty()
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun InstrumentKindPickerDialog(
     instruments: List<InstrumentPrice>,
@@ -53,39 +78,78 @@ internal fun InstrumentKindPickerDialog(
     onSelect: (String) -> Unit,
 ) {
     var search by remember { mutableStateOf("") }
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val options = instrumentKindOptions.filter {
         search.isBlank() || it.title.contains(search, true) || it.subtitle.contains(search, true)
     }
-    AlertDialog(
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
-        containerColor = Th.surface,
-        title = { Text("Varlık Türü", color = Th.text) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(
-                    value = search,
-                    onValueChange = { search = it },
-                    label = { Text("Varlık türü ara") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                options.forEach { option ->
-                    SelectionRow(
-                        title = option.title,
-                        subtitle = "${option.subtitle} · ${instruments.count { it.kind == option.id }} varlık",
-                        selected = selectedKind == option.id,
+        sheetState = sheetState,
+        containerColor = Th.bg,
+        dragHandle = null,
+    ) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.92f)
+                .padding(horizontal = 16.dp),
+        ) {
+            PickerTopBar(title = "Varlık Türü", onCancel = onDismiss)
+            Spacer(Modifier.height(8.dp))
+            Column(
+                Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(22.dp))
+                    .background(Th.surface)
+                    .padding(vertical = 4.dp),
+            ) {
+                options.forEachIndexed { index, option ->
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                onSelect(option.id)
+                                onDismiss()
+                            }
+                            .padding(horizontal = 16.dp, vertical = 14.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
                     ) {
-                        onSelect(option.id)
-                        onDismiss()
+                        BoxIcon(option.icon)
+                        Column(Modifier.weight(1f)) {
+                            Text(option.title, color = Th.text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                            Text(option.subtitle, color = Th.textDim, fontSize = 12.sp)
+                        }
+                        Text(
+                            "${instruments.count { it.kind == option.id }}",
+                            color = Th.textDim,
+                            fontSize = 14.sp,
+                        )
+                        Icon(
+                            Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                            contentDescription = null,
+                            tint = Th.textFaint,
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                    if (index < options.lastIndex) {
+                        HorizontalDivider(color = Th.stroke, thickness = 0.5.dp, modifier = Modifier.padding(start = 56.dp))
                     }
                 }
             }
-        },
-        confirmButton = {},
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Vazgeç") } },
-    )
+            Spacer(Modifier.height(12.dp))
+            BottomSearchField(
+                value = search,
+                onValueChange = { search = it },
+                placeholder = "Varlık türü ara",
+            )
+            Spacer(Modifier.height(20.dp))
+        }
+    }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun InstrumentPickerDialog(
     instruments: List<InstrumentPrice>,
@@ -95,46 +159,75 @@ internal fun InstrumentPickerDialog(
     onSelect: (InstrumentPrice) -> Unit,
 ) {
     var search by remember { mutableStateOf("") }
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val title = instrumentKindTitle(kind)
     val matches = instruments
         .filter { it.kind == kind }
         .filter { search.isBlank() || it.displayName.contains(search, true) || it.code.contains(search, true) }
         .sortedBy { it.displayName }
-    AlertDialog(
+
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
-        containerColor = Th.surface,
-        title = { Text(instrumentKindTitle(kind), color = Th.text) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedTextField(
-                    value = search,
-                    onValueChange = { search = it },
-                    label = { Text("Varlık ara") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                androidx.compose.foundation.lazy.LazyColumn(
-                    modifier = Modifier.fillMaxWidth().heightIn(max = 390.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    items(matches.size) { index ->
-                        val instrument = matches[index]
-                        SelectionRow(
-                            title = instrument.displayName,
-                            subtitle = "${if (instrument.currency == "USD") "$" else "₺"}${instrument.price}",
-                            selected = selectedCode == instrument.code,
-                        ) {
-                            onSelect(instrument)
-                            onDismiss()
+        sheetState = sheetState,
+        containerColor = Th.bg,
+        dragHandle = null,
+    ) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.92f)
+                .padding(horizontal = 16.dp),
+        ) {
+            PickerTopBar(title = title, onCancel = onDismiss)
+            Spacer(Modifier.height(8.dp))
+            LazyColumn(
+                Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(22.dp))
+                    .background(Th.surface),
+            ) {
+                items(matches, key = { it.code }) { instrument ->
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                onSelect(instrument)
+                                onDismiss()
+                            }
+                            .padding(horizontal = 16.dp, vertical = 13.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(instrument.displayName, color = Th.text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
+                            Text(Fmt.money(instrument.price, instrument.currency), color = Th.textDim, fontSize = 13.sp)
                         }
+                        Icon(
+                            imageVector = if (selectedCode == instrument.code) {
+                                Icons.Outlined.RadioButtonChecked
+                            } else {
+                                Icons.Outlined.RadioButtonUnchecked
+                            },
+                            contentDescription = null,
+                            tint = if (selectedCode == instrument.code) Th.accent else Th.textFaint,
+                            modifier = Modifier.size(22.dp),
+                        )
                     }
+                    HorizontalDivider(color = Th.stroke, thickness = 0.5.dp, modifier = Modifier.padding(start = 16.dp))
                 }
             }
-        },
-        confirmButton = {},
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Vazgeç") } },
-    )
+            Spacer(Modifier.height(12.dp))
+            BottomSearchField(
+                value = search,
+                onValueChange = { search = it },
+                placeholder = "$title ara",
+            )
+            Spacer(Modifier.height(20.dp))
+        }
+    }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 internal fun InstrumentMultiPickerDialog(
     instruments: List<InstrumentPrice>,
@@ -146,114 +239,165 @@ internal fun InstrumentMultiPickerDialog(
     var selected by remember { mutableStateOf(initialCodes.toSet()) }
     var kind by remember { mutableStateOf("gold") }
     var search by remember { mutableStateOf("") }
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val matches = instruments
         .filter { it.kind == kind }
         .filter { search.isBlank() || it.displayName.contains(search, true) || it.code.contains(search, true) }
         .sortedBy { it.displayName }
 
-    AlertDialog(
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
-        containerColor = Th.surface,
-        title = { Text("İzlenecek Varlıklar (${selected.size}/$maxSelection)", color = Th.text) },
-        text = {
-            Column(verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                if (selected.isNotEmpty()) {
-                    Row(
-                        Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                    ) {
-                        instruments.filter { selected.contains(it.code) }.forEach { instrument ->
-                            Text(
-                                "${instrument.displayName} ×",
-                                color = Th.accent,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                modifier = Modifier
-                                    .background(Th.surfaceAlt, RoundedCornerShape(20.dp))
-                                    .clickable { selected = selected - instrument.code }
-                                    .padding(horizontal = 10.dp, vertical = 7.dp),
-                            )
-                        }
-                    }
+        sheetState = sheetState,
+        containerColor = Th.bg,
+        dragHandle = null,
+    ) {
+        Column(
+            Modifier
+                .fillMaxWidth()
+                .fillMaxHeight(0.92f)
+                .padding(horizontal = 16.dp),
+        ) {
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                TextButton(onClick = onDismiss) {
+                    Text(
+                        "Vazgeç",
+                        color = Th.accent,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(Th.surface)
+                            .padding(horizontal = 12.dp, vertical = 6.dp),
+                    )
                 }
-                Row(
-                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(5.dp),
-                ) {
-                    instrumentKindOptions.forEach { option ->
-                        Text(
-                            option.title,
-                            color = if (kind == option.id) Th.accent else Th.textDim,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            modifier = Modifier
-                                .background(Th.surfaceAlt, RoundedCornerShape(20.dp))
-                                .clickable { kind = option.id; search = "" }
-                                .padding(horizontal = 10.dp, vertical = 7.dp),
-                        )
-                    }
-                }
-                OutlinedTextField(
-                    value = search,
-                    onValueChange = { search = it },
-                    label = { Text("${instrumentKindTitle(kind)} ara") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                androidx.compose.foundation.lazy.LazyColumn(
-                    modifier = Modifier.fillMaxWidth().heightIn(max = 330.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                ) {
-                    items(matches.size) { index ->
-                        val instrument = matches[index]
-                        SelectionRow(
-                            title = instrument.displayName,
-                            subtitle = if (selected.contains(instrument.code)) "Seçildi" else "Seç",
-                            selected = selected.contains(instrument.code),
-                        ) {
-                            selected = when {
-                                selected.contains(instrument.code) -> selected - instrument.code
-                                selected.size < maxSelection -> selected + instrument.code
-                                else -> selected
-                            }
-                        }
-                    }
+                Spacer(Modifier.weight(1f))
+                Text("İzlenecek (${selected.size}/$maxSelection)", color = Th.text, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.weight(1f))
+                TextButton(
+                    enabled = selected.isNotEmpty(),
+                    onClick = {
+                        onDone(instruments.filter { selected.contains(it.code) }.map { it.code }.take(maxSelection))
+                        onDismiss()
+                    },
+                ) { Text("Bitti", color = Th.accent, fontWeight = FontWeight.Bold) }
+            }
+            Spacer(Modifier.height(8.dp))
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                instrumentKindOptions.forEach { option ->
+                    Text(
+                        option.title,
+                        color = if (kind == option.id) Th.bg else Th.textDim,
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(if (kind == option.id) Th.accent else Th.surface)
+                            .clickable { kind = option.id; search = "" }
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                    )
                 }
             }
+            Spacer(Modifier.height(10.dp))
+            LazyColumn(
+                Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(22.dp))
+                    .background(Th.surface),
+            ) {
+                items(matches, key = { it.code }) { instrument ->
+                    val isOn = selected.contains(instrument.code)
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                selected = when {
+                                    isOn -> selected - instrument.code
+                                    selected.size < maxSelection -> selected + instrument.code
+                                    else -> selected
+                                }
+                            }
+                            .padding(horizontal = 16.dp, vertical = 13.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Column(Modifier.weight(1f)) {
+                            Text(instrument.displayName, color = Th.text, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+                            Text(Fmt.money(instrument.price, instrument.currency), color = Th.textDim, fontSize = 12.sp)
+                        }
+                        Text(if (isOn) "●" else "○", color = if (isOn) Th.accent else Th.textFaint, fontSize = 18.sp)
+                    }
+                    HorizontalDivider(color = Th.stroke, thickness = 0.5.dp, modifier = Modifier.padding(start = 16.dp))
+                }
+            }
+            Spacer(Modifier.height(12.dp))
+            BottomSearchField(
+                value = search,
+                onValueChange = { search = it },
+                placeholder = "${instrumentKindTitle(kind)} ara",
+            )
+            Spacer(Modifier.height(20.dp))
+        }
+    }
+}
+
+@Composable
+private fun PickerTopBar(title: String, onCancel: () -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 4.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        TextButton(onClick = onCancel) {
+            Text(
+                "Vazgeç",
+                color = Th.accent,
+                fontWeight = FontWeight.SemiBold,
+                modifier = Modifier
+                    .clip(RoundedCornerShape(20.dp))
+                    .background(Th.surface)
+                    .padding(horizontal = 14.dp, vertical = 7.dp),
+            )
+        }
+        Spacer(Modifier.weight(1f))
+        Text(title, color = Th.text, fontSize = 17.sp, fontWeight = FontWeight.Bold)
+        Spacer(Modifier.weight(1f))
+        Spacer(Modifier.padding(horizontal = 40.dp))
+    }
+}
+
+@Composable
+private fun BottomSearchField(value: String, onValueChange: (String) -> Unit, placeholder: String) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        singleLine = true,
+        placeholder = { Text(placeholder, color = Th.textFaint) },
+        leadingIcon = {
+            Icon(Icons.Outlined.Search, null, tint = Th.textFaint, modifier = Modifier.size(20.dp))
         },
-        confirmButton = {
-            TextButton(
-                enabled = selected.isNotEmpty(),
-                onClick = {
-                    onDone(instruments.filter { selected.contains(it.code) }.map { it.code }.take(maxSelection))
-                    onDismiss()
-                },
-            ) { Text("Bitti", color = Th.accent) }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Vazgeç") } },
+        shape = RoundedCornerShape(28.dp),
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = Th.stroke,
+            unfocusedBorderColor = Th.stroke,
+            focusedContainerColor = Th.surface,
+            unfocusedContainerColor = Th.surface,
+            focusedTextColor = Th.text,
+            unfocusedTextColor = Th.text,
+            cursorColor = Th.accent,
+        ),
+        modifier = Modifier.fillMaxWidth(),
     )
 }
 
 @Composable
-private fun SelectionRow(
-    title: String,
-    subtitle: String,
-    selected: Boolean,
-    onClick: () -> Unit,
-) {
-    Row(
+private fun BoxIcon(icon: ImageVector) {
+    Box(
         Modifier
-            .fillMaxWidth()
-            .background(Th.surfaceAlt, RoundedCornerShape(10.dp))
-            .clickable(onClick = onClick)
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .size(40.dp)
+            .clip(CircleShape)
+            .background(Th.accent.copy(alpha = 0.14f)),
+        contentAlignment = Alignment.Center,
     ) {
-        Column {
-            Text(title, color = Th.text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-            Text(subtitle, color = Th.textDim, fontSize = 10.sp)
-        }
-        Spacer(Modifier.weight(1f))
-        Text(if (selected) "✓" else "›", color = if (selected) Th.accent else Th.textFaint)
+        Icon(icon, contentDescription = null, tint = Th.accent, modifier = Modifier.size(20.dp))
     }
 }

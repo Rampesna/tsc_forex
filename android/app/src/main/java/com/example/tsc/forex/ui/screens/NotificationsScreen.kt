@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -37,7 +38,11 @@ import com.example.tsc.forex.ui.theme.Th
 import kotlinx.coroutines.launch
 
 @Composable
-fun NotificationsScreen(auth: AuthStore, store: PriceStore) {
+fun NotificationsScreen(
+    auth: AuthStore,
+    store: PriceStore,
+    onBack: (() -> Unit)? = null,
+) {
     val scope = rememberCoroutineScope()
     var history by remember { mutableStateOf<List<AppNotification>>(emptyList()) }
 
@@ -53,13 +58,22 @@ fun NotificationsScreen(auth: AuthStore, store: PriceStore) {
             .background(Th.bg)
     ) {
         ScreenHeader("Bildirimler", trailing = {
-            if (live.isNotEmpty() || history.isNotEmpty()) {
-                TextButton(onClick = {
-                    store.clearLiveNotifications()
-                    scope.launch {
-                        if (runCatching { auth.newApiClient().clearNotifications() }.isSuccess) history = emptyList()
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                if (live.isNotEmpty() || history.isNotEmpty()) {
+                    TextButton(onClick = {
+                        store.clearLiveNotifications()
+                        scope.launch {
+                            if (runCatching { auth.newApiClient().clearNotifications() }.isSuccess) {
+                                history = emptyList()
+                            }
+                        }
+                    }) { Text("Temizle", color = Th.accent, fontSize = 13.sp) }
+                }
+                if (onBack != null) {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Geri", tint = Th.text)
                     }
-                }) { Text("Temizle", color = Th.accent, fontSize = 13.sp) }
+                }
             }
         })
 

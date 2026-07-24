@@ -31,9 +31,9 @@ type Config struct {
 	Log       LogConfig       `mapstructure:"log" validate:"required"`
 }
 
-// BillingConfig controls App Store entitlement verification. No App Store
-// secret is required for the StoreKit 2 sync path: Apple signs each JWS and the
-// backend validates its certificate chain, bundle and product identifiers.
+// BillingConfig controls App Store + Google Play entitlement verification.
+// StoreKit 2 needs no shared secret (Apple-signed JWS). Google Play sync uses a
+// Play Developer API service account when google_credentials_path is set.
 type BillingConfig struct {
 	Enabled                   bool          `mapstructure:"enabled"`
 	BundleID                  string        `mapstructure:"bundle_id"`
@@ -48,6 +48,8 @@ type BillingConfig struct {
 	DeviceCheckEnabled        bool          `mapstructure:"device_check_enabled"`
 	DeviceCheckKeyID          string        `mapstructure:"device_check_key_id"`
 	DeviceCheckPrivateKeyPath string        `mapstructure:"device_check_private_key_path"`
+	GooglePackageName         string        `mapstructure:"google_package_name"`
+	GoogleCredentialsPath     string        `mapstructure:"google_credentials_path"`
 }
 
 // AIConfig controls the server-side OpenAI integration. The API key must stay

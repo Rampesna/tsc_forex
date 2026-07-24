@@ -6,7 +6,9 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import com.example.tsc.forex.auth.GoogleSignIn
 import com.example.tsc.forex.auth.GoogleSignInCancelled
+import com.example.tsc.forex.auth.GoogleSignInFailed
 import com.example.tsc.forex.auth.PasskeyCancelled
+import com.example.tsc.forex.auth.PasskeyFailed
 import com.example.tsc.forex.auth.PasskeySignIn
 import com.example.tsc.forex.auth.PasskeyUnavailable
 import com.example.tsc.forex.data.ApiClient
@@ -31,6 +33,8 @@ class AuthStore(private val prefs: Prefs) {
     var displayName by mutableStateOf(prefs.displayName ?: "")
         private set
     var avatarUrl by mutableStateOf(prefs.avatarUrl ?: "")
+        private set
+    var userId by mutableStateOf<String?>(null)
         private set
     var isBusy by mutableStateOf(false)
         private set
@@ -63,14 +67,26 @@ class AuthStore(private val prefs: Prefs) {
                 persist(tok)
                 loadProfile()
                 onSuccess()
-            } catch (e: GoogleSignInCancelled) {
-                // Silent.
+            } catch (_: GoogleSignInCancelled) {
+                errorMessage = "Google girişi iptal edildi."
+            } catch (e: GoogleSignInFailed) {
+                errorMessage = e.message
             } catch (e: ApiException) {
-                errorMessage = "Google girişi başarısız (${e.code})."
+                errorMessage = when (e.code) {
+                    401, 403 -> "Google hesabı doğrulanamadı (${e.code})."
+                    else -> "Google girişi başarısız (${e.code})."
+                }
             } catch (e: Exception) {
-                errorMessage = "Google girişi tamamlanamadı."
+                errorMessage = e.message?.takeIf { it.isNotBlank() } ?: "Google girişi tamamlanamadı."
             } finally {
                 isBusy = false
+                errorMessage?.let { msg ->
+                    try {
+                        android.widget.Toast.makeText(context.applicationContext, msg, android.widget.Toast.LENGTH_LONG).show()
+                    } catch (_: Exception) {
+                        // ignore
+                    }
+                }
             }
         }
     }
@@ -84,12 +100,14 @@ class AuthStore(private val prefs: Prefs) {
                 persist(tok)
                 loadProfile()
                 onSuccess()
-            } catch (e: PasskeyCancelled) {
-                // Silent.
+            } catch (_: PasskeyCancelled) {
+                // User dismissed the picker.
             } catch (e: PasskeyUnavailable) {
                 errorMessage = e.message
+            } catch (e: PasskeyFailed) {
+                errorMessage = e.message
             } catch (e: Exception) {
-                errorMessage = "Geçiş anahtarı girişi başarısız."
+                errorMessage = e.message?.takeIf { it.isNotBlank() } ?: "Geçiş anahtarı girişi başarısız."
             } finally {
                 isBusy = false
             }
@@ -100,10 +118,18 @@ class AuthStore(private val prefs: Prefs) {
     suspend fun loadProfile() {
         try {
             val p = newApiClient().profile()
+            if (p.id.isNotEmpty()) userId = p.id
             if (p.email.isNotEmpty()) { email = p.email; prefs.email = p.email }
             displayName = p.displayName; prefs.displayName = p.displayName
             avatarUrl = p.avatarUrl; prefs.avatarUrl = p.avatarUrl
         } catch (_: Exception) { /* keep cached */ }
+    }
+
+    /** Ensures [userId] is available for consent / idempotency keys. */
+    suspend fun ensureUserId(): String? {
+        if (!userId.isNullOrBlank()) return userId
+        loadProfile()
+        return userId
     }
 
     fun updateDisplayName(name: String) {
@@ -169,6 +195,7 @@ class AuthStore(private val prefs: Prefs) {
         accessToken = null
         displayName = ""
         avatarUrl = ""
+        userId = null
         onAccessTokenChanged?.invoke(null)
     }
 

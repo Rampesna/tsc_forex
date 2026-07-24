@@ -45,6 +45,14 @@ spec:
             - name: apple-auth-creds
               mountPath: /etc/apple-auth
               readOnly: true
+            # Google Play Developer API service-account JSON for subscription
+            # verification (POST /me/billing/google/sync). Create out-of-band:
+            #   kubectl -n tsc-forex create secret generic tsc-forex-google-play \
+            #     --from-file=play-billing.json=/path/to/play-billing.json
+            # Optional until credentials exist — Apple billing stays unaffected.
+            - name: google-play-creds
+              mountPath: /etc/google-play
+              readOnly: true
           # Startup can be slow after a cold DB (the day-open baseline seed
           # scans a large price_ticks window before the HTTP server binds).
           # startupProbe disables liveness/readiness until the app is up so a
@@ -82,6 +90,10 @@ spec:
         - name: apple-auth-creds
           secret:
             secretName: tsc-forex-apple-auth
+            optional: true
+        - name: google-play-creds
+          secret:
+            secretName: tsc-forex-google-play
             optional: true
       # Rolling updates keep the WebSocket stream broadcasting during deploys.
 ---

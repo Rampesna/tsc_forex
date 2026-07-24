@@ -1,6 +1,5 @@
 package com.example.tsc.forex.ui.screens
 
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -14,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -24,6 +24,15 @@ import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
+import androidx.compose.material.icons.filled.WorkspacePremium
+import androidx.compose.material.icons.outlined.CreateNewFolder
+import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.FavoriteBorder
+import androidx.compose.material.icons.outlined.IosShare
+import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.MoreHoriz
+import androidx.compose.material.icons.outlined.Search
+import androidx.compose.material.icons.outlined.UnfoldMore
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -38,61 +47,179 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.FileProvider
+import com.example.tsc.forex.data.ApiException
+import com.example.tsc.forex.data.Candle
+import com.example.tsc.forex.data.PortfolioHealth
 import com.example.tsc.forex.data.PortfolioPerformancePoint
 import com.example.tsc.forex.data.PortfolioPosition
 import com.example.tsc.forex.data.PortfolioPositionDetail
 import com.example.tsc.forex.data.PortfolioTransaction
+import com.example.tsc.forex.data.Prefs
+import com.example.tsc.forex.store.AuthStore
+import com.example.tsc.forex.store.BillingStore
 import com.example.tsc.forex.store.PortfolioStore
 import com.example.tsc.forex.store.PriceStore
 import com.example.tsc.forex.ui.AssetBadge
 import com.example.tsc.forex.ui.Card
+import com.example.tsc.forex.ui.ChartMode
 import com.example.tsc.forex.ui.Fmt
+import com.example.tsc.forex.ui.PriceChart
 import com.example.tsc.forex.ui.ScreenHeader
+import com.example.tsc.forex.ui.ToastOnChange
 import com.example.tsc.forex.ui.theme.Th
+import androidx.compose.ui.graphics.Color
 import kotlinx.coroutines.launch
 import org.json.JSONObject
+import java.io.File
 import java.text.SimpleDateFormat
+import java.time.Instant
+import java.time.ZoneOffset
 import java.util.Date
 import java.util.Locale
 import java.util.UUID
+import android.content.Intent
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
+import kotlin.math.max
+import kotlin.math.min
 
 @Composable
 fun PortfolioScreen(
     portfolio: PortfolioStore,
     store: PriceStore,
+    auth: AuthStore,
+    billing: BillingStore,
+    prefs: Prefs,
     onPosition: (String) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     var showAdd by remember { mutableStateOf(false) }
+    var showPaywall by remember { mutableStateOf(false) }
+    var showCreatePortfolio by remember { mutableStateOf(false) }
+    var showRenamePortfolio by remember { mutableStateOf(false) }
+    var confirmDeletePortfolio by remember { mutableStateOf(false) }
+    var portfolioNameInput by remember { mutableStateOf("") }
+    var showPortfolioMenu by remember { mutableStateOf(false) }
+    var showPortfolioPicker by remember { mutableStateOf(false) }
     var range by remember { mutableStateOf("1y") }
+    var chartMetric by remember { mutableStateOf("value") }
+    var portfolioHealth by remember { mutableStateOf<PortfolioHealth?>(null) }
+    var premiumBusy by remember { mutableStateOf<String?>(null) }
     val overview = portfolio.overview
 
-    LaunchedEffect(Unit) { portfolio.sync(store.prices, range) }
+    LaunchedEffect(Unit) {
+        portfolio.sync(store.prices, range)
+        billing.refreshNow()
+    }
+
+    fun quotaText(feature: String): String {
+        val q = billing.serverStatus?.usage?.get(feature) ?: return "Paket özelliği"
+        return "Bu ay ${q.remaining}/${q.limit} kaldı"
+    }
+
+    fun handlePremiumError(e: Throwable) {
+        when {
+            e is ApiException && e.code == 402 -> showPaywall = true
+            e is ApiException && e.code == 429 ->
+                portfolio.errorMessage = "Çok sık istek gönderildi. Kısa bir süre bekleyip tekrar deneyin."
+            e is ApiException && e.code == 409 && e.serverCode == "operation_in_progress" ->
+                portfolio.errorMessage =
+                    "İşlem halen tamamlanıyor. Biraz sonra tekrar deneyin; kullanım hakkınız yeniden düşülmeyecek."
+            else -> portfolio.errorMessage = e.message ?: "İşlem başarısız."
+        }
+    }
+
+    suspend fun runHealth() {
+        val id = overview?.portfolio?.id ?: return
+        val userId = auth.ensureUserId() ?: run {
+            portfolio.errorMessage = "Hesap bilgileri doğrulanamadı. Profilinizi yenileyip tekrar deneyin."
+            return
+        }
+        val op = "portfolio-health"
+        val requestId = prefs.pendingRequestId(userId, op, id)
+        premiumBusy = "health"
+        try {
+            portfolioHealth = auth.newApiClient().portfolioHealth(id, requestId)
+            prefs.clearPendingRequestId(userId, op, id)
+            billing.refreshNow()
+        } catch (e: Exception) {
+            if (e !is ApiException || !e.shouldRetainRequestId) {
+                prefs.clearPendingRequestId(userId, op, id)
+            }
+            handlePremiumError(e)
+        } finally {
+            premiumBusy = null
+        }
+    }
+
+    suspend fun runExport() {
+        val id = overview?.portfolio?.id ?: return
+        val userId = auth.ensureUserId() ?: run {
+            portfolio.errorMessage = "Hesap bilgileri doğrulanamadı. Profilinizi yenileyip tekrar deneyin."
+            return
+        }
+        val op = "portfolio-export"
+        val requestId = prefs.pendingRequestId(userId, op, id)
+        premiumBusy = "export"
+        try {
+            val bytes = auth.newApiClient().exportPortfolio(id, requestId)
+            val date = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(Date())
+            val file = File(context.cacheDir, "portfoy-${id.take(8)}-$date.csv")
+            file.writeBytes(bytes)
+            prefs.clearPendingRequestId(userId, op, id)
+            billing.refreshNow()
+            val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)
+            val share = Intent(Intent.ACTION_SEND).apply {
+                type = "text/csv"
+                putExtra(Intent.EXTRA_STREAM, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+            context.startActivity(Intent.createChooser(share, "Portföy CSV"))
+        } catch (e: Exception) {
+            if (e !is ApiException || !e.shouldRetainRequestId) {
+                prefs.clearPendingRequestId(userId, op, id)
+            }
+            handlePremiumError(e)
+        } finally {
+            premiumBusy = null
+        }
+    }
 
     Column(Modifier.fillMaxSize().background(Th.bg)) {
         ScreenHeader(
             title = "Portföy",
-            subtitle = "Bulut senkronu ve TRY bazlı canlı analiz",
             trailing = {
-                IconButton(onClick = { showAdd = true }) {
-                    Icon(Icons.Filled.Add, "İşlem ekle", tint = Th.accent)
+                Box(
+                    Modifier
+                        .size(32.dp)
+                        .clip(RoundedCornerShape(16.dp))
+                        .background(Th.accent)
+                        .clickable { showAdd = true },
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Icon(Icons.Filled.Add, "İşlem ekle", tint = Th.bg, modifier = Modifier.size(20.dp))
                 }
             },
         )
+        ToastOnChange(portfolio.errorMessage) { portfolio.errorMessage = null }
+
         if (portfolio.loading && overview == null) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                 Text("Portföy senkronize ediliyor…", color = Th.textDim)
@@ -104,13 +231,6 @@ fun PortfolioScreen(
             modifier = Modifier.fillMaxSize(),
             verticalArrangement = Arrangement.spacedBy(12.dp),
         ) {
-            item {
-                portfolio.errorMessage?.let {
-                    Card(Modifier.padding(horizontal = 16.dp)) {
-                        Text(it, color = Th.down, fontSize = 12.sp)
-                    }
-                }
-            }
             if (portfolio.legacyPreview.isNotEmpty()) {
                 item {
                     Card(Modifier.padding(horizontal = 16.dp)) {
@@ -139,11 +259,193 @@ fun PortfolioScreen(
                     }
                 }
             }
+            item {
+                Card(Modifier.padding(horizontal = 16.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(Modifier.weight(1f)) {
+                            Text("AKTİF PORTFÖY", color = Th.textFaint, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                            Row(
+                                Modifier.clickable { showPortfolioPicker = true },
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                Text(
+                                    overview?.portfolio?.name ?: "Portföy seç",
+                                    color = Th.text,
+                                    fontSize = 16.sp,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                                Icon(
+                                    Icons.Outlined.UnfoldMore,
+                                    contentDescription = null,
+                                    tint = Th.accent,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                            }
+                        }
+                        IconButton(onClick = {
+                            portfolioNameInput = ""
+                            showCreatePortfolio = true
+                        }) {
+                            Icon(
+                                Icons.Outlined.CreateNewFolder,
+                                contentDescription = "Yeni portföy",
+                                tint = Th.accent,
+                                modifier = Modifier.size(22.dp),
+                            )
+                        }
+                        Box {
+                            IconButton(onClick = { showPortfolioMenu = true }) {
+                                Icon(
+                                    Icons.Outlined.MoreHoriz,
+                                    contentDescription = "Portföy menüsü",
+                                    tint = Th.textDim,
+                                    modifier = Modifier.size(22.dp),
+                                )
+                            }
+                            DropdownMenu(expanded = showPortfolioMenu, onDismissRequest = { showPortfolioMenu = false }) {
+                                DropdownMenuItem(
+                                    text = { Text("Yeniden Adlandır") },
+                                    leadingIcon = {
+                                        Icon(Icons.Outlined.Edit, null, tint = Th.textDim, modifier = Modifier.size(18.dp))
+                                    },
+                                    onClick = {
+                                        showPortfolioMenu = false
+                                        portfolioNameInput = overview?.portfolio?.name.orEmpty()
+                                        showRenamePortfolio = true
+                                    },
+                                )
+                                DropdownMenuItem(
+                                    text = { Text("Portföyü Sil", color = Th.down) },
+                                    leadingIcon = {
+                                        Icon(Icons.Outlined.Delete, null, tint = Th.down, modifier = Modifier.size(18.dp))
+                                    },
+                                    enabled = portfolio.portfolios.size > 1,
+                                    onClick = {
+                                        showPortfolioMenu = false
+                                        confirmDeletePortfolio = true
+                                    },
+                                )
+                            }
+                        }
+                    }
+                }
+            }
             item { SummaryCard(overview) }
+            item {
+                Card(Modifier.padding(horizontal = 16.dp)) {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) {
+                                Text("Portföy Araçları", color = Th.text, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                                Text(
+                                    "Dağılımı değerlendir veya işlem defterini paylaşılabilir CSV olarak al.",
+                                    color = Th.textDim,
+                                    fontSize = 11.sp,
+                                )
+                            }
+                            Icon(
+                                Icons.Filled.WorkspacePremium,
+                                contentDescription = null,
+                                tint = Th.accent,
+                                modifier = Modifier.size(20.dp),
+                            )
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Button(
+                                onClick = { scope.launch { runHealth() } },
+                                enabled = premiumBusy == null,
+                                colors = ButtonDefaults.buttonColors(containerColor = Th.surfaceAlt, contentColor = Th.text),
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(11.dp),
+                            ) {
+                                Column(horizontalAlignment = Alignment.Start) {
+                                    Icon(
+                                        Icons.Outlined.FavoriteBorder,
+                                        contentDescription = null,
+                                        tint = Th.accent,
+                                        modifier = Modifier.size(18.dp).padding(bottom = 4.dp),
+                                    )
+                                    Text(
+                                        if (premiumBusy == "health") "Analiz…" else "Sağlık Analizi",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp,
+                                    )
+                                    Text(quotaText("portfolio_health"), color = Th.textFaint, fontSize = 9.sp)
+                                }
+                            }
+                            Button(
+                                onClick = { scope.launch { runExport() } },
+                                enabled = premiumBusy == null,
+                                colors = ButtonDefaults.buttonColors(containerColor = Th.surfaceAlt, contentColor = Th.text),
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(11.dp),
+                            ) {
+                                Column(horizontalAlignment = Alignment.Start) {
+                                    Icon(
+                                        Icons.Outlined.IosShare,
+                                        contentDescription = null,
+                                        tint = Th.accent,
+                                        modifier = Modifier.size(18.dp).padding(bottom = 4.dp),
+                                    )
+                                    Text(
+                                        if (premiumBusy == "export") "Aktarılıyor…" else "CSV Dışa Aktar",
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 12.sp,
+                                    )
+                                    Text(quotaText("exports"), color = Th.textFaint, fontSize = 9.sp)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            portfolioHealth?.let { health ->
+                item {
+                    Card(Modifier.padding(horizontal = 16.dp)) {
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text("Portföy Sağlığı", color = Th.text, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                                    Text(health.generatedAt.take(16).replace('T', ' '), color = Th.textFaint, fontSize = 9.sp)
+                                }
+                                Column(horizontalAlignment = Alignment.End) {
+                                    val color = when {
+                                        health.score >= 85 -> Th.up
+                                        health.score >= 60 -> Th.accent
+                                        else -> Th.down
+                                    }
+                                    Text("${health.score}", color = color, fontSize = 24.sp, fontWeight = FontWeight.Bold)
+                                    Text(health.grade, color = color, fontSize = 9.sp, fontWeight = FontWeight.Bold)
+                                }
+                            }
+                            Text(health.summary, color = Th.textDim, fontSize = 12.sp)
+                            health.findings.forEach { finding ->
+                                val sev = when (finding.severity) {
+                                    "high" -> Th.down
+                                    "medium" -> Th.accent
+                                    else -> Th.up
+                                }
+                                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                    Text("● ${finding.title}", color = sev, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                                    Text(finding.detail, color = Th.textDim, fontSize = 10.sp)
+                                }
+                            }
+                            Text(
+                                "Bu değerlendirme eğitim ve risk farkındalığı içindir; yatırım tavsiyesi değildir.",
+                                color = Th.textFaint,
+                                fontSize = 9.sp,
+                            )
+                        }
+                    }
+                }
+            }
             item {
                 PerformanceCard(
                     points = portfolio.performance,
                     range = range,
+                    metric = chartMetric,
+                    onMetric = { chartMetric = it },
                     onRange = {
                         range = it
                         scope.launch { portfolio.refreshPerformance(it) }
@@ -203,6 +505,116 @@ fun PortfolioScreen(
             },
         )
     }
+    if (showPaywall) {
+        PaywallSheet(billing = billing, onDismiss = { showPaywall = false })
+    }
+    if (showPortfolioPicker) {
+        AlertDialog(
+            onDismissRequest = { showPortfolioPicker = false },
+            containerColor = Th.surface,
+            title = { Text("Portföy Seç", color = Th.text) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    portfolio.portfolios.forEach { item ->
+                        val selected = item.portfolio.id == overview?.portfolio?.id
+                        Text(
+                            item.portfolio.name,
+                            color = if (selected) Th.accent else Th.text,
+                            fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(if (selected) Th.accent.copy(alpha = 0.12f) else Th.surfaceAlt)
+                                .clickable {
+                                    showPortfolioPicker = false
+                                    portfolioHealth = null
+                                    scope.launch { portfolio.selectPortfolio(item.portfolio.id, store.prices, range) }
+                                }
+                                .padding(12.dp),
+                        )
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = { TextButton(onClick = { showPortfolioPicker = false }) { Text("Vazgeç", color = Th.textDim) } },
+        )
+    }
+    if (showCreatePortfolio || showRenamePortfolio) {
+        AlertDialog(
+            onDismissRequest = { showCreatePortfolio = false; showRenamePortfolio = false },
+            containerColor = Th.surface,
+            title = {
+                Text(
+                    if (showCreatePortfolio) "Yeni Portföy" else "Portföyü Yeniden Adlandır",
+                    color = Th.text,
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    if (showCreatePortfolio) {
+                        Text(
+                            "Planınızdaki portföy hakkı kapsamında ayrı bir takip alanı oluşturun.",
+                            color = Th.textDim,
+                            fontSize = 12.sp,
+                        )
+                    }
+                    OutlinedTextField(
+                        value = portfolioNameInput,
+                        onValueChange = { portfolioNameInput = it },
+                        label = { Text("Portföy adı") },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    scope.launch {
+                        val ok = if (showCreatePortfolio) {
+                            portfolio.createPortfolio(portfolioNameInput, store.prices, range)
+                        } else {
+                            portfolio.renameCurrentPortfolio(portfolioNameInput)
+                        }
+                        if (ok) {
+                            showCreatePortfolio = false
+                            showRenamePortfolio = false
+                            portfolioNameInput = ""
+                        }
+                    }
+                }) { Text(if (showCreatePortfolio) "Oluştur" else "Kaydet", color = Th.accent, fontWeight = FontWeight.Bold) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showCreatePortfolio = false; showRenamePortfolio = false }) {
+                    Text("Vazgeç", color = Th.textDim)
+                }
+            },
+        )
+    }
+    if (confirmDeletePortfolio) {
+        AlertDialog(
+            onDismissRequest = { confirmDeletePortfolio = false },
+            containerColor = Th.surface,
+            title = { Text("Portföy silinsin mi?", color = Th.text) },
+            text = {
+                Text(
+                    "Bu portföydeki tüm işlem ve performans geçmişi kalıcı olarak silinir.",
+                    color = Th.textDim,
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmDeletePortfolio = false
+                    scope.launch {
+                        portfolioHealth = null
+                        portfolio.deleteCurrentPortfolio(store.prices, range)
+                    }
+                }) { Text("Kalıcı Olarak Sil", color = Th.down, fontWeight = FontWeight.Bold) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmDeletePortfolio = false }) { Text("Vazgeç", color = Th.textDim) }
+            },
+        )
+    }
 }
 
 @Composable
@@ -234,52 +646,193 @@ private fun RowScope.SummaryMetric(label: String, value: Double, pct: Double? = 
     }
 }
 
+private val PerformanceValueColor = Th.accent
+private val PerformanceCostColor = Color(0xFFF3C43D)
+private val PerformancePnlColor = Color(0xFFE559B7)
+
 @Composable
 private fun PerformanceCard(
     points: List<PortfolioPerformancePoint>,
     range: String,
+    metric: String,
+    onMetric: (String) -> Unit,
     onRange: (String) -> Unit,
 ) {
     val firstActive = points.indexOfFirst { it.valueTry != 0.0 || it.costBasisTry != 0.0 }
     val plotted = if (firstActive > 0) points.drop(firstActive) else points
+    var selectedEpochMs by remember { mutableStateOf<Long?>(null) }
+    var chartReset by remember { mutableIntStateOf(0) }
+
+    LaunchedEffect(metric, range, plotted.size) {
+        selectedEpochMs = null
+        chartReset += 1
+    }
+
+    val candles = remember(plotted, metric) {
+        performanceCandles(plotted) {
+            when (metric) {
+                "pnl" -> it.totalPnlTry
+                "cost" -> it.costBasisTry
+                else -> it.valueTry
+            }
+        }
+    }
+    val seriesTitle = when (metric) {
+        "pnl" -> "Toplam K/Z"
+        "cost" -> "Maliyet"
+        else -> "Değer"
+    }
+    val seriesColor = when (metric) {
+        "pnl" -> PerformancePnlColor
+        "cost" -> PerformanceCostColor
+        else -> PerformanceValueColor
+    }
+    val trendUp = remember(candles) {
+        val first = candles.firstOrNull()?.close ?: return@remember true
+        val last = candles.lastOrNull()?.close ?: return@remember true
+        last >= first
+    }
+    val selectedPoint = remember(selectedEpochMs, plotted) {
+        val ms = selectedEpochMs ?: return@remember null
+        val day = Instant.ofEpochMilli(ms).atZone(ZoneOffset.UTC).toLocalDate().toString()
+        plotted.firstOrNull { it.date.take(10) == day }
+    }
+    val snapshot = selectedPoint ?: plotted.lastOrNull()
+
     Card(Modifier.padding(horizontal = 16.dp)) {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Text("Performans", color = Th.text, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-                Spacer(Modifier.weight(1f))
-                listOf("1m", "3m", "1y", "5y").forEach { item ->
+            Text("Portföy Performansı", color = Th.text, fontSize = 15.sp, fontWeight = FontWeight.Bold)
+            Text("Varlıkların gerçek günlük fiyat geçmişine göre", color = Th.textDim, fontSize = 11.sp)
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(5.dp),
+            ) {
+                listOf(
+                    "value" to ("Değer" to PerformanceValueColor),
+                    "pnl" to ("Toplam K/Z" to PerformancePnlColor),
+                    "cost" to ("Maliyet" to PerformanceCostColor),
+                ).forEach { (id, labelColor) ->
+                    val (label, color) = labelColor
+                    val selected = metric == id
                     Text(
-                        item.uppercase(),
-                        color = if (range == item) Th.accent else Th.textDim,
-                        fontSize = 10.sp,
+                        label,
+                        color = if (selected) Th.bg else color,
+                        fontSize = 11.sp,
                         fontWeight = FontWeight.SemiBold,
+                        textAlign = TextAlign.Center,
+                        maxLines = 1,
                         modifier = Modifier
-                            .clickable { onRange(item) }
-                            .padding(horizontal = 6.dp, vertical = 5.dp),
+                            .weight(1f)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (selected) color else Th.surfaceAlt)
+                            .clickable {
+                                onMetric(id)
+                                selectedEpochMs = null
+                                chartReset += 1
+                            }
+                            .padding(vertical = 8.dp),
                     )
                 }
             }
-            if (plotted.size < 2) {
-                Box(Modifier.fillMaxWidth().height(140.dp), contentAlignment = Alignment.Center) {
-                    Text("Henüz yeterli veri yok", color = Th.textFaint, fontSize = 12.sp)
-                }
-            } else {
-                Canvas(Modifier.fillMaxWidth().height(140.dp)) {
-                    val values = plotted.map { it.valueTry }
-                    val low = values.minOrNull() ?: 0.0
-                    val high = values.maxOrNull() ?: 1.0
-                    val span = maxOf(high - low, high * .01, 1.0)
-                    val path = Path()
-                    values.forEachIndexed { index, value ->
-                        val x = index.toFloat() / (values.size - 1).coerceAtLeast(1) * size.width
-                        val y = size.height - ((value - low) / span).toFloat() * (size.height - 12f) - 6f
-                        if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
+            if (snapshot != null) {
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(Th.surfaceAlt)
+                        .padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                ) {
+                    val label = if (selectedPoint == null) "SON DURUM" else "SEÇİLİ GÜN"
+                    Text(
+                        "$label · ${snapshot.date.take(10)}",
+                        color = Th.textFaint,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                    )
+                    Row(Modifier.fillMaxWidth()) {
+                        Text("Değer", color = PerformanceValueColor, fontSize = 11.sp, modifier = Modifier.weight(1f))
+                        Text(Fmt.tl(snapshot.valueTry), color = Th.text, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
                     }
-                    drawPath(path, color = Th.accent, style = Stroke(width = 2.5f, cap = StrokeCap.Round))
+                    Row(Modifier.fillMaxWidth()) {
+                        Text("Maliyet", color = PerformanceCostColor, fontSize = 11.sp, modifier = Modifier.weight(1f))
+                        Text(Fmt.tl(snapshot.costBasisTry), color = Th.text, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                    }
+                    Row(Modifier.fillMaxWidth()) {
+                        Text("Toplam K/Z", color = PerformancePnlColor, fontSize = 11.sp, modifier = Modifier.weight(1f))
+                        Text(
+                            Fmt.tl(snapshot.totalPnlTry),
+                            color = Th.trend(snapshot.totalPnlTry),
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                        )
+                    }
+                }
+            }
+            PriceChart(
+                candles = candles,
+                mode = ChartMode.LINE,
+                trendUp = trendUp,
+                currency = "TRY",
+                resetToken = chartReset,
+                heightDp = 220,
+                seriesTitle = seriesTitle,
+                seriesColor = seriesColor,
+                showsMovingAverages = false,
+                showsVolume = false,
+                showsOHLCSelection = false,
+                stickySelection = true,
+                emptyTitle = "Henüz yeterli performans verisi yok",
+                emptySubtitle = "İşlem ekledikçe geçmiş portföy değeri burada oluşur.",
+                interactionHint = "Yatay sürükle, sıkıştırarak yakınlaştır, dokunarak günü seç",
+                onSelectionChange = { selectedEpochMs = it },
+            )
+            Row(
+                Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(4.dp),
+            ) {
+                listOf("1m" to "1 AY", "3m" to "3 AY", "1y" to "1 YIL", "5y" to "5 YIL").forEach { (id, label) ->
+                    val selected = range == id
+                    Text(
+                        label,
+                        color = if (selected) Th.accent else Th.textDim,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        textAlign = TextAlign.Center,
+                        maxLines = 1,
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (selected) Th.accent.copy(alpha = 0.12f) else Th.surfaceAlt)
+                            .clickable {
+                                onRange(id)
+                                selectedEpochMs = null
+                                chartReset += 1
+                            }
+                            .padding(vertical = 8.dp),
+                    )
                 }
             }
         }
     }
+}
+
+private fun performanceCandles(
+    points: List<PortfolioPerformancePoint>,
+    valueOf: (PortfolioPerformancePoint) -> Double,
+): List<Candle> = points.mapIndexedNotNull { index, point ->
+    val day = point.date.take(10)
+    if (!day.matches(Regex("""\d{4}-\d{2}-\d{2}"""))) return@mapIndexedNotNull null
+    val close = valueOf(point)
+    val open = if (index > 0) valueOf(points[index - 1]) else close
+    Candle(
+        time = "${day}T00:00:00Z",
+        open = open,
+        high = max(open, close),
+        low = min(open, close),
+        close = close,
+        count = 0,
+    )
 }
 
 @Composable
@@ -290,7 +843,12 @@ private fun AllocationCard(positions: List<PortfolioPosition>) {
             positions.take(8).forEach { position ->
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Row {
-                        Text(position.code, color = Th.text, fontSize = 11.sp)
+                        Text(
+                            position.displayName.ifBlank { position.code },
+                            color = Th.text,
+                            fontSize = 12.sp,
+                            fontWeight = FontWeight.SemiBold,
+                        )
                         Spacer(Modifier.weight(1f))
                         Text("%${"%.1f".format(position.allocationPct)}", color = Th.textDim, fontSize = 11.sp)
                     }
@@ -350,7 +908,10 @@ fun PortfolioPositionScreen(
 
     Column(Modifier.fillMaxSize().background(Th.bg)) {
         Row(
-            Modifier.fillMaxWidth().padding(horizontal = 8.dp, vertical = 8.dp),
+            Modifier
+                .fillMaxWidth()
+                .statusBarsPadding()
+                .padding(horizontal = 8.dp, vertical = 8.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Geri", tint = Th.text) }
@@ -471,6 +1032,7 @@ private fun RowScope.PositionMetric(label: String, value: String, trend: Double?
     }
 }
 
+@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 private fun PortfolioTransactionDialog(
     store: PriceStore,
@@ -486,16 +1048,17 @@ private fun PortfolioTransactionDialog(
     var assetKind by remember(transaction?.id) { mutableStateOf(store.prices[code]?.kind.orEmpty()) }
     var showKindPicker by remember { mutableStateOf(false) }
     var showAssetPicker by remember { mutableStateOf(false) }
-    var quantity by remember(transaction?.id) { mutableStateOf(transaction?.quantity?.toString() ?: "") }
+    var quantity by remember(transaction?.id) { mutableStateOf(transaction?.quantity?.takeIf { it > 0 }?.toString() ?: "0") }
     var unitPrice by remember(transaction?.id) {
-        mutableStateOf(transaction?.unitPriceNative?.toString() ?: (store.prices[code]?.price?.toString() ?: ""))
+        mutableStateOf(transaction?.unitPriceNative?.takeIf { it > 0 }?.toString() ?: (store.prices[code]?.price?.toString() ?: "0"))
     }
-    var amount by remember(transaction?.id) { mutableStateOf(transaction?.amountNative?.toString() ?: "") }
+    var amount by remember(transaction?.id) { mutableStateOf(transaction?.amountNative?.toString() ?: "0") }
     var fee by remember(transaction?.id) { mutableStateOf(transaction?.feeNative?.toString() ?: "0") }
     var note by remember(transaction?.id) { mutableStateOf(transaction?.note ?: "") }
     var occurredDate by remember(transaction?.id) {
         mutableStateOf(transaction?.occurredAt?.take(10) ?: today())
     }
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
     val trade = type == "buy" || type == "sell"
     val usesAsset = type != "deposit" && type != "withdraw"
     val validDate = validDate(occurredDate)
@@ -504,116 +1067,135 @@ private fun PortfolioTransactionDialog(
     } else {
         decimal(amount) > 0
     }
+    val canSave = validDate && validAmount && (!usesAsset || (assetKind.isNotBlank() && code.isNotBlank()))
     LaunchedEffect(code, store.prices.size) {
         if (assetKind.isBlank() && code.isNotBlank()) assetKind = store.prices[code]?.kind.orEmpty()
     }
 
-    AlertDialog(
+    ModalBottomSheet(
         onDismissRequest = onDismiss,
-        containerColor = Th.surface,
-        title = { Text(if (transaction == null) "Yeni İşlem" else "İşlemi Düzenle", color = Th.text) },
-        text = {
-            LazyColumn(verticalArrangement = Arrangement.spacedBy(9.dp)) {
-                item {
-                    Box {
-                        OutlinedTextField(
-                            value = typeTitle(type), onValueChange = {},
-                            readOnly = true, label = { Text("İşlem türü") },
-                            modifier = Modifier.fillMaxWidth().clickable { typeMenu = true },
-                        )
-                        DropdownMenu(expanded = typeMenu, onDismissRequest = { typeMenu = false }) {
-                            types.forEach { item ->
-                                DropdownMenuItem(
-                                    text = { Text(typeTitle(item)) },
-                                    onClick = { type = item; typeMenu = false },
-                                )
-                            }
-                        }
-                    }
-                }
-                if (usesAsset) {
-                    item {
-                        OutlinedTextField(
-                            value = instrumentKindTitle(assetKind),
-                            onValueChange = {},
-                            readOnly = true,
-                            label = { Text("Varlık türü") },
-                            placeholder = { Text("Tür seç") },
-                            modifier = Modifier.fillMaxWidth().clickable { showKindPicker = true },
-                        )
-                    }
-                    item {
-                        OutlinedTextField(
-                            value = store.prices[code]?.displayName.orEmpty(),
-                            onValueChange = {},
-                            readOnly = true,
-                            enabled = assetKind.isNotBlank(),
-                            label = { Text("Varlık") },
-                            placeholder = { Text(if (assetKind.isBlank()) "Önce varlık türünü seç" else "Varlık seç") },
-                            modifier = Modifier.fillMaxWidth().clickable(enabled = assetKind.isNotBlank()) {
-                                showAssetPicker = true
-                            },
-                        )
-                    }
-                }
-                if (trade) {
-                    item { DecimalField("Miktar", quantity) { quantity = it } }
-                    item { DecimalField("Birim fiyatı", unitPrice) { unitPrice = it } }
-                    item { DecimalField("Komisyon", fee) { fee = it } }
-                } else {
-                    item { DecimalField("Tutar", amount) { amount = it } }
-                }
-                item {
-                    OutlinedTextField(
-                        value = occurredDate,
-                        onValueChange = { occurredDate = it.take(10) },
-                        label = { Text("İşlem tarihi (YYYY-AA-GG)") },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        modifier = Modifier.fillMaxWidth(),
+        sheetState = sheetState,
+        containerColor = Th.bg,
+        dragHandle = null,
+    ) {
+        Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 28.dp)) {
+            Row(
+                Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                TextButton(onClick = onDismiss) {
+                    Text(
+                        "Vazgeç",
+                        color = Th.accent,
+                        fontWeight = FontWeight.SemiBold,
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(20.dp))
+                            .background(Th.surface)
+                            .padding(horizontal = 14.dp, vertical = 7.dp),
                     )
                 }
-                item {
-                    OutlinedTextField(
-                        value = note, onValueChange = { note = it.take(500) },
-                        label = { Text("Not") }, modifier = Modifier.fillMaxWidth(),
+                Spacer(Modifier.weight(1f))
+                Text(
+                    if (transaction == null) "Yeni İşlem" else "İşlemi Düzenle",
+                    color = Th.text,
+                    fontSize = 17.sp,
+                    fontWeight = FontWeight.Bold,
+                )
+                Spacer(Modifier.weight(1f))
+                TextButton(
+                    enabled = canSave,
+                    onClick = {
+                        val price = store.prices[code]
+                        onSave(
+                            PortfolioStore.transactionBody(
+                                clientId = transaction?.clientId ?: UUID.randomUUID().toString(),
+                                code = if (usesAsset) code else "",
+                                type = type,
+                                quantity = if (trade) decimal(quantity) else 0.0,
+                                unitPrice = if (trade) decimal(unitPrice) else 0.0,
+                                amount = if (trade) 0.0 else decimal(amount),
+                                fee = if (trade) decimal(fee) else 0.0,
+                                currency = if (usesAsset) price?.currency ?: "TRY" else "TRY",
+                                usdtry = 0.0,
+                                occurredAt = PortfolioStore.occurredAtIso(occurredDate),
+                                note = note,
+                            ),
+                        )
+                    },
+                ) {
+                    Text(
+                        "Kaydet",
+                        color = if (canSave) Th.accent else Th.textFaint,
+                        fontWeight = FontWeight.Bold,
                     )
                 }
             }
-        },
-        confirmButton = {
-            TextButton(
-                enabled = validDate && validAmount && (!usesAsset || code.isNotBlank()),
-                onClick = {
-                    val price = store.prices[code]
-                    onSave(PortfolioStore.transactionBody(
-                        clientId = transaction?.clientId ?: UUID.randomUUID().toString(),
-                        code = if (usesAsset) code else "",
-                        type = type,
-                        quantity = if (trade) decimal(quantity) else 0.0,
-                        unitPrice = if (trade) decimal(unitPrice) else 0.0,
-                        amount = if (trade) 0.0 else decimal(amount),
-                        fee = if (trade) decimal(fee) else 0.0,
-                        currency = if (usesAsset) price?.currency ?: "TRY" else "TRY",
-                        usdtry = 0.0,
-                        occurredAt = "${occurredDate}T12:00:00Z",
-                        note = note,
-                    ))
-                },
-            ) { Text("Kaydet", color = Th.accent) }
-        },
-        dismissButton = { TextButton(onClick = onDismiss) { Text("Vazgeç", color = Th.textDim) } },
-    )
+
+            Column(
+                Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(18.dp))
+                    .background(Th.surface),
+            ) {
+                FormSelectRow("İşlem", typeTitle(type), accent = true) { typeMenu = true }
+                DropdownMenu(expanded = typeMenu, onDismissRequest = { typeMenu = false }) {
+                    types.forEach { item ->
+                        DropdownMenuItem(
+                            text = { Text(typeTitle(item)) },
+                            onClick = { type = item; typeMenu = false },
+                        )
+                    }
+                }
+                if (usesAsset) {
+                    FormSelectRow(
+                        "Varlık türü",
+                        instrumentKindTitle(assetKind).ifBlank { "Tür seç" },
+                        accent = assetKind.isNotBlank(),
+                    ) { showKindPicker = true }
+                    FormSelectRow(
+                        "Varlık",
+                        store.prices[code]?.displayName ?: "Varlık seç",
+                        accent = code.isNotBlank(),
+                        enabled = assetKind.isNotBlank(),
+                        search = true,
+                    ) { showAssetPicker = true }
+                }
+                if (trade) {
+                    FormFieldRow("Miktar", quantity) { quantity = it }
+                    FormFieldRow("Birim fiyatı", unitPrice) { unitPrice = it }
+                    FormFieldRow("Komisyon", fee) { fee = it }
+                } else {
+                    FormFieldRow("Tutar", amount) { amount = it }
+                }
+                FormFieldRow("İşlem tarihi", occurredDate) { occurredDate = it.take(10) }
+                OutlinedTextField(
+                    value = note,
+                    onValueChange = { note = it.take(500) },
+                    placeholder = { Text("Not (opsiyonel)", color = Th.textFaint) },
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                    colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = Th.stroke,
+                        unfocusedBorderColor = Th.stroke,
+                        focusedTextColor = Th.text,
+                        unfocusedTextColor = Th.text,
+                        cursorColor = Th.accent,
+                    ),
+                )
+            }
+        }
+    }
+
     if (showKindPicker) {
         InstrumentKindPickerDialog(
             instruments = store.all(),
             selectedKind = assetKind,
             onDismiss = { showKindPicker = false },
-        ) { selectedKind ->
-            assetKind = selectedKind
-            code = ""
-            unitPrice = ""
-        }
+            onSelect = { selectedKind ->
+                assetKind = selectedKind
+                code = ""
+                unitPrice = "0"
+            },
+        )
     }
     if (showAssetPicker && assetKind.isNotBlank()) {
         InstrumentPickerDialog(
@@ -621,11 +1203,71 @@ private fun PortfolioTransactionDialog(
             kind = assetKind,
             selectedCode = code,
             onDismiss = { showAssetPicker = false },
-        ) { instrument ->
-            code = instrument.code
-            unitPrice = instrument.price.toString()
-        }
+            onSelect = { instrument ->
+                code = instrument.code
+                unitPrice = instrument.price.toString()
+            },
+        )
     }
+}
+
+@Composable
+private fun FormSelectRow(
+    label: String,
+    value: String,
+    accent: Boolean = false,
+    enabled: Boolean = true,
+    search: Boolean = false,
+    onClick: () -> Unit,
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 14.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+    ) {
+        Text(label, color = Th.text, fontSize = 15.sp, modifier = Modifier.weight(1f))
+        Text(value, color = if (accent) Th.accent else Th.textDim, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
+        Icon(
+            imageVector = if (search) Icons.Outlined.Search else Icons.Outlined.UnfoldMore,
+            contentDescription = null,
+            tint = if (accent) Th.accent else Th.textFaint,
+            modifier = Modifier.size(16.dp),
+        )
+    }
+    HorizontalRule()
+}
+
+@Composable
+private fun FormFieldRow(label: String, value: String, onChange: (String) -> Unit) {
+    Row(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(label, color = Th.text, fontSize = 15.sp, modifier = Modifier.weight(1f))
+        OutlinedTextField(
+            value = value,
+            onValueChange = onChange,
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+            modifier = Modifier.fillMaxWidth(0.45f),
+            colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
+                focusedBorderColor = Th.stroke,
+                unfocusedBorderColor = Th.stroke,
+                focusedTextColor = Th.text,
+                unfocusedTextColor = Th.text,
+                cursorColor = Th.accent,
+            ),
+        )
+    }
+    HorizontalRule()
+}
+
+@Composable
+private fun HorizontalRule() {
+    Box(Modifier.fillMaxWidth().padding(start = 16.dp).height(0.5.dp).background(Th.stroke))
 }
 
 @Composable

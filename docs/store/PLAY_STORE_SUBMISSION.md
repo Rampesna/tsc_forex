@@ -16,7 +16,7 @@ Bu doküman, TSC Forex Android uygulamasını Google Play'e **ilk seferde, red/a
 | Etiketler | Investing, Stocks, News |
 | İçerik derecelendirmesi | Everyone (herkes) |
 | Fiyat | Ücretsiz |
-| Uygulama içi ürün | Yok |
+| Uygulama içi ürün | Abonelik (Play Billing) — aşağıdaki ürün kimlikleri |
 | Reklam | Yok (No ads) |
 | Hedef API düzeyi | 36 (Android 16) — Play güncellik gereksinimini karşılar |
 | Min SDK | 24 (Android 7.0) |
@@ -26,7 +26,7 @@ Bu doküman, TSC Forex Android uygulamasını Google Play'e **ilk seferde, red/a
 ### 1.1 Passkey (geçiş anahtarı) için ZORUNLU adım (release)
 Passkey/WebAuthn login (`/auth/passkey/login/*`) Android'de Credential Manager ile bağlandı. Çalışması için:
 1. Backend config `android_package_name = com.talhacan.tscforex` ve `android_sha256 = [<release SHA-256>]` doldurulmalı (assetlinks.json bunları yayınlar).
-2. RP domaini `tsc-api.talhacan.com` altında `/.well-known/assetlinks.json` `delegate_permission/common.get_login_creds` ile erişilebilir olmalı.
+2. RP domaini `tsc.talhacan.com` altında `/.well-known/assetlinks.json` `delegate_permission/common.get_login_creds` ile erişilebilir olmalı (WebAuthn RP ID). API (`tsc-api`) yedeği de aynı dosyayı sunar.
 3. Kullanıcı önce hesabında bir passkey kaydetmiş olmalı.
 > Bu yapılandırma tamamlanana kadar passkey butonu "kayıtlı geçiş anahtarı bulunamadı" mesajı verir; e-posta/Google girişi etkilenmez.
 
@@ -84,6 +84,36 @@ Fiyat verileri üçüncü taraf kaynaklardan alınır; gecikme veya hata içereb
 | E-posta | `destek@talhacan.com` |
 | Web sitesi | `https://tsc.talhacan.com` |
 | Privacy Policy URL (zorunlu) | `https://tsc.talhacan.com/privacy` |
+
+### 2.5 Abonelik ürünleri (Play Console → Monetize → Subscriptions)
+
+iOS ile **aynı product ID**’leri kullanın (backend `planForProduct` bunları bekler):
+
+| Plan | Product ID | Dönem |
+|------|------------|-------|
+| Başlangıç | `talhacan.tscforex.plus.monthly` | 1 ay |
+| Pro | `talhacan.tscforex.pro.monthly` | 1 ay |
+| Uzman | `talhacan.tscforex.expert.monthly` | 1 ay |
+| Elite | `talhacan.tscforex.elite.monthly` | 1 ay |
+
+Backend doğrulama için Google Play Developer API + service account gerekir (bkz. bölüm 2.6).
+
+### 2.6 Sunucu tarafı Play Billing doğrulama (zorunlu)
+
+1. Google Cloud’da bir proje seçin → **APIs & Services → Library** → **Google Play Android Developer API**’yi etkinleştirin.
+2. **Service Account** oluşturun; JSON anahtar indirin.
+3. Play Console → **Users and permissions** → service account’u davet edin; en azından **View financial data** + **Manage orders and subscriptions** (veya eşdeğeri abonelik okuma) yetkisi verin.
+4. JSON’u cluster’a mount edin (Apple anahtarları gibi out-of-band):
+
+```bash
+kubectl -n tsc-forex create secret generic tsc-forex-google-play \
+  --from-file=play-billing.json=/path/to/play-billing.json
+kubectl -n tsc-forex rollout restart deploy/tsc-forex-app
+```
+
+Secret yokken Apple billing etkilenmez; Google sync `503` / unavailable döner.
+
+5. License testers + Internal testing track ile gerçek satın alma akışını doğrulayın.
 
 ---
 

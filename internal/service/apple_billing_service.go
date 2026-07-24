@@ -259,14 +259,14 @@ func (s *SubscriptionService) applyAppleTransaction(ctx context.Context, userID 
 			return findErr
 		}
 		entitlement := models.SubscriptionEntitlement{
-			UserID: *userID, ProductID: info.ProductID, PlanCode: plan.Code,
+			UserID: *userID, ProductID: info.ProductID, PlanCode: plan.Code, Provider: "apple",
 			OriginalTransactionID: info.OriginalTransactionID, LatestTransactionID: info.TransactionID,
 			Environment: info.Environment, Status: status, PeriodStart: info.PurchasedAt,
 			ExpiresAt: entitlementExpiry, RevokedAt: row.RevokedAt,
 		}
 		return tx.Clauses(clause.OnConflict{
 			Columns: []clause.Column{{Name: "user_id"}}, DoUpdates: clause.AssignmentColumns([]string{
-				"product_id", "plan_code", "original_transaction_id", "latest_transaction_id", "environment",
+				"product_id", "plan_code", "provider", "original_transaction_id", "latest_transaction_id", "environment",
 				"status", "period_start", "expires_at", "revoked_at", "updated_at",
 			}),
 		}).Create(&entitlement).Error

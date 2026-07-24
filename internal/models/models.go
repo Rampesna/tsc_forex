@@ -630,12 +630,13 @@ func (t *PortfolioTransaction) BeforeCreate(_ *gorm.DB) error {
 }
 
 // SubscriptionEntitlement is the server-authoritative snapshot of a user's
-// auto-renewable App Store subscription. The client never grants itself a
-// plan: this row is only updated after an Apple-signed transaction verifies.
+// auto-renewable store subscription. The client never grants itself a plan:
+// this row is only updated after Apple JWS or Google Play purchase verification.
 type SubscriptionEntitlement struct {
 	UserID                uuid.UUID  `gorm:"type:uuid;primaryKey" json:"user_id"`
 	ProductID             string     `gorm:"type:varchar(160);not null" json:"product_id"`
 	PlanCode              string     `gorm:"type:varchar(32);not null;index" json:"plan_code"`
+	Provider              string     `gorm:"type:varchar(24);not null;default:apple;index" json:"provider"`
 	OriginalTransactionID string     `gorm:"type:varchar(96);not null;uniqueIndex" json:"original_transaction_id"`
 	LatestTransactionID   string     `gorm:"type:varchar(96);not null" json:"latest_transaction_id"`
 	Environment           string     `gorm:"type:varchar(24);not null" json:"environment"`
@@ -669,6 +670,30 @@ type AppleTransaction struct {
 }
 
 func (AppleTransaction) TableName() string { return "apple_transactions" }
+
+// GooglePlayTransaction is an audit/fraud record for a verified Play Billing
+// subscription purchase. UserID is nullable so account deletion can remove the
+// personal link while retaining the purchase-token shell for restores/refunds.
+type GooglePlayTransaction struct {
+	// Purchase tokens from Play can exceed 255 chars; keep them as text.
+	PurchaseToken       string     `gorm:"type:text;primaryKey" json:"purchase_token"`
+	OrderID             string     `gorm:"type:varchar(160);not null;index" json:"order_id"`
+	LinkedPurchaseToken string     `gorm:"type:text;index" json:"linked_purchase_token,omitempty"`
+	UserID              *uuid.UUID `gorm:"type:uuid;index" json:"user_id,omitempty"`
+	PackageName         string     `gorm:"type:varchar(160);not null" json:"package_name"`
+	ProductID           string     `gorm:"type:varchar(160);not null" json:"product_id"`
+	ObfuscatedAccountID string     `gorm:"type:varchar(64)" json:"obfuscated_account_id,omitempty"`
+	Environment         string     `gorm:"type:varchar(24);not null" json:"environment"`
+	PurchasedAt         time.Time  `gorm:"not null" json:"purchased_at"`
+	ExpiresAt           time.Time  `gorm:"not null;index" json:"expires_at"`
+	RevokedAt           *time.Time `json:"revoked_at,omitempty"`
+	Acknowledged        bool       `gorm:"not null;default:false" json:"acknowledged"`
+	RawSHA256           string     `gorm:"column:raw_sha256;type:char(64);not null" json:"-"`
+	CreatedAt           time.Time  `json:"created_at"`
+	UpdatedAt           time.Time  `json:"updated_at"`
+}
+
+func (GooglePlayTransaction) TableName() string { return "google_play_transactions" }
 
 // FeatureUsage is an idempotent monthly quota ledger. RequestKey is generated
 // once by the client and Scope identifies the concrete resource (for example

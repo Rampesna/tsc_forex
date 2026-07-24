@@ -55,6 +55,10 @@ data:
   APP_BILLING_DEVICE_CHECK_ENABLED: "true"
   APP_BILLING_DEVICE_CHECK_KEY_ID: ""
   APP_BILLING_DEVICE_CHECK_PRIVATE_KEY_PATH: "/etc/apple-auth/devicecheck.p8"
+  # Google Play Billing. Mount the service-account JSON and set the path to enable
+  # POST /me/billing/google/sync. Until then Apple billing is unaffected.
+  APP_BILLING_GOOGLE_PACKAGE_NAME: "com.talhacan.tscforex"
+  APP_BILLING_GOOGLE_CREDENTIALS_PATH: "/etc/google-play/play-billing.json"
   # Object storage (MinIO) for profile pictures — shared across all pods.
   APP_STORAGE_ENABLED: "true"
   APP_STORAGE_ENDPOINT: "minio:9000"
@@ -71,7 +75,7 @@ data:
   # Fill with a Sign in with Apple-enabled key ID before App Store submission.
   APP_OAUTH_APPLE_KEY_ID: ""
   APP_OAUTH_APPLE_PRIVATE_KEY_PATH: "/etc/apple-auth/sign-in-with-apple.p8"
-  APP_OAUTH_ANDROID_PACKAGE_NAME: "com.example.tsc.forex"
+  APP_OAUTH_ANDROID_PACKAGE_NAME: "com.talhacan.tscforex"
   APP_OAUTH_ANDROID_SHA256: "0A:AB:C2:DD:D5:A9:70:55:0A:8C:45:E9:A6:5B:82:29:91:28:0B:04:AD:34:3A:BE:FF:0E:1D:CB:F8:31:62:38"
   # Sign in with Apple (web) domain verification. Paste the verbatim content of
   # the file Apple issues on the Services ID (tscforex) config
