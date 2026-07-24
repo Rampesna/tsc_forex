@@ -47,6 +47,12 @@ data class InstrumentPrice(
 
 data class MarketHorizon(val horizon: String, val outlook: String, val rationale: String)
 data class MarketScenario(val name: String, val likelihood: String, val trigger: String, val implication: String)
+data class MarketWhatIWouldDo(
+    val intro: String,
+    val shortTerm: String,
+    val mediumTerm: String,
+    val longTerm: String,
+)
 data class MarketSource(val title: String, val url: String)
 data class MarketDataPoint(
     val code: String, val displayName: String, val price: Double, val currency: String,
@@ -69,6 +75,7 @@ data class MarketInsight(
     val geopoliticalRisks: List<String>,
     val crossAssetAnalysis: List<String>,
     val scenarios: List<MarketScenario>,
+    val whatIWouldDo: MarketWhatIWouldDo?,
     val dataContext: List<MarketDataPoint>,
     val sources: List<MarketSource>,
     val model: String,
@@ -99,6 +106,16 @@ data class MarketInsight(
                 val a = o.optJSONArray("scenarios") ?: JSONArray()
                 for (i in 0 until a.length()) a.optJSONObject(i)?.let { item ->
                     add(MarketScenario(item.optString("name"), item.optString("likelihood"), item.optString("trigger"), item.optString("implication")))
+                }
+            },
+            whatIWouldDo = o.optJSONObject("what_i_would_do")?.let { item ->
+                MarketWhatIWouldDo(
+                    intro = item.optString("intro"),
+                    shortTerm = item.optString("short_term"),
+                    mediumTerm = item.optString("medium_term"),
+                    longTerm = item.optString("long_term"),
+                ).takeIf {
+                    it.intro.isNotBlank() || it.shortTerm.isNotBlank() || it.mediumTerm.isNotBlank() || it.longTerm.isNotBlank()
                 }
             },
             dataContext = buildList {
@@ -262,9 +279,10 @@ data class InstrumentDetail(
     val marketCapUsd: Double?, val fdvUsd: Double?, val dominancePct: Double?, val rank: Int?,
     val circulatingSupply: Double?, val totalSupply: Double?, val maxSupply: Double?,
     val athUsd: Double?, val atlUsd: Double?, val athDate: String?, val atlDate: String?,
+    val weightedAvg: Double?,
     // Stock
     val dayHigh: Double?, val dayLow: Double?, val week52High: Double?, val week52Low: Double?,
-    val volume: Double?, val exchange: String?, val longName: String?,
+    val volume: Double?, val exchange: String?, val longName: String?, val prevClose: Double?,
     // Gold
     val onsUsd: Double?, val onsTry: Double?, val usdTry: Double?, val gramHasTry: Double?,
     val gramWeight: Double?, val fineness: Double?, val purityLabel: String?,
@@ -286,9 +304,11 @@ data class InstrumentDetail(
             dominancePct = o.d("dominance_pct"), rank = o.i("rank"),
             circulatingSupply = o.d("circulating_supply"), totalSupply = o.d("total_supply"), maxSupply = o.d("max_supply"),
             athUsd = o.d("ath_usd"), atlUsd = o.d("atl_usd"), athDate = o.s("ath_date"), atlDate = o.s("atl_date"),
+            weightedAvg = o.d("weighted_avg"),
             dayHigh = o.d("day_high"), dayLow = o.d("day_low"),
             week52High = o.d("week52_high"), week52Low = o.d("week52_low"),
             volume = o.d("volume"), exchange = o.s("exchange"), longName = o.s("long_name"),
+            prevClose = o.d("prev_close"),
             onsUsd = o.d("ons_usd"), onsTry = o.d("ons_try"), usdTry = o.d("usd_try"), gramHasTry = o.d("gram_has_try"),
             gramWeight = o.d("gram_weight"), fineness = o.d("fineness"), purityLabel = o.s("purity_label"),
             inverse = o.d("inverse"), usdCross = o.d("usd_cross"), iso = o.s("iso"),
@@ -305,16 +325,34 @@ data class GamBadge(
     val icon: String,
     val earned: Boolean,
     val earnedAt: String?,
+    val current: Int,
+    val target: Int,
+    val progress: Double,
 ) {
+    val normalizedProgress: Double
+        get() = if (earned) 1.0 else progress.coerceIn(0.0, 1.0)
+
+    val progressPercent: Int
+        get() = (normalizedProgress * 100).toInt()
+
     companion object {
-        fun from(o: JSONObject) = GamBadge(
-            code = o.optString("code"),
-            name = o.optString("name"),
-            description = o.optString("description"),
-            icon = o.optString("icon"),
-            earned = o.optBoolean("earned", false),
-            earnedAt = o.optString("earned_at").ifEmpty { null },
-        )
+        fun from(o: JSONObject): GamBadge {
+            val earned = o.optBoolean("earned", false)
+            val target = if (o.has("target")) o.optInt("target", 0) else if (earned) 1 else 0
+            val current = if (o.has("current")) o.optInt("current", 0) else if (earned) target else 0
+            val progress = if (o.has("progress")) o.optDouble("progress", 0.0) else if (earned) 1.0 else 0.0
+            return GamBadge(
+                code = o.optString("code"),
+                name = o.optString("name"),
+                description = o.optString("description"),
+                icon = o.optString("icon"),
+                earned = earned,
+                earnedAt = o.optString("earned_at").ifEmpty { null },
+                current = current,
+                target = target,
+                progress = progress,
+            )
+        }
     }
 }
 
@@ -838,6 +876,181 @@ data class PortfolioPerformancePoint(
             costBasisTry = o.decimal("cost_basis_try"),
             realizedPnlTry = o.decimal("realized_pnl_try"),
             totalPnlTry = o.decimal("total_pnl_try"),
+        )
+    }
+}
+
+data class PlanLimits(
+    val aiResearch: Int,
+    val activeAlerts: Int,
+    val watchlist: Int,
+    val portfolios: Int,
+    val portfolioHealth: Int,
+    val exports: Int,
+    val researchArchiveDays: Int,
+) {
+    companion object {
+        fun from(o: JSONObject?) = PlanLimits(
+            aiResearch = o?.optInt("ai_research", 0) ?: 0,
+            activeAlerts = o?.optInt("active_alerts", 0) ?: 0,
+            watchlist = o?.optInt("watchlist", 0) ?: 0,
+            portfolios = o?.optInt("portfolios", 0) ?: 0,
+            portfolioHealth = o?.optInt("portfolio_health", 0) ?: 0,
+            exports = o?.optInt("exports", 0) ?: 0,
+            researchArchiveDays = o?.optInt("research_archive_days", 0) ?: 0,
+        )
+    }
+}
+
+data class SubscriptionPlan(
+    val code: String,
+    val name: String,
+    val productId: String,
+    val priceHintTry: Double,
+    val limits: PlanLimits,
+) {
+    companion object {
+        fun from(o: JSONObject) = SubscriptionPlan(
+            code = o.optString("code"),
+            name = o.optString("name"),
+            productId = o.optString("product_id"),
+            priceHintTry = o.optDouble("price_hint_try", 0.0),
+            limits = PlanLimits.from(o.optJSONObject("limits")),
+        )
+    }
+}
+
+data class FeatureQuota(
+    val limit: Int,
+    val used: Int,
+    val remaining: Int,
+    val periodEnd: String,
+) {
+    companion object {
+        fun from(o: JSONObject) = FeatureQuota(
+            limit = o.optInt("limit", 0),
+            used = o.optInt("used", 0),
+            remaining = o.optInt("remaining", 0),
+            periodEnd = o.optString("period_end"),
+        )
+    }
+}
+
+data class BillingEntitlement(
+    val productId: String,
+    val status: String,
+    val environment: String,
+    val expiresAt: String,
+) {
+    companion object {
+        fun from(o: JSONObject?) = o?.let {
+            BillingEntitlement(
+                productId = it.optString("product_id"),
+                status = it.optString("status"),
+                environment = it.optString("environment"),
+                expiresAt = it.optString("expires_at"),
+            )
+        }
+    }
+}
+
+data class BillingStatus(
+    val plan: SubscriptionPlan,
+    val entitlement: BillingEntitlement?,
+    val usage: Map<String, FeatureQuota>,
+    val freeResearchAvailable: Boolean,
+    val purchaseChannel: String,
+    val manageUrl: String,
+) {
+    val hasActiveSubscription: Boolean
+        get() = plan.code != "free" && entitlement?.status.equals("active", true) == true
+
+    fun remaining(feature: String): Int? = usage[feature]?.remaining
+
+    companion object {
+        fun from(o: JSONObject): BillingStatus {
+            val usageObj = o.optJSONObject("usage") ?: JSONObject()
+            val usage = buildMap {
+                for (key in usageObj.keys()) {
+                    put(key, FeatureQuota.from(usageObj.getJSONObject(key)))
+                }
+            }
+            return BillingStatus(
+                plan = SubscriptionPlan.from(o.optJSONObject("plan") ?: JSONObject()),
+                entitlement = BillingEntitlement.from(o.optJSONObject("entitlement")),
+                usage = usage,
+                freeResearchAvailable = o.optBoolean("free_research_available", false),
+                purchaseChannel = o.optString("purchase_channel"),
+                manageUrl = o.optString("manage_url"),
+            )
+        }
+    }
+}
+
+data class BillingPlansResponse(
+    val purchaseChannel: String,
+    val plans: List<SubscriptionPlan>,
+    val freeTrialReady: Boolean,
+) {
+    companion object {
+        fun from(o: JSONObject) = BillingPlansResponse(
+            purchaseChannel = o.optString("purchase_channel"),
+            plans = (o.optJSONArray("plans") ?: JSONArray()).let { arr ->
+                buildList { for (i in 0 until arr.length()) add(SubscriptionPlan.from(arr.getJSONObject(i))) }
+            },
+            freeTrialReady = o.optJSONObject("free_trial")?.optBoolean("ready", false) == true,
+        )
+    }
+}
+
+data class ResearchArchiveItem(
+    val id: String,
+    val code: String,
+    val payload: MarketInsight,
+    val generatedAt: String,
+    val expiresAt: String,
+) {
+    companion object {
+        fun from(o: JSONObject) = ResearchArchiveItem(
+            id = o.optString("id"),
+            code = o.optString("code"),
+            payload = MarketInsight.from(o.optJSONObject("payload") ?: JSONObject()),
+            generatedAt = o.optString("generated_at"),
+            expiresAt = o.optString("expires_at"),
+        )
+    }
+}
+
+data class PortfolioHealthFinding(
+    val title: String,
+    val detail: String,
+    val severity: String,
+) {
+    companion object {
+        fun from(o: JSONObject) = PortfolioHealthFinding(
+            title = o.optString("title"),
+            detail = o.optString("detail"),
+            severity = o.optString("severity"),
+        )
+    }
+}
+
+data class PortfolioHealth(
+    val score: Int,
+    val grade: String,
+    val summary: String,
+    val findings: List<PortfolioHealthFinding>,
+    val generatedAt: String,
+) {
+    companion object {
+        fun from(o: JSONObject) = PortfolioHealth(
+            score = o.optInt("score", 0),
+            grade = o.optString("grade"),
+            summary = o.optString("summary"),
+            findings = (o.optJSONArray("findings") ?: JSONArray()).let { arr ->
+                buildList { for (i in 0 until arr.length()) add(PortfolioHealthFinding.from(arr.getJSONObject(i))) }
+            },
+            generatedAt = o.optString("generated_at"),
         )
     }
 }

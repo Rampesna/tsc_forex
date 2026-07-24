@@ -345,6 +345,19 @@ struct AssetDetailView: View {
                         }
                     }
 
+                    if let playbook = insight.whatIWouldDo {
+                        aiSectionTitle("BEN OLSAM NE YAPARDIM", icon: "person.crop.circle.badge.questionmark")
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text(playbook.intro)
+                                .font(.system(size: 12, weight: .semibold))
+                                .foregroundStyle(Theme.text)
+                                .fixedSize(horizontal: false, vertical: true)
+                            aiPlaybookRow(title: "Kısa vade", body: playbook.shortTerm)
+                            aiPlaybookRow(title: "Orta vade", body: playbook.mediumTerm)
+                            aiPlaybookRow(title: "Uzun vade", body: playbook.longTerm)
+                        }
+                    }
+
                     Label(insight.riskNote, systemImage: "exclamationmark.triangle")
                         .font(.system(size: 11))
                         .foregroundStyle(Theme.textDim)
@@ -422,6 +435,21 @@ struct AssetDetailView: View {
             .foregroundStyle(Theme.textFaint)
             .tracking(0.8)
             .padding(.top, 4)
+    }
+
+    private func aiPlaybookRow(title: String, body: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(Theme.accent)
+            Text(body)
+                .font(.system(size: 12))
+                .foregroundStyle(Theme.text)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(10)
+        .background(Theme.bgElevated, in: RoundedRectangle(cornerRadius: 9))
     }
 
     private func aiBulletSection(_ title: String, icon: String, items: [String]) -> some View {

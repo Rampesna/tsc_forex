@@ -73,6 +73,12 @@ func TestMarketInsightUsesServerSideStructuredResponse(t *testing.T) {
 				{"name": "Ana", "likelihood": "high", "trigger": "Yatay makro", "implication": "Dalgalı seyir"},
 				{"name": "Ayı", "likelihood": "low", "trigger": "Reel faiz artışı", "implication": "Aşağı baskı"},
 			},
+			"what_i_would_do": map[string]string{
+				"intro":       "Yatırım tavsiyesi olmamakla beraber, ben olsam şöyle hareket ederdim.",
+				"short_term":  "Kısa vadede bekler, veri akışını izlerdim.",
+				"medium_term": "Orta vadede kademeli ve küçük adımlarla ilerlerdim.",
+				"long_term":   "Uzun vadede temkinli birikim planımı korurdum.",
+			},
 		})
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]any{"output": []any{
@@ -117,6 +123,9 @@ func TestMarketInsightUsesServerSideStructuredResponse(t *testing.T) {
 	}
 	if response.Code != "USDTRY" || response.Stance != "neutral" || response.Disclaimer == "" {
 		t.Fatalf("unexpected response: %+v", response)
+	}
+	if response.WhatIWouldDo.ShortTerm == "" || response.WhatIWouldDo.LongTerm == "" {
+		t.Fatalf("missing what_i_would_do: %+v", response.WhatIWouldDo)
 	}
 	if response.ResearchMode != "web+market_data" || len(response.Sources) != 1 || len(response.DataContext) != 1 {
 		t.Fatalf("missing research metadata: %+v", response)
@@ -165,6 +174,12 @@ func TestMarketInsightPollsSignedBackgroundJob(t *testing.T) {
 			{"name": "Boğa", "likelihood": "low", "trigger": "A", "implication": "A"},
 			{"name": "Ana", "likelihood": "high", "trigger": "B", "implication": "B"},
 			{"name": "Ayı", "likelihood": "low", "trigger": "C", "implication": "C"},
+		},
+		"what_i_would_do": map[string]string{
+			"intro":       "Yatırım tavsiyesi olmamakla beraber, ben olsam şöyle hareket ederdim.",
+			"short_term":  "Kısa vadede beklerdim.",
+			"medium_term": "Orta vadede temkinli ilerlerdim.",
+			"long_term":   "Uzun vadede planımı korurdum.",
 		},
 	})
 	provider := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

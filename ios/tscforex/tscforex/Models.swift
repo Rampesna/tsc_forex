@@ -85,6 +85,7 @@ struct MarketInsight: Codable {
     let geopoliticalRisks: [String]?
     let crossAssetAnalysis: [String]?
     let scenarios: [MarketScenario]?
+    let whatIWouldDo: MarketWhatIWouldDo?
     let dataContext: [MarketDataPoint]?
     let sources: [MarketSource]?
     let generatedAt: String
@@ -98,6 +99,7 @@ struct MarketInsight: Codable {
         case macroDrivers = "macro_drivers"
         case geopoliticalRisks = "geopolitical_risks"
         case crossAssetAnalysis = "cross_asset_analysis"
+        case whatIWouldDo = "what_i_would_do"
         case dataContext = "data_context"
         case generatedAt = "generated_at"
     }
@@ -117,6 +119,20 @@ struct MarketHorizon: Codable, Hashable {
     let horizon: String
     let outlook: String
     let rationale: String
+}
+
+struct MarketWhatIWouldDo: Codable, Hashable {
+    let intro: String
+    let shortTerm: String
+    let mediumTerm: String
+    let longTerm: String
+
+    enum CodingKeys: String, CodingKey {
+        case intro
+        case shortTerm = "short_term"
+        case mediumTerm = "medium_term"
+        case longTerm = "long_term"
+    }
 }
 
 struct MarketScenario: Codable, Hashable {

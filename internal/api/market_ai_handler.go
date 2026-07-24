@@ -98,6 +98,7 @@ type MarketInsightResponse struct {
 	GeopoliticalRisks  []string            `json:"geopolitical_risks"`
 	CrossAssetAnalysis []string            `json:"cross_asset_analysis"`
 	Scenarios          []MarketScenario    `json:"scenarios"`
+	WhatIWouldDo       MarketWhatIWouldDo  `json:"what_i_would_do"`
 	DataContext        []MarketDataPoint   `json:"data_context"`
 	Sources            []MarketSource      `json:"sources"`
 	ResearchMode       string              `json:"research_mode"`
@@ -109,6 +110,15 @@ type MarketHorizonView struct {
 	Horizon   string `json:"horizon"`
 	Outlook   string `json:"outlook"`
 	Rationale string `json:"rationale"`
+}
+
+// MarketWhatIWouldDo is a first-person, non-advisory closing playbook.
+// It must stay educational ("ben olsam…") and never issue buy/sell orders.
+type MarketWhatIWouldDo struct {
+	Intro      string `json:"intro"`
+	ShortTerm  string `json:"short_term"`
+	MediumTerm string `json:"medium_term"`
+	LongTerm   string `json:"long_term"`
 }
 
 type MarketScenario struct {
@@ -529,13 +539,13 @@ func (h *MarketAIHandler) buildPayload(p domain.InstrumentPrice, dataContext []M
 		return openAIResponsesPayload{}, "", err
 	}
 	prompt := fmt.Sprintf(
-		"Araştırma zamanı: %s\nSeçili varlık: %s (%s), tür=%s\nSon fiyat: %.8f %s; TRY karşılığı: %.4f; alış: %.8f; satış: %.8f; günlük değişim: %.4f%%\nSunucu tarafından doğrulanan çok-zaman-dilimli ve çapraz-varlık verisi (JSON):\n%s\n\nBu veriyi güncel web araştırmasıyla birleştir. Bir hafta, bir ay, üç ay ve bir yıllık eğilimleri ayrı değerlendir. Fiyat aktarım mekanizmasını; ilgili döviz sepetlerini, dolar endeksini, tahvil/faiz ve reel getiri dinamiklerini, emtia/kripto/hisse ilişkilerini, merkez bankası kararlarını, enflasyonu ve yaklaşan veri takvimini varlıkla ilgisi ölçüsünde incele. Güncel jeopolitik çatışma, yaptırım ve ülkeler arası gerilimlerde yalnızca fiyatı etkileyebilecek kanıtlı gelişmeleri dahil et. Resmî ve birincil kaynaklara öncelik ver, en az dört güncel kaynak kullan, olay tarihi ile yayın tarihini ayır ve araştırmayı en fazla %d araç çağrısında tamamla.",
+		"Araştırma zamanı: %s\nSeçili varlık: %s (%s), tür=%s\nSon fiyat: %.8f %s; TRY karşılığı: %.4f; alış: %.8f; satış: %.8f; günlük değişim: %.4f%%\nSunucu tarafından doğrulanan çok-zaman-dilimli ve çapraz-varlık verisi (JSON):\n%s\n\nBu veriyi güncel web araştırmasıyla birleştir. Bir hafta, bir ay, üç ay ve bir yıllık eğilimleri ayrı değerlendir. Fiyat aktarım mekanizmasını; ilgili döviz sepetlerini, dolar endeksini, tahvil/faiz ve reel getiri dinamiklerini, emtia/kripto/hisse ilişkilerini, merkez bankası kararlarını, enflasyonu ve yaklaşan veri takvimini varlıkla ilgisi ölçüsünde incele. Güncel jeopolitik çatışma, yaptırım ve ülkeler arası gerilimlerde yalnızca fiyatı etkileyebilecek kanıtlı gelişmeleri dahil et. Resmî ve birincil kaynaklara öncelik ver, en az dört güncel kaynak kullan, olay tarihi ile yayın tarihini ayır ve araştırmayı en fazla %d araç çağrısında tamamla.\n\nSon olarak what_i_would_do alanını doldur: intro 'Yatırım tavsiyesi olmamakla beraber, ben olsam…' diye başlasın; short_term (1-4 hafta), medium_term (1-3 ay) ve long_term (6-12 ay) için gerçekçi, birinci şahıs, eyleme dönük ama emir vermeyen kısa özet yaz (ör. beklerdim, izlerdim, kademeli biriktirirdim, riskimi azaltırdım, nakit ağırlığını korurdum).",
 		time.Now().UTC().Format(time.RFC3339), p.DisplayName, p.Code, p.Kind, p.Price, p.Currency, p.PriceTRY, p.Bid, p.Ask, p.ChangePct, string(contextJSON), maxToolCalls,
 	)
 	payload := openAIResponsesPayload{
-		Model:        model,
-		Instructions: "Türkçe yazan, kanıta dayalı kıdemli bir makro ve çapraz-varlık araştırma analistisin. Sunucunun sağladığı fiyat ve tarihsel değişim verilerini sayısal gerçek olarak kabul et; web'i güncel makroekonomi, merkez bankaları, emtia aktarımı, veri takvimi ve jeopolitik gelişmeler için kullan. Resmî kurumları, merkez bankalarını, borsaları ve güçlü finans haber kaynaklarını önceliklendir. Güncelliği ve olay tarihini kontrol et. Bir iddiayı kaynakla destekleyemiyorsan çıkar. Korelasyonu nedensellik gibi sunma. Kesin fiyat tahmini, al/sat emri veya garanti verme. Boğa, dengeli ve ayı senaryolarını tetik ve sonuçlarıyla ayır. Sonuç ayrıntılı ama tekrarsız olsun. Son kullanıcı metninde sağlayıcı, model, altyapı veya iç ürün/marka adı anma.",
-		Input:        prompt, MaxOutputTokens: maxTokens, MaxToolCalls: maxToolCalls,
+		Model: model,
+		Instructions: "Türkçe yazan, kanıta dayalı kıdemli bir makro ve çapraz-varlık araştırma analistisin. Sunucunun sağladığı fiyat ve tarihsel değişim verilerini sayısal gerçek olarak kabul et; web'i güncel makroekonomi, merkez bankaları, emtia aktarımı, veri takvimi ve jeopolitik gelişmeler için kullan. Resmî kurumları, merkez bankalarını, borsaları ve güçlü finans haber kaynaklarını önceliklendir. Güncelliği ve olay tarihini kontrol et. Bir iddiayı kaynakla destekleyemiyorsan çıkar. Korelasyonu nedensellik gibi sunma. Kesin fiyat tahmini, al/sat emri, hedef fiyat veya garanti verme. Boğa, dengeli ve ayı senaryolarını tetik ve sonuçlarıyla ayır. time_horizons analitik görünüm kalsın; what_i_would_do ise raporun kişisel kapanış özeti olsun ve yatırım tavsiyesi olmadığını açıkça söylesin. Sonuç ayrıntılı ama tekrarsız olsun. Son kullanıcı metninde sağlayıcı, model, altyapı veya iç ürün/marka adı anma.",
+		Input: prompt, MaxOutputTokens: maxTokens, MaxToolCalls: maxToolCalls,
 		SafetyID: safetyID, Store: false, Background: background,
 		Reasoning: openAIReasoningSpec{Effort: reasoningEffort},
 		Text: openAITextSpec{Format: openAIFormatSpec{
@@ -578,8 +588,18 @@ func (h *MarketAIHandler) buildPayload(p domain.InstrumentPrice, dataContext []M
 							"required": []string{"name", "likelihood", "trigger", "implication"},
 						},
 					},
+					"what_i_would_do": map[string]any{
+						"type": "object", "additionalProperties": false,
+						"properties": map[string]any{
+							"intro":       map[string]any{"type": "string"},
+							"short_term":  map[string]any{"type": "string"},
+							"medium_term": map[string]any{"type": "string"},
+							"long_term":   map[string]any{"type": "string"},
+						},
+						"required": []string{"intro", "short_term", "medium_term", "long_term"},
+					},
 				},
-				"required": []string{"title", "stance", "stance_label", "summary", "factors", "risk_note", "confidence", "time_horizons", "macro_drivers", "geopolitical_risks", "cross_asset_analysis", "scenarios"},
+				"required": []string{"title", "stance", "stance_label", "summary", "factors", "risk_note", "confidence", "time_horizons", "macro_drivers", "geopolitical_risks", "cross_asset_analysis", "scenarios", "what_i_would_do"},
 			},
 		}},
 	}
@@ -671,6 +691,12 @@ func (h *MarketAIHandler) finalizeResponse(envelope openAIResponsesEnvelope, p d
 	}
 	if insight.Stance != "positive" && insight.Stance != "neutral" && insight.Stance != "cautious" {
 		return MarketInsightResponse{}, errors.New("invalid stance")
+	}
+	if strings.TrimSpace(insight.WhatIWouldDo.Intro) == "" ||
+		strings.TrimSpace(insight.WhatIWouldDo.ShortTerm) == "" ||
+		strings.TrimSpace(insight.WhatIWouldDo.MediumTerm) == "" ||
+		strings.TrimSpace(insight.WhatIWouldDo.LongTerm) == "" {
+		return MarketInsightResponse{}, errors.New("missing what_i_would_do")
 	}
 	insight.Code = p.Code
 	insight.DataContext = dataContext

@@ -182,6 +182,12 @@ export interface MarketInsight {
   geopolitical_risks: string[];
   cross_asset_analysis: string[];
   scenarios: Array<{ name: string; likelihood: "low" | "medium" | "high"; trigger: string; implication: string }>;
+  what_i_would_do?: {
+    intro: string;
+    short_term: string;
+    medium_term: string;
+    long_term: string;
+  };
   data_context: Array<{
     code: string;
     display_name: string;

@@ -190,6 +190,17 @@ private struct ResearchArchiveDetailView: View {
                         }
                     }
                 }
+                if let playbook = item.payload.whatIWouldDo {
+                    Card {
+                        VStack(alignment: .leading, spacing: 10) {
+                            sectionTitle("Ben Olsam Ne Yapardım", icon: "person.crop.circle.badge.questionmark")
+                            Text(playbook.intro).font(.system(size: 12, weight: .semibold)).foregroundStyle(Theme.text)
+                            Text("Kısa vade: \(playbook.shortTerm)").font(.system(size: 11)).foregroundStyle(Theme.textDim)
+                            Text("Orta vade: \(playbook.mediumTerm)").font(.system(size: 11)).foregroundStyle(Theme.textDim)
+                            Text("Uzun vade: \(playbook.longTerm)").font(.system(size: 11)).foregroundStyle(Theme.textDim)
+                        }
+                    }
+                }
                 if let sources = item.payload.sources, !sources.isEmpty {
                     Card {
                         VStack(alignment: .leading, spacing: 10) {

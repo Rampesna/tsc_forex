@@ -323,6 +323,13 @@ export function Markets() {
               <p><b>Tetik:</b> {scenario.trigger}</p><p>{scenario.implication}</p>
             </div>)}
           </article>
+          {insight.what_i_would_do && <article className="ai-scenarios">
+            <h3>Ben olsam ne yapardım</h3>
+            <p>{insight.what_i_would_do.intro}</p>
+            <div className="ai-report-item"><strong>Kısa vade</strong><p>{insight.what_i_would_do.short_term}</p></div>
+            <div className="ai-report-item"><strong>Orta vade</strong><p>{insight.what_i_would_do.medium_term}</p></div>
+            <div className="ai-report-item"><strong>Uzun vade</strong><p>{insight.what_i_would_do.long_term}</p></div>
+          </article>}
         </div>
         <div className="ai-report-risk">⚠ {insight.risk_note}<small>{insight.disclaimer}</small></div>
       </section>}
