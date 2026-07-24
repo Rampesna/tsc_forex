@@ -45,6 +45,15 @@ USD_PEGS = {
     "OMR": 0.38449, "JOD": 0.709,
 }
 
+# Hard pegs / near-pegs to another catalog ISO (units of peg currency per 1 unit).
+# Used when ECB/Yahoo/NBP have no usable series. XXXTRY ≈ (ISO per peg) * pegTRY.
+CROSS_PEGS = {
+    "FKP": ("GBP", 1.0),  # Falkland pound
+    "GIP": ("GBP", 1.0),  # Gibraltar pound
+    "SHP": ("GBP", 1.0),  # Saint Helena pound
+    "BTN": ("INR", 1.0),  # Bhutanese ngultrum
+}
+
 
 def log(*a):
     print(*a, flush=True)
@@ -77,20 +86,33 @@ def currency_try_series(iso: str, usdtry: Dict[str, float],
         peg = USD_PEGS[iso]
         return {d: v / peg for d, v in usdtry.items() if v > 0}
 
+    # 2b) Cross-pegs to another ISO (e.g. FKP≈GBP, BTN≈INR)
+    if iso in CROSS_PEGS:
+        peg_iso, mult = CROSS_PEGS[iso]
+        peg_series = currency_try_series(peg_iso, usdtry, start, end, exotic_fx=False)
+        if len(peg_series) >= 200:
+            return {d: v * mult for d, v in peg_series.items() if v > 0}
+
     # 3) Yahoo cross (opt-in): heavy on Yahoo (throttle risk) and sparse for exotics.
-    if not exotic_fx:
-        return direct
-    # "<ISO>=X" == USD<ISO> (units per USD) -> XXXTRY = USDTRY / rate
-    units_per_usd = F.yahoo_daily(f"{iso}=X", start, end)
-    if len(units_per_usd) < 30:
-        return direct  # give up (maybe empty); no long backoff burned
-    ftry = make_ffill(usdtry)
-    out: Dict[str, float] = {}
-    for d, rate in units_per_usd.items():
-        t = ftry(d)
-        if rate > 0 and t > 0:
-            out[d] = t / rate
-    return F.merge_prefer(out, direct)
+    out = dict(direct)
+    if exotic_fx:
+        # "<ISO>=X" == USD<ISO> (units per USD) -> XXXTRY = USDTRY / rate
+        units_per_usd = F.yahoo_daily(f"{iso}=X", start, end)
+        if len(units_per_usd) >= 30:
+            ftry = make_ffill(usdtry)
+            yahoo_out: Dict[str, float] = {}
+            for d, rate in units_per_usd.items():
+                t = ftry(d)
+                if rate > 0 and t > 0:
+                    yahoo_out[d] = t / rate
+            out = F.merge_prefer(yahoo_out, out)
+
+    # 4) NBP (Poland) keyless tables A/B — covers AZN/GEL and other ECB gaps.
+    if len(out) < 200:
+        nbp = F.nbp_try(iso, start, end)
+        if nbp:
+            out = F.merge_prefer(out, nbp)
+    return out
 
 
 def build_all(kinds: List[str], codes_filter, start: dt.date, end: dt.date, exotic_fx: bool = False):

@@ -43,6 +43,12 @@ USD_PEGS = {
     "OMR": 0.38449,
     "JOD": 0.709,
 }
+CROSS_PEGS = {
+    "FKP": ("GBP", 1.0),
+    "GIP": ("GBP", 1.0),
+    "SHP": ("GBP", 1.0),
+    "BTN": ("INR", 1.0),
+}
 EUR_PEGS = {"BGN": 1.95583}
 
 YAHOO_DIRECT_INTRADAY = {"EUR", "GBP", "JPY", "CHF", "CAD", "AUD", "NZD", "AED"}
@@ -306,6 +312,18 @@ def currency_bars(
     if resolution == "1d":
         if iso in USD_PEGS:
             return scaled_bars(usdtry, USD_PEGS[iso]), "USD peg"
+        if iso in CROSS_PEGS:
+            peg_iso, mult = CROSS_PEGS[iso]
+            peg_bars, src = currency_bars(peg_iso, usdtry, start, end, resolution)
+            if mult == 1.0:
+                return peg_bars, f"cross-peg {peg_iso} ({src})"
+            return (
+                {
+                    ts: (o * mult, h * mult, lo * mult, c * mult)
+                    for ts, (o, h, lo, c) in peg_bars.items()
+                },
+                f"cross-peg {peg_iso}×{mult} ({src})",
+            )
         if iso in EUR_PEGS:
             eur = close_bars(
                 F.frankfurter_try(
