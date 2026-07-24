@@ -67,8 +67,8 @@ type Provider struct {
 	pollSeq atomic.Int64
 }
 
-// slowEvery: crypto & BIST equities are fetched every Nth poll.
-const slowEvery = 3
+// slowEvery: crypto & equities are fetched every Nth poll (larger universe).
+const slowEvery = 5
 
 // yahooChart is the minimal shape we parse from the chart endpoint.
 type yahooChart struct {
@@ -287,7 +287,7 @@ func (p *Provider) Fetch(ctx context.Context) ([]domain.Tick, error) {
 	}
 
 	// Crypto every poll (single cheap Binance batch call) for a genuinely live
-	// feed; BIST equities on a slower cadence (18 individual Yahoo calls).
+	// feed; equities on a slower cadence (BIST 100 + global Yahoo calls).
 	// Best-effort: any failure here must never break the core FX/gold legs.
 	seq := p.pollSeq.Add(1)
 	if usdtry > 0 {
@@ -373,10 +373,14 @@ func (p *Provider) fetchCryptoBinance(ctx context.Context, usdtry float64) map[s
 		base = "https://api.binance.com/api/v3/ticker/price"
 	}
 	// Build ["BTCUSDT","ETHUSDT",...]; keep a reverse map to canonical symbols.
+	// MATIC is a stable public code; Binance lists the live POLUSDT successor.
 	pairs := make([]string, 0, len(domain.Cryptos))
 	canonical := make(map[string]string, len(domain.Cryptos))
 	for _, c := range domain.Cryptos {
 		bs := c.Symbol + "USDT"
+		if c.Symbol == "MATIC" {
+			bs = "POLUSDT"
+		}
 		pairs = append(pairs, `"`+bs+`"`)
 		canonical[bs] = c.Symbol
 	}
@@ -446,8 +450,8 @@ func (p *Provider) fetchCryptoYahoo(ctx context.Context, usdtry float64) map[str
 
 // stockFetchConcurrency bounds simultaneous Yahoo calls for equities. The egress
 // IP is shared with the 2s FX/gold poll, so we cap the burst to stay well under
-// Yahoo's 429 ceiling even with the full BIST + global universe (~68 symbols).
-const stockFetchConcurrency = 8
+// Yahoo's 429 ceiling even with the full BIST 100 + global universe (~150 symbols).
+const stockFetchConcurrency = 4
 
 // fetchStocks pulls equity prices from Yahoo — BIST natively in TRY, global
 // names in USD — using a bounded worker pool so the burst stays gentle.

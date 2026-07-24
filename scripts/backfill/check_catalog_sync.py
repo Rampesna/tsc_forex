@@ -79,9 +79,9 @@ def main():
         + len(C.STOCKS)
         + len(C.GLOBAL_STOCKS)
     )
-    if total != 151:
-        raise SystemExit(f"canonical catalog count changed: expected 151, got {total}")
-    print("catalog sync OK: 151 instruments")
+    if total != 410:
+        raise SystemExit(f"canonical catalog count changed: expected 410, got {total}")
+    print("catalog sync OK: 410 instruments")
 
 
 if __name__ == "__main__":
