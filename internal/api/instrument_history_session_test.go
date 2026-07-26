@@ -22,7 +22,7 @@ func TestLatestTradingSessionSkipsSparseWeekendCandles(t *testing.T) {
 		{Bucket: time.Date(2026, 7, 26, 8, 10, 0, 0, time.UTC), Close: 102, Count: 1},
 	}
 
-	got := latestTradingSession(candles, loc)
+	got := latestTradingSession(candles, loc, domain.KindStock)
 	if len(got) != 3 {
 		t.Fatalf("session candle count = %d, want 3", len(got))
 	}
@@ -37,13 +37,13 @@ func TestLatestTradingSessionUsesNewestRenderableDay(t *testing.T) {
 	candles := []models.OHLC{
 		// Deliberately unordered to keep the selector independent of repository
 		// ordering.
-		{Bucket: time.Date(2026, 7, 24, 10, 5, 0, 0, time.UTC)},
-		{Bucket: time.Date(2026, 7, 23, 10, 0, 0, 0, time.UTC)},
-		{Bucket: time.Date(2026, 7, 23, 10, 5, 0, 0, time.UTC)},
-		{Bucket: time.Date(2026, 7, 24, 10, 0, 0, 0, time.UTC)},
+		{Bucket: time.Date(2026, 7, 24, 10, 5, 0, 0, time.UTC), Close: 102},
+		{Bucket: time.Date(2026, 7, 23, 10, 0, 0, 0, time.UTC), Close: 100},
+		{Bucket: time.Date(2026, 7, 23, 10, 5, 0, 0, time.UTC), Close: 101},
+		{Bucket: time.Date(2026, 7, 24, 10, 0, 0, 0, time.UTC), Close: 101},
 	}
 
-	got := latestTradingSession(candles, time.UTC)
+	got := latestTradingSession(candles, time.UTC, domain.KindStock)
 	if len(got) != 2 || got[0].Bucket.Day() != 24 || got[1].Bucket.Day() != 24 {
 		t.Fatalf("got %#v, want newest day only", got)
 	}
@@ -52,15 +52,33 @@ func TestLatestTradingSessionUsesNewestRenderableDay(t *testing.T) {
 func TestLatestTradingSessionRequiresDistinctBuckets(t *testing.T) {
 	duplicate := time.Date(2026, 7, 26, 8, 10, 0, 0, time.UTC)
 	candles := []models.OHLC{
-		{Bucket: time.Date(2026, 7, 24, 10, 0, 0, 0, time.UTC)},
-		{Bucket: time.Date(2026, 7, 24, 10, 5, 0, 0, time.UTC)},
+		{Bucket: time.Date(2026, 7, 24, 10, 0, 0, 0, time.UTC), Close: 100},
+		{Bucket: time.Date(2026, 7, 24, 10, 5, 0, 0, time.UTC), Close: 101},
 		{Bucket: duplicate},
 		{Bucket: duplicate},
 	}
 
-	got := latestTradingSession(candles, time.UTC)
+	got := latestTradingSession(candles, time.UTC, domain.KindStock)
 	if len(got) != 2 || got[0].Bucket.Day() != 24 {
 		t.Fatalf("got %#v, want the prior session with distinct buckets", got)
+	}
+}
+
+func TestLatestTradingSessionRejectsRepeatedCloseHeartbeats(t *testing.T) {
+	candles := []models.OHLC{
+		{Bucket: time.Date(2026, 7, 24, 19, 55, 0, 0, time.UTC), Close: 332.50, Count: 20},
+		{Bucket: time.Date(2026, 7, 24, 20, 0, 0, 0, time.UTC), Close: 333.02, Count: 20},
+		{Bucket: time.Date(2026, 7, 26, 8, 10, 0, 0, time.UTC), Close: 333.02, Count: 1},
+		{Bucket: time.Date(2026, 7, 26, 9, 30, 0, 0, time.UTC), Close: 333.02, Count: 1},
+		{Bucket: time.Date(2026, 7, 26, 10, 50, 0, 0, time.UTC), Close: 333.02, Count: 1},
+	}
+
+	got := latestTradingSession(candles, time.UTC, domain.KindStock)
+	if len(got) != 2 || got[0].Bucket.Weekday() != time.Friday {
+		t.Fatalf("got %#v, want the last active Friday session", got)
+	}
+	if sessionHasTradingActivity(candles[2:]) {
+		t.Fatal("repeated one-tick close heartbeats must not count as market activity")
 	}
 }
 

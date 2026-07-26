@@ -178,7 +178,7 @@ func (h *InstrumentHandler) History(c *gin.Context) {
 				c.Request.Context(), code, interval, fallbackFrom, to, fallbackLimit,
 			); retryErr == nil {
 				loc, _ := time.LoadLocation("Europe/Istanbul")
-				if session := latestTradingSession(recent, loc); len(session) >= 2 {
+				if session := latestTradingSession(recent, loc, instrument.Kind); len(session) >= 2 {
 					if len(session) > limit {
 						session = session[len(session)-limit:]
 					}
@@ -214,13 +214,18 @@ func shouldUseLatestTradingSession(
 		interval == "5m" &&
 		!from.IsZero() &&
 		to.IsZero() &&
-		(force || len(candles) < 2)
+		(force || !sessionHasTradingActivity(candles))
 }
 
 // latestTradingSession returns the newest local market day containing enough
-// distinct chart buckets to render. Sparse one-point groups are stale quote
-// heartbeats, not a market session.
-func latestTradingSession(candles []models.OHLC, loc *time.Location) []models.OHLC {
+// actual price activity to render. Closed-market quote providers can repeat the
+// exact last close into several distinct buckets, so bucket count alone is not
+// proof of an open trading session.
+func latestTradingSession(
+	candles []models.OHLC,
+	loc *time.Location,
+	kind domain.InstrumentKind,
+) []models.OHLC {
 	if len(candles) < 2 {
 		return nil
 	}
@@ -232,20 +237,20 @@ func latestTradingSession(candles []models.OHLC, loc *time.Location) []models.OH
 		day  int
 	}
 	groups := make(map[dayKey][]models.OHLC)
-	buckets := make(map[dayKey]map[time.Time]struct{})
 	for _, candle := range candles {
 		local := candle.Bucket.In(loc)
 		key := dayKey{year: local.Year(), day: local.YearDay()}
-		if buckets[key] == nil {
-			buckets[key] = make(map[time.Time]struct{})
-		}
-		buckets[key][candle.Bucket] = struct{}{}
 		groups[key] = append(groups[key], candle)
 	}
 	var newest dayKey
 	found := false
-	for key, distinct := range buckets {
-		if len(distinct) < 2 {
+	for key, group := range groups {
+		localDay := group[0].Bucket.In(loc)
+		if kind == domain.KindStock &&
+			(localDay.Weekday() == time.Saturday || localDay.Weekday() == time.Sunday) {
+			continue
+		}
+		if !sessionHasTradingActivity(group) {
 			continue
 		}
 		if !found || key.year > newest.year || (key.year == newest.year && key.day > newest.day) {
@@ -261,6 +266,26 @@ func latestTradingSession(candles []models.OHLC, loc *time.Location) []models.OH
 		return session[i].Bucket.Before(session[j].Bucket)
 	})
 	return session
+}
+
+// sessionHasTradingActivity rejects closed-market heartbeats while accepting
+// both frequently sampled feeds (Count > 1) and feeds that emit one changed
+// quote per bucket. It intentionally requires distinct buckets as well.
+func sessionHasTradingActivity(candles []models.OHLC) bool {
+	if len(candles) < 2 {
+		return false
+	}
+	buckets := make(map[time.Time]struct{}, len(candles))
+	closes := make(map[float64]struct{}, len(candles))
+	hasAggregatedBucket := false
+	for _, candle := range candles {
+		buckets[candle.Bucket] = struct{}{}
+		closes[candle.Close] = struct{}{}
+		if candle.Count > 1 {
+			hasAggregatedBucket = true
+		}
+	}
+	return len(buckets) >= 2 && (hasAggregatedBucket || len(closes) >= 2)
 }
 
 // Stats returns a 24h rolling summary (open/high/low/last/change) for one
