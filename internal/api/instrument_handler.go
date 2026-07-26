@@ -2,6 +2,7 @@ package api
 
 import (
 	"net/http"
+	"sort"
 	"strconv"
 	"time"
 
@@ -10,6 +11,7 @@ import (
 
 	"github.com/tsc-forex/tsc_forex/internal/calculator"
 	"github.com/tsc-forex/tsc_forex/internal/domain"
+	"github.com/tsc-forex/tsc_forex/internal/models"
 	"github.com/tsc-forex/tsc_forex/internal/repository"
 	"github.com/tsc-forex/tsc_forex/internal/service"
 )
@@ -116,7 +118,8 @@ func (h *InstrumentHandler) Get(c *gin.Context) {
 // @Router  /instruments/{code}/history [get]
 func (h *InstrumentHandler) History(c *gin.Context) {
 	code := c.Param("code")
-	if _, ok := domain.CatalogByCode[code]; !ok {
+	instrument, ok := domain.CatalogByCode[code]
+	if !ok {
 		c.JSON(http.StatusNotFound, ErrorResponse{Error: "unknown instrument"})
 		return
 	}
@@ -131,6 +134,12 @@ func (h *InstrumentHandler) History(c *gin.Context) {
 			return
 		}
 		limit, _ := strconv.Atoi(c.DefaultQuery("limit", "1000"))
+		if limit <= 0 {
+			limit = 1000
+		}
+		if limit > 2000 {
+			limit = 2000
+		}
 		candles, err := h.candles.Candles(c.Request.Context(), code, interval, from, to, limit)
 		if err != nil {
 			if err == service.ErrUnsupportedInterval {
@@ -139,6 +148,43 @@ func (h *InstrumentHandler) History(c *gin.Context) {
 			}
 			c.JSON(http.StatusServiceUnavailable, ErrorResponse{Error: "aggregation failed"})
 			return
+		}
+
+		// A one-day intraday request can legitimately contain fewer than two
+		// points while a non-24/7 market is closed. Some upstream quote feeds
+		// still repeat the last close during the weekend, producing one
+		// misleading "forming" candle. Both mobile apps then have too little
+		// data to draw a chart even though the previous trading session is
+		// available.
+		//
+		// Keep crypto untouched (it trades continuously). For the other market
+		// kinds, transparently fall back to the most recent session that has at
+		// least two real chart buckets. This also fixes already-released clients
+		// that send only `from=now-24h`; no app update is required for the data
+		// endpoint to become weekend-safe.
+		if shouldUseLatestTradingSession(
+			instrument, interval, from, to, candles, c.Query("session") == "latest",
+		) {
+			end := time.Now().UTC()
+			if !to.IsZero() {
+				end = to
+			}
+			fallbackFrom := end.AddDate(0, 0, -8)
+			fallbackLimit := limit
+			if fallbackLimit < 2000 {
+				fallbackLimit = 2000
+			}
+			if recent, retryErr := h.candles.Candles(
+				c.Request.Context(), code, interval, fallbackFrom, to, fallbackLimit,
+			); retryErr == nil {
+				loc, _ := time.LoadLocation("Europe/Istanbul")
+				if session := latestTradingSession(recent, loc); len(session) >= 2 {
+					if len(session) > limit {
+						session = session[len(session)-limit:]
+					}
+					candles = session
+				}
+			}
 		}
 		c.JSON(http.StatusOK, gin.H{"code": code, "interval": interval, "candles": candles})
 		return
@@ -155,6 +201,66 @@ func (h *InstrumentHandler) History(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"code": code, "count": len(rows), "items": rows})
+}
+
+func shouldUseLatestTradingSession(
+	instrument domain.Instrument,
+	interval string,
+	from, to time.Time,
+	candles []models.OHLC,
+	force bool,
+) bool {
+	return instrument.Kind != domain.KindCrypto &&
+		interval == "5m" &&
+		!from.IsZero() &&
+		to.IsZero() &&
+		(force || len(candles) < 2)
+}
+
+// latestTradingSession returns the newest local market day containing enough
+// distinct chart buckets to render. Sparse one-point groups are stale quote
+// heartbeats, not a market session.
+func latestTradingSession(candles []models.OHLC, loc *time.Location) []models.OHLC {
+	if len(candles) < 2 {
+		return nil
+	}
+	if loc == nil {
+		loc = time.UTC
+	}
+	type dayKey struct {
+		year int
+		day  int
+	}
+	groups := make(map[dayKey][]models.OHLC)
+	buckets := make(map[dayKey]map[time.Time]struct{})
+	for _, candle := range candles {
+		local := candle.Bucket.In(loc)
+		key := dayKey{year: local.Year(), day: local.YearDay()}
+		if buckets[key] == nil {
+			buckets[key] = make(map[time.Time]struct{})
+		}
+		buckets[key][candle.Bucket] = struct{}{}
+		groups[key] = append(groups[key], candle)
+	}
+	var newest dayKey
+	found := false
+	for key, distinct := range buckets {
+		if len(distinct) < 2 {
+			continue
+		}
+		if !found || key.year > newest.year || (key.year == newest.year && key.day > newest.day) {
+			newest = key
+			found = true
+		}
+	}
+	if !found {
+		return nil
+	}
+	session := groups[newest]
+	sort.Slice(session, func(i, j int) bool {
+		return session[i].Bucket.Before(session[j].Bucket)
+	})
+	return session
 }
 
 // Stats returns a 24h rolling summary (open/high/low/last/change) for one

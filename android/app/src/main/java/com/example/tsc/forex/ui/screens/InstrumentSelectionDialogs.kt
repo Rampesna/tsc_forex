@@ -343,11 +343,10 @@ internal fun InstrumentMultiPickerDialog(
 
 @Composable
 private fun PickerTopBar(title: String, onCancel: () -> Unit) {
-    Row(
+    Box(
         Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 4.dp),
-        verticalAlignment = Alignment.CenterVertically,
     ) {
-        TextButton(onClick = onCancel) {
+        TextButton(onClick = onCancel, modifier = Modifier.align(Alignment.CenterStart)) {
             Text(
                 "Vazgeç",
                 color = Th.accent,
@@ -358,10 +357,13 @@ private fun PickerTopBar(title: String, onCancel: () -> Unit) {
                     .padding(horizontal = 14.dp, vertical = 7.dp),
             )
         }
-        Spacer(Modifier.weight(1f))
-        Text(title, color = Th.text, fontSize = 17.sp, fontWeight = FontWeight.Bold)
-        Spacer(Modifier.weight(1f))
-        Spacer(Modifier.padding(horizontal = 40.dp))
+        Text(
+            title,
+            color = Th.text,
+            fontSize = 17.sp,
+            fontWeight = FontWeight.Bold,
+            modifier = Modifier.align(Alignment.Center),
+        )
     }
 }
 

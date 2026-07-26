@@ -18,6 +18,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -108,10 +109,16 @@ fun RootScaffold(
     val current = backStack?.destination?.route
     var showLogin by remember { mutableStateOf(false) }
 
-    val hideBar = current?.startsWith("detail/") == true ||
-        current?.startsWith("portfolio-position/") == true ||
-        current == "research-archive" ||
+    val hideBar = current == "research-archive" ||
         current == "notifications"
+    val activeTab = when {
+        current?.startsWith("detail/") == true -> "markets"
+        current?.startsWith("portfolio-position/") == true -> "portfolio"
+        else -> current ?: "markets"
+    }
+    val isTabContext = TABS.any { it.route == current } ||
+        current?.startsWith("detail/") == true ||
+        current?.startsWith("portfolio-position/") == true
 
     fun requestAuth() {
         showLogin = true
@@ -121,7 +128,7 @@ fun RootScaffold(
         containerColor = Th.bg,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         bottomBar = {
-            if (!hideBar && (current == null || TABS.any { it.route == current })) {
+            if (!hideBar && (current == null || isTabContext)) {
                 // iOS CustomTabBar: floating glass capsule above the home indicator
                 Box(
                     Modifier
@@ -130,7 +137,7 @@ fun RootScaffold(
                         .padding(horizontal = 14.dp, vertical = 8.dp),
                 ) {
                     FloatingTabBar(
-                        currentRoute = current ?: "markets",
+                        currentRoute = activeTab,
                         onSelect = { route ->
                             nav.navigate(route) {
                                 popUpTo(nav.graph.findStartDestination().id) { saveState = true }
@@ -290,7 +297,7 @@ private fun FloatingTabBar(
             .clip(TabBarShape)
             .background(Color(0xF212161C)) // Theme.bgElevated @ ~0.95 + glass feel
             .border(1.dp, Color.White.copy(alpha = 0.12f), TabBarShape)
-            .padding(horizontal = 8.dp, vertical = 8.dp),
+            .padding(horizontal = 6.dp, vertical = 6.dp),
         horizontalArrangement = Arrangement.spacedBy(2.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
@@ -316,7 +323,8 @@ private fun FloatingTabBar(
                         indication = null,
                         onClick = { onSelect(tab.route) },
                     )
-                    .padding(vertical = 8.dp),
+                    .heightIn(min = 54.dp)
+                    .padding(vertical = 6.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(3.dp),
             ) {
@@ -324,12 +332,12 @@ private fun FloatingTabBar(
                     imageVector = if (selected) tab.filled else tab.outlined,
                     contentDescription = tab.label,
                     tint = tint,
-                    modifier = Modifier.size(20.dp),
+                    modifier = Modifier.size(21.dp),
                 )
                 Text(
                     tab.label,
                     color = tint,
-                    fontSize = 9.5.sp,
+                    fontSize = 10.sp,
                     fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium,
                     maxLines = 1,
                 )

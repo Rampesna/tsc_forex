@@ -9,13 +9,22 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.sizeIn
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -25,6 +34,7 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.tsc.forex.ui.theme.Th
@@ -35,13 +45,17 @@ fun Card(
     padding: PaddingValues = PaddingValues(14.dp),
     content: @Composable () -> Unit,
 ) {
-    Box(
-        modifier
-            .clip(RoundedCornerShape(16.dp))
-            .background(Th.surface)
-            .border(1.dp, Th.stroke, RoundedCornerShape(16.dp))
-            .padding(padding)
-    ) { content() }
+    Surface(
+        modifier = modifier,
+        color = Th.surface,
+        contentColor = Th.text,
+        shape = RoundedCornerShape(18.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Th.stroke),
+        tonalElevation = 0.dp,
+        shadowElevation = 0.dp,
+    ) {
+        Box(Modifier.padding(padding)) { content() }
+    }
 }
 
 /** Small colored pill showing a percentage change. */
@@ -109,27 +123,178 @@ fun Sparkline(points: List<Double>, up: Boolean, modifier: Modifier = Modifier) 
 }
 
 @Composable
-fun ScreenHeader(title: String, subtitle: String? = null, trailing: (@Composable () -> Unit)? = null) {
-    Row(
+fun ScreenHeader(
+    title: String,
+    subtitle: String? = null,
+    leading: (@Composable () -> Unit)? = null,
+    trailing: (@Composable () -> Unit)? = null,
+) {
+    Box(
         Modifier
             .fillMaxWidth()
             .statusBarsPadding()
-            .padding(horizontal = 16.dp, vertical = 12.dp),
-        verticalAlignment = Alignment.CenterVertically,
+            .heightIn(min = 76.dp)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
     ) {
-        Column(Modifier.weight(1f)) {
-            Text(title, color = Th.text, fontSize = 22.sp, fontWeight = FontWeight.Bold)
-            if (subtitle != null) Text(subtitle, color = Th.textDim, fontSize = 12.sp)
+        Column(
+            Modifier
+                .align(Alignment.Center)
+                .padding(horizontal = 52.dp),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(2.dp),
+        ) {
+            Text(
+                title,
+                color = Th.text,
+                style = MaterialTheme.typography.headlineSmall,
+                textAlign = TextAlign.Center,
+                maxLines = 1,
+            )
+            if (subtitle != null) {
+                Text(
+                    subtitle,
+                    color = Th.textDim,
+                    style = MaterialTheme.typography.bodySmall,
+                    textAlign = TextAlign.Center,
+                    maxLines = 2,
+                )
+            }
         }
-        if (trailing != null) trailing()
+        if (leading != null) {
+            Box(
+                Modifier
+                    .align(Alignment.CenterStart)
+                    .sizeIn(minWidth = 48.dp, minHeight = 48.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                leading()
+            }
+        }
+        if (trailing != null) {
+            Box(
+                Modifier
+                    .align(Alignment.CenterEnd)
+                    .sizeIn(minWidth = 48.dp, minHeight = 48.dp),
+                contentAlignment = Alignment.Center,
+            ) {
+                trailing()
+            }
+        }
     }
 }
 
 @Composable
 fun StatTile(label: String, value: String, valueColor: Color = Th.text, modifier: Modifier = Modifier) {
     Column(modifier, verticalArrangement = Arrangement.spacedBy(4.dp)) {
-        Text(label, color = Th.textDim, fontSize = 11.sp)
-        Text(value, color = valueColor, fontSize = 14.sp, fontWeight = FontWeight.SemiBold, maxLines = 1)
+        Text(label, color = Th.textDim, style = MaterialTheme.typography.labelMedium, maxLines = 1)
+        Text(
+            value,
+            color = valueColor,
+            style = MaterialTheme.typography.titleSmall,
+            maxLines = 1,
+        )
+    }
+}
+
+@Composable
+fun PrimaryActionButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+    leading: (@Composable () -> Unit)? = null,
+) {
+    Button(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier
+            .fillMaxWidth()
+            .heightIn(min = 52.dp),
+        shape = RoundedCornerShape(14.dp),
+        colors = ButtonDefaults.buttonColors(
+            containerColor = Th.accent,
+            contentColor = Th.bg,
+            disabledContainerColor = Th.surfaceAlt,
+            disabledContentColor = Th.textFaint,
+        ),
+        contentPadding = PaddingValues(horizontal = 18.dp, vertical = 13.dp),
+    ) {
+        if (leading != null) {
+            leading()
+            androidx.compose.foundation.layout.Spacer(Modifier.size(8.dp))
+        }
+        Text(text, style = MaterialTheme.typography.labelLarge, textAlign = TextAlign.Center)
+    }
+}
+
+@Composable
+fun SecondaryActionButton(
+    text: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
+) {
+    OutlinedButton(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier
+            .fillMaxWidth()
+            .heightIn(min = 50.dp),
+        shape = RoundedCornerShape(14.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Th.stroke),
+        colors = ButtonDefaults.outlinedButtonColors(
+            contentColor = Th.text,
+            disabledContentColor = Th.textFaint,
+        ),
+    ) {
+        Text(text, style = MaterialTheme.typography.labelLarge, textAlign = TextAlign.Center)
+    }
+}
+
+@Composable
+fun SegmentedControl(
+    options: List<String>,
+    selectedIndex: Int,
+    onSelected: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        color = Th.bg,
+        shape = RoundedCornerShape(14.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Th.stroke.copy(alpha = 0.8f)),
+    ) {
+        Row(
+            Modifier.padding(4.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            options.forEachIndexed { index, option ->
+                val selected = index == selectedIndex
+                val background by animateColorAsState(
+                    if (selected) Th.surfaceAlt else Color.Transparent,
+                    label = "segmentBackground",
+                )
+                Surface(
+                    onClick = { onSelected(index) },
+                    modifier = Modifier
+                        .weight(1f)
+                        .heightIn(min = 42.dp),
+                    color = background,
+                    contentColor = if (selected) Th.text else Th.textDim,
+                    shape = RoundedCornerShape(10.dp),
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Text(
+                            option,
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = if (selected) FontWeight.Bold else FontWeight.SemiBold,
+                            textAlign = TextAlign.Center,
+                            maxLines = 1,
+                        )
+                    }
+                }
+            }
+        }
     }
 }
 

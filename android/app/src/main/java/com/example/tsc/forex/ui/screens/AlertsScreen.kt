@@ -24,7 +24,6 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -37,6 +36,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.tsc.forex.data.PriceAlert
@@ -45,7 +45,10 @@ import com.example.tsc.forex.store.PriceStore
 import com.example.tsc.forex.ui.AssetBadge
 import com.example.tsc.forex.ui.Card
 import com.example.tsc.forex.ui.Fmt
+import com.example.tsc.forex.ui.PrimaryActionButton
 import com.example.tsc.forex.ui.ScreenHeader
+import com.example.tsc.forex.ui.SecondaryActionButton
+import com.example.tsc.forex.ui.SegmentedControl
 import com.example.tsc.forex.ui.ToastOnChange
 import com.example.tsc.forex.ui.theme.Th
 import kotlinx.coroutines.launch
@@ -75,17 +78,25 @@ fun AlertsScreen(auth: AuthStore, store: PriceStore) {
         ScreenHeader("Alarmlar", "Eşik geçilince bir kez bildirir")
         if (loaded && alerts.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 48.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
                     Text("Alarm yok", color = Th.text, fontSize = 16.sp, fontWeight = FontWeight.SemiBold)
                     Text(
                         "Piyasa sekmesinden bir varlık açıp tek seferlik fiyat alarmı kurabilirsiniz.",
                         color = Th.textDim,
                         fontSize = 13.sp,
+                        textAlign = TextAlign.Center,
                         modifier = Modifier.padding(horizontal = 40.dp),
                     )
-                    TextButton(onClick = { scope.launch { load() } }) {
-                        Text("Tekrar Dene", color = Th.accent)
-                    }
+                    SecondaryActionButton(
+                        text = "Yenile",
+                        onClick = { scope.launch { load() } },
+                    )
                 }
             }
         } else {
@@ -190,17 +201,11 @@ private fun AlertEditSheet(
         ) {
             Text("Alarmı Düzenle", color = Th.text, fontSize = 20.sp, fontWeight = FontWeight.Bold)
             Text("$displayName · Tek seferlik", color = Th.textDim, fontSize = 12.sp)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("above" to "Üstüne çıkınca", "below" to "Altına inince").forEach { (value, label) ->
-                    val selected = direction == value
-                    TextButton(
-                        onClick = { direction = value },
-                        colors = ButtonDefaults.textButtonColors(
-                            contentColor = if (selected) Th.accent else Th.textDim,
-                        ),
-                    ) { Text(label, fontWeight = FontWeight.Bold) }
-                }
-            }
+            SegmentedControl(
+                options = listOf("Üstüne çıkınca", "Altına inince"),
+                selectedIndex = if (direction == "above") 0 else 1,
+                onSelected = { direction = if (it == 0) "above" else "below" },
+            )
             OutlinedTextField(
                 value = threshold,
                 onValueChange = { threshold = it },
@@ -227,9 +232,10 @@ private fun AlertEditSheet(
                     )
                 }
             }
-            Button(
+            PrimaryActionButton(
+                text = if (saving) "Kaydediliyor…" else "Değişiklikleri kaydet",
                 onClick = {
-                    val value = parsed ?: return@Button
+                    val value = parsed ?: return@PrimaryActionButton
                     scope.launch {
                         saving = true
                         error = null
@@ -240,10 +246,7 @@ private fun AlertEditSheet(
                     }
                 },
                 enabled = parsed != null && !saving,
-                colors = ButtonDefaults.buttonColors(containerColor = Th.accent, contentColor = Th.bg),
-                shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.fillMaxWidth(),
-            ) { Text(if (saving) "Kaydediliyor…" else "Değişiklikleri Kaydet", fontWeight = FontWeight.Bold) }
+            )
         }
     }
 }

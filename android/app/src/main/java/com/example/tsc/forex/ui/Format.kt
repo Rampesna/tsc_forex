@@ -8,7 +8,9 @@ object Fmt {
     private val tr: Locale = Locale.forLanguageTag("tr-TR")
 
     private fun decimals(v: Double): Int = when {
+        abs(v) < 1e-9 -> 2
         abs(v) >= 1000 -> 2
+        abs(v) >= 100 -> 2
         abs(v) >= 1 -> 4
         abs(v) >= 0.01 -> 4
         else -> 6

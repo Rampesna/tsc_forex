@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -12,6 +13,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
@@ -28,6 +30,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -63,6 +66,8 @@ import com.example.tsc.forex.ui.Card
 import com.example.tsc.forex.ui.ChartMode
 import com.example.tsc.forex.ui.Fmt
 import com.example.tsc.forex.ui.PriceChart
+import com.example.tsc.forex.ui.PrimaryActionButton
+import com.example.tsc.forex.ui.SegmentedControl
 import com.example.tsc.forex.ui.StatTile
 import com.example.tsc.forex.ui.ToastOnChange
 import com.example.tsc.forex.ui.theme.Th
@@ -130,6 +135,9 @@ fun AssetDetailScreen(
     val ip = store.prices[code]
     var rangeKey by remember { mutableStateOf("1G") }
     var candles by remember { mutableStateOf<List<Candle>>(emptyList()) }
+    var chartLoading by remember { mutableStateOf(true) }
+    var chartError by remember { mutableStateOf<String?>(null) }
+    var chartReload by remember { mutableStateOf(0) }
     var mode by remember { mutableStateOf(ChartMode.LINE) }
     var stats by remember { mutableStateOf<InstrumentStats?>(null) }
     var detail by remember { mutableStateOf<InstrumentDetail?>(null) }
@@ -216,15 +224,29 @@ fun AssetDetailScreen(
         "1w" -> 604_800_000L; "1mo" -> 2_629_800_000L; else -> 300_000L
     }
 
-    LaunchedEffect(code, rangeKey) {
+    LaunchedEffect(code, rangeKey, chartReload) {
         val api = auth.newApiClient()
         val tf = TIMEFRAMES.firstOrNull { it.key == rangeKey } ?: TIMEFRAMES[0]
         val fromMs = System.currentTimeMillis() - tf.days * 86_400_000L
         hasMoreHistory = true
         hasMoreFuture = false
-        val loaded = runCatching { api.candles(code, tf.interval, fromMs = fromMs) }.getOrElse { emptyList() }
-        candles = loaded.takeLast(MAX_WINDOW)
-        chartReset++
+        chartLoading = true
+        chartError = null
+        try {
+            val loaded = api.candles(
+                code,
+                tf.interval,
+                fromMs = fromMs,
+                latestSession = rangeKey == "1G",
+            )
+            candles = loaded.takeLast(MAX_WINDOW)
+            chartReset++
+        } catch (_: Exception) {
+            candles = emptyList()
+            chartError = "Grafik verisi şu anda alınamadı."
+        } finally {
+            chartLoading = false
+        }
         stats = runCatching { api.stats(code) }.getOrNull()
     }
     LaunchedEffect(code) {
@@ -292,40 +314,48 @@ fun AssetDetailScreen(
             .verticalScroll(rememberScrollState()),
     ) {
         // iOS toolbar: back · centered name/code · star + bell
-        Row(
+        Box(
             Modifier
                 .fillMaxWidth()
                 .statusBarsPadding()
                 .padding(horizontal = 4.dp, vertical = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconButton(onClick = onBack) {
+            IconButton(onClick = onBack, modifier = Modifier.align(Alignment.CenterStart)) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, "geri", tint = Th.text)
             }
-            Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally) {
+            Column(
+                Modifier
+                    .align(Alignment.Center)
+                    .padding(horizontal = 108.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+            ) {
                 Text(
                     ip?.displayName ?: code,
-                    color = Th.text, fontSize = 15.sp, fontWeight = FontWeight.Bold,
+                    color = Th.text,
+                    style = MaterialTheme.typography.titleMedium,
                     maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                 )
-                Text(code, color = Th.textDim, fontSize = 10.sp, maxLines = 1)
+                Text(code, color = Th.textDim, style = MaterialTheme.typography.labelSmall, maxLines = 1)
             }
-            IconButton(onClick = {
-                if (!auth.isLoggedIn) onRequestAuth()
-                else {
-                    store.toggleFavorite(code)
-                    isFav = store.isFavorite(code)
+            Row(Modifier.align(Alignment.CenterEnd)) {
+                IconButton(onClick = {
+                    if (!auth.isLoggedIn) onRequestAuth()
+                    else {
+                        store.toggleFavorite(code)
+                        isFav = store.isFavorite(code)
+                    }
+                }) {
+                    Icon(
+                        if (isFav) Icons.Filled.Star else Icons.Outlined.StarBorder,
+                        "favori", tint = if (isFav) Th.accent else Th.textDim,
+                    )
                 }
-            }) {
-                Icon(
-                    if (isFav) Icons.Filled.Star else Icons.Outlined.StarBorder,
-                    "favori", tint = if (isFav) Th.accent else Th.textDim,
-                )
-            }
-            IconButton(onClick = {
-                if (!auth.isLoggedIn) onRequestAuth() else showAlert = true
-            }) {
-                Icon(Icons.Outlined.Notifications, "alarm", tint = Th.textDim)
+                IconButton(onClick = {
+                    if (!auth.isLoggedIn) onRequestAuth() else showAlert = true
+                }) {
+                    Icon(Icons.Outlined.Notifications, "alarm", tint = Th.textDim)
+                }
             }
         }
 
@@ -335,12 +365,16 @@ fun AssetDetailScreen(
         ) {
             // 1) priceHeader
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(
-                    ip?.let { Fmt.money(it.price, ccy) } ?: "—",
-                    color = if (ip == null) Th.textDim else Th.text,
-                    fontSize = 38.sp,
-                    fontWeight = FontWeight.Bold,
-                )
+                BoxWithConstraints(Modifier.fillMaxWidth()) {
+                    Text(
+                        ip?.let { Fmt.money(it.price, ccy) } ?: "—",
+                        color = if (ip == null) Th.textDim else Th.text,
+                        fontSize = if (maxWidth < 360.dp) 30.sp else 36.sp,
+                        fontWeight = FontWeight.Bold,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    )
+                }
                 if (ip?.isUSD == true) {
                     Text("≈ ${Fmt.tl(ip.tryValue)}", color = Th.textDim, fontSize = 14.sp, fontWeight = FontWeight.Medium)
                 }
@@ -357,15 +391,36 @@ fun AssetDetailScreen(
 
             // 2) stats24h — Yüksek · Düşük · Açılış · Son
             Card {
-                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    StatTile("24s Yüksek", statVal(stats?.high), valueColor = Th.up, modifier = Modifier.weight(1f))
-                    StatTile("24s Düşük", statVal(stats?.low), valueColor = Th.down, modifier = Modifier.weight(1f))
-                    StatTile("24s Açılış", statVal(stats?.open), modifier = Modifier.weight(1f))
-                    StatTile(
-                        "24s Son",
-                        statVal(stats?.last ?: ip?.price),
-                        modifier = Modifier.weight(1f),
+                BoxWithConstraints(Modifier.fillMaxWidth()) {
+                    val tiles = listOf(
+                        Triple("24s Yüksek", statVal(stats?.high), Th.up),
+                        Triple("24s Düşük", statVal(stats?.low), Th.down),
+                        Triple("24s Açılış", statVal(stats?.open), Th.text),
+                        Triple("24s Son", statVal(stats?.last ?: ip?.price), Th.text),
                     )
+                    if (maxWidth < 430.dp) {
+                        Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+                            tiles.chunked(2).forEach { row ->
+                                Row(
+                                    Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                ) {
+                                    row.forEach { (label, value, color) ->
+                                        StatTile(label, value, color, Modifier.weight(1f))
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        Row(
+                            Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        ) {
+                            tiles.forEach { (label, value, color) ->
+                                StatTile(label, value, color, Modifier.weight(1f))
+                            }
+                        }
+                    }
                 }
             }
 
@@ -373,22 +428,14 @@ fun AssetDetailScreen(
             Card(padding = PaddingValues(14.dp)) {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                            listOf(ChartMode.LINE to "Çizgi", ChartMode.CANDLE to "Mum").forEach { (m, label) ->
-                                val sel = m == mode
-                                Box(
-                                    Modifier
-                                        .clip(RoundedCornerShape(8.dp))
-                                        .background(if (sel) Th.surfaceAlt else Th.bg)
-                                        .clickable { mode = m }
-                                        .padding(horizontal = 12.dp, vertical = 6.dp),
-                                ) {
-                                    Text(label, color = if (sel) Th.text else Th.textDim, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
-                                }
-                            }
-                        }
-                        Spacer(Modifier.weight(1f))
+                        SegmentedControl(
+                            options = listOf("Çizgi", "Mum"),
+                            selectedIndex = if (mode == ChartMode.LINE) 0 else 1,
+                            onSelected = { mode = if (it == 0) ChartMode.LINE else ChartMode.CANDLE },
+                            modifier = Modifier.weight(1f),
+                        )
                         if (loadingOlder || loadingNewer) {
+                            Spacer(Modifier.width(10.dp))
                             CircularProgressIndicator(
                                 modifier = Modifier.height(16.dp).width(16.dp),
                                 color = Th.accent,
@@ -396,18 +443,57 @@ fun AssetDetailScreen(
                             )
                         }
                     }
-                    Box {
-                        PriceChart(
-                            candles = displayCandles,
-                            mode = mode,
-                            trendUp = changePct >= 0,
-                            currency = ccy,
-                            resetToken = chartReset,
-                            canLoadOlder = hasMoreHistory,
-                            canLoadNewer = hasMoreFuture,
-                            onReachStart = { scope.launch { loadOlder() } },
-                            onReachEnd = { scope.launch { loadNewer() } },
-                        )
+                    BoxWithConstraints(Modifier.fillMaxWidth()) {
+                        when {
+                            chartLoading -> Box(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .height(if (maxWidth < 360.dp) 210.dp else 240.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(10.dp),
+                                ) {
+                                    CircularProgressIndicator(
+                                        modifier = Modifier.size(24.dp),
+                                        color = Th.accent,
+                                        strokeWidth = 2.dp,
+                                    )
+                                    Text("Grafik hazırlanıyor…", color = Th.textDim, fontSize = 12.sp)
+                                }
+                            }
+                            chartError != null -> Box(
+                                Modifier
+                                    .fillMaxWidth()
+                                    .height(if (maxWidth < 360.dp) 210.dp else 240.dp),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Column(
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                                ) {
+                                    Text(chartError!!, color = Th.textDim, fontSize = 12.sp)
+                                    TextButton(onClick = { chartReload++ }) {
+                                        Text("Yeniden dene", color = Th.accent, fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                            else -> PriceChart(
+                                candles = displayCandles,
+                                mode = mode,
+                                trendUp = changePct >= 0,
+                                currency = ccy,
+                                resetToken = chartReset,
+                                canLoadOlder = hasMoreHistory,
+                                canLoadNewer = hasMoreFuture,
+                                onReachStart = { scope.launch { loadOlder() } },
+                                onReachEnd = { scope.launch { loadNewer() } },
+                                heightDp = if (maxWidth < 360.dp) 210 else 240,
+                                emptyTitle = "Son işlem seansı bulunamadı",
+                                emptySubtitle = "Piyasa açıldığında grafik otomatik güncellenecek.",
+                            )
+                        }
                         if (loadingOlder || loadingNewer) {
                             Text(
                                 if (loadingOlder) "Geçmiş yükleniyor…" else "Güncel yükleniyor…",
@@ -422,28 +508,11 @@ fun AssetDetailScreen(
                             )
                         }
                     }
-                    Row(
-                        Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                    ) {
-                        TIMEFRAMES.forEach { tf ->
-                            val selected = tf.key == rangeKey
-                            Box(
-                                Modifier
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(if (selected) Th.surfaceAlt else androidx.compose.ui.graphics.Color.Transparent)
-                                    .clickable { rangeKey = tf.key }
-                                    .padding(horizontal = 10.dp, vertical = 6.dp),
-                            ) {
-                                Text(
-                                    tf.label,
-                                    color = if (selected) Th.text else Th.textDim,
-                                    fontSize = 12.sp,
-                                    fontWeight = FontWeight.SemiBold,
-                                )
-                            }
-                        }
-                    }
+                    SegmentedControl(
+                        options = TIMEFRAMES.map { it.label },
+                        selectedIndex = TIMEFRAMES.indexOfFirst { it.key == rangeKey }.coerceAtLeast(0),
+                        onSelected = { index -> rangeKey = TIMEFRAMES[index].key },
+                    )
                 }
             }
 
@@ -548,33 +617,24 @@ fun AssetDetailScreen(
                         color = Th.textDim, fontSize = 13.sp,
                     )
 
-                    Box(
-                        Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(if (auth.isLoggedIn) Th.accent else Th.accent.copy(alpha = 0.45f))
-                            .clickable(enabled = !aiLoading) {
+                    PrimaryActionButton(
+                        text = when {
+                            !auth.isLoggedIn -> "Araştırma için giriş yap"
+                            aiLoading -> "Kaynaklar araştırılıyor…"
+                            else -> "✦  Derin araştırmayı başlat"
+                        },
+                        enabled = !aiLoading,
+                        onClick = {
                                 if (!auth.isLoggedIn) {
                                     onRequestAuth()
-                                    return@clickable
+                                    return@PrimaryActionButton
                                 }
                                 scope.launch {
                                     if (!acceptedAI) showAIDisclosure = true
                                     else loadAIInsight()
                                 }
-                            }
-                            .padding(vertical = 12.dp),
-                        contentAlignment = Alignment.Center,
-                    ) {
-                        Text(
-                            when {
-                                !auth.isLoggedIn -> "Araştırma için giriş yap"
-                                aiLoading -> "Kaynaklar araştırılıyor…"
-                                else -> "✦  Derin araştırmayı başlat"
-                            },
-                            color = Th.bg, fontSize = 13.sp, fontWeight = FontWeight.Bold,
-                        )
-                    }
+                        },
+                    )
                 }
             }
 
@@ -584,7 +644,7 @@ fun AssetDetailScreen(
             // 6) HESAPLA
             InstantCalculatorCard(unitPrice = ip?.price ?: 0.0)
 
-            Spacer(Modifier.height(96.dp))
+            Spacer(Modifier.height(24.dp))
         }
     }
 
@@ -656,39 +716,54 @@ private fun InstantCalculatorCard(unitPrice: Double) {
     Card(padding = PaddingValues(14.dp)) {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("HESAPLA", color = Th.textDim, fontSize = 11.sp, fontWeight = FontWeight.Bold)
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                BasicTextField(
-                    value = amount,
-                    onValueChange = { amount = it },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-                    textStyle = TextStyle(color = Th.text, fontSize = 18.sp, fontWeight = FontWeight.Medium),
-                    cursorBrush = SolidColor(Th.accent),
-                    modifier = Modifier
-                        .width(120.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(Th.bg)
-                        .padding(10.dp),
-                )
-                Text("birim", color = Th.textDim, fontSize = 13.sp)
-                Spacer(Modifier.weight(1f))
-                Text("₺${Fmt.compactPrice(result)}", color = Th.accent, fontSize = 18.sp, fontWeight = FontWeight.Bold)
-            }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                listOf("0.25", "0.5", "1", "5", "10").forEach { q ->
-                    Text(
-                        q,
-                        color = Th.text,
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(20.dp))
-                            .background(Th.surfaceAlt)
-                            .clickable { amount = q }
-                            .padding(horizontal = 12.dp, vertical = 6.dp),
-                    )
+            BoxWithConstraints(Modifier.fillMaxWidth()) {
+                if (maxWidth < 360.dp) {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedTextField(
+                            value = amount,
+                            onValueChange = { amount = it },
+                            label = { Text("Miktar") },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        Text(
+                            "Sonuç: ₺${Fmt.compactPrice(result)}",
+                            color = Th.accent,
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                    }
+                } else {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    ) {
+                        OutlinedTextField(
+                            value = amount,
+                            onValueChange = { amount = it },
+                            label = { Text("Miktar") },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
+                            modifier = Modifier.weight(1f),
+                        )
+                        Column(Modifier.weight(1f), horizontalAlignment = Alignment.End) {
+                            Text("Hesaplanan değer", color = Th.textDim, fontSize = 11.sp)
+                            Text(
+                                "₺${Fmt.compactPrice(result)}",
+                                color = Th.accent,
+                                style = MaterialTheme.typography.titleMedium,
+                                maxLines = 1,
+                            )
+                        }
+                    }
                 }
             }
+            val quickAmounts = listOf("0.25", "0.5", "1", "5", "10")
+            SegmentedControl(
+                options = quickAmounts,
+                selectedIndex = quickAmounts.indexOf(amount),
+                onSelected = { amount = quickAmounts[it] },
+            )
         }
     }
 }
@@ -833,18 +908,11 @@ private fun AlertDialogCreate(currentPrice: Double, currency: String?, onDismiss
                     singleLine = true,
                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
                 )
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    listOf("above" to "Üstüne çıkınca", "below" to "Altına inince").forEach { (v, label) ->
-                        val sel = v == direction
-                        Box(
-                            Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(if (sel) Th.accent.copy(alpha = 0.18f) else Th.surfaceAlt)
-                                .clickable { direction = v }
-                                .padding(horizontal = 12.dp, vertical = 8.dp),
-                        ) { Text(label, color = if (sel) Th.accent else Th.textDim, fontSize = 12.sp) }
-                    }
-                }
+                SegmentedControl(
+                    options = listOf("Üstüne çıkınca", "Altına inince"),
+                    selectedIndex = if (direction == "above") 0 else 1,
+                    onSelected = { direction = if (it == 0) "above" else "below" },
+                )
             }
         },
         confirmButton = {

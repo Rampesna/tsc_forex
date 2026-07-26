@@ -57,8 +57,16 @@ fun NotificationsScreen(
             .fillMaxSize()
             .background(Th.bg)
     ) {
-        ScreenHeader("Bildirimler", trailing = {
-            Row(verticalAlignment = Alignment.CenterVertically) {
+        ScreenHeader(
+            title = "Bildirimler",
+            leading = {
+                if (onBack != null) {
+                    IconButton(onClick = onBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Geri", tint = Th.text)
+                    }
+                }
+            },
+            trailing = {
                 if (live.isNotEmpty() || history.isNotEmpty()) {
                     TextButton(onClick = {
                         store.clearLiveNotifications()
@@ -67,15 +75,10 @@ fun NotificationsScreen(
                                 history = emptyList()
                             }
                         }
-                    }) { Text("Temizle", color = Th.accent, fontSize = 13.sp) }
+                    }) { Text("Temizle", color = Th.accent, fontSize = 12.sp) }
                 }
-                if (onBack != null) {
-                    IconButton(onClick = onBack) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, "Geri", tint = Th.text)
-                    }
-                }
-            }
-        })
+            },
+        )
 
         if (live.isEmpty() && history.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {

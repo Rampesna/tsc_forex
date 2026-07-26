@@ -7,10 +7,17 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -104,30 +111,40 @@ private fun LoginBody(
         Modifier
             .fillMaxSize()
             .background(Th.bg)
-            .padding(24.dp),
+            .statusBarsPadding()
+            .navigationBarsPadding()
+            .imePadding(),
         contentAlignment = Alignment.Center,
     ) {
         Column(
-            Modifier.fillMaxWidth(),
+            Modifier
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 24.dp, vertical = 28.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(14.dp),
+            verticalArrangement = Arrangement.spacedBy(14.dp, Alignment.CenterVertically),
         ) {
-            Image(
-                painter = painterResource(R.drawable.brand_logo),
-                contentDescription = "TSC Forex",
-                contentScale = ContentScale.Fit,
-                modifier = Modifier
-                    .size(84.dp)
-                    .clip(RoundedCornerShape(20.dp)),
-            )
+            Column(
+                Modifier.widthIn(max = 480.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(14.dp),
+            ) {
+                Image(
+                    painter = painterResource(R.drawable.brand_logo),
+                    contentDescription = "TSC Forex",
+                    contentScale = ContentScale.Fit,
+                    modifier = Modifier
+                        .size(84.dp)
+                        .clip(RoundedCornerShape(20.dp)),
+                )
 
-            Text("TSC Forex", color = Th.text, fontSize = 26.sp, fontWeight = FontWeight.Bold)
-            Text(
-                "Canlı Altın & Döviz Piyasası",
-                color = Th.textDim, fontSize = 13.sp,
-            )
+                Text("TSC Forex", color = Th.text, fontSize = 26.sp, fontWeight = FontWeight.Bold)
+                Text(
+                    "Canlı Altın & Döviz Piyasası",
+                    color = Th.textDim, fontSize = 13.sp,
+                )
 
-            OutlinedTextField(
+                OutlinedTextField(
                 value = email,
                 onValueChange = { email = it; auth.email = it },
                 label = { Text("E-posta") },
@@ -136,8 +153,8 @@ private fun LoginBody(
                 colors = fieldColors(),
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.fillMaxWidth(),
-            )
-            OutlinedTextField(
+                )
+                OutlinedTextField(
                 value = password,
                 onValueChange = { password = it },
                 label = { Text("Şifre") },
@@ -147,20 +164,20 @@ private fun LoginBody(
                 colors = fieldColors(),
                 shape = RoundedCornerShape(12.dp),
                 modifier = Modifier.fillMaxWidth(),
-            )
+                )
 
             // Keep errors sticky on the login form. Do NOT use ToastOnChange here —
             // it cleared errorMessage immediately so the UI looked "dead".
-            auth.errorMessage?.let { msg ->
-                Text(
-                    msg,
-                    color = Th.down,
-                    fontSize = 12.sp,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-            }
+                auth.errorMessage?.let { msg ->
+                    Text(
+                        msg,
+                        color = Th.down,
+                        fontSize = 12.sp,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
 
-            Button(
+                Button(
                 onClick = {
                     if (isRegister) auth.register(email, password, onLoggedIn)
                     else auth.login(email, password, onLoggedIn)
@@ -168,45 +185,46 @@ private fun LoginBody(
                 enabled = !auth.isBusy && email.isNotBlank() && password.length >= 8,
                 colors = ButtonDefaults.buttonColors(containerColor = Th.accent, contentColor = Th.bg),
                 shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp).padding(top = 4.dp),
             ) {
                 if (auth.isBusy) {
                     CircularProgressIndicator(color = Th.bg, strokeWidth = 2.dp, modifier = Modifier.size(20.dp))
                 } else {
                     Text(if (isRegister) "Kayıt ol" else "Giriş yap", fontWeight = FontWeight.Bold)
                 }
-            }
+                }
 
-            Button(
+                Button(
                 onClick = ::startGoogle,
                 enabled = !auth.isBusy,
                 colors = ButtonDefaults.buttonColors(containerColor = Color.White, contentColor = Color.Black),
                 shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
             ) {
                 Text("G", color = Color(0xFF4285F4), fontWeight = FontWeight.Black, fontSize = 17.sp)
                 Text("  Google ile devam et", fontWeight = FontWeight.SemiBold)
-            }
+                }
 
-            OutlinedButton(
+                OutlinedButton(
                 onClick = ::startPasskey,
                 enabled = !auth.isBusy,
                 shape = RoundedCornerShape(12.dp),
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.fillMaxWidth().heightIn(min = 52.dp),
             ) {
                 Text("Geçiş anahtarı ile giriş", color = Th.text, fontWeight = FontWeight.SemiBold)
-            }
+                }
 
-            TextButton(onClick = { isRegister = !isRegister; auth.errorMessage = null }) {
-                Text(
-                    if (isRegister) "Zaten hesabım var • Giriş yap" else "Hesabın yok mu? • Kayıt ol",
-                    color = Th.accent, fontSize = 13.sp,
-                )
-            }
+                TextButton(onClick = { isRegister = !isRegister; auth.errorMessage = null }) {
+                    Text(
+                        if (isRegister) "Zaten hesabım var • Giriş yap" else "Hesabın yok mu? • Kayıt ol",
+                        color = Th.accent, fontSize = 13.sp,
+                    )
+                }
 
-            if (onContinueAsGuest != null) {
-                TextButton(onClick = onContinueAsGuest) {
-                    Text("Üye olmadan piyasaları incele", color = Th.textDim, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                if (onContinueAsGuest != null) {
+                    TextButton(onClick = onContinueAsGuest) {
+                        Text("Üye olmadan piyasaları incele", color = Th.textDim, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+                    }
                 }
             }
         }

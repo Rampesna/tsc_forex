@@ -102,12 +102,14 @@ class ApiClient(
         fromMs: Long = 0L,
         toMs: Long = 0L,
         limit: Int = 0,
+        latestSession: Boolean = false,
     ): List<Candle> {
         var path = "instruments/$code/history?interval=$interval"
         fun enc(ms: Long) = java.net.URLEncoder.encode(java.time.Instant.ofEpochMilli(ms).toString(), "UTF-8")
         if (fromMs > 0L) path += "&from=" + enc(fromMs)
         if (toMs > 0L) path += "&to=" + enc(toMs)
         if (limit > 0) path += "&limit=$limit"
+        if (latestSession) path += "&session=latest"
         return parseArray(getRaw(path), "candles") { Candle.from(it) }
     }
 

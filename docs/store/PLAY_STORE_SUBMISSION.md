@@ -74,10 +74,12 @@ Fiyat verileri üçüncü taraf kaynaklardan alınır; gecikme veya hata içereb
 
 ### 2.3 Yenilikler (Release notes)
 ```
-• İlk sürüm: canlı altın, döviz, kripto ve BIST hisse fiyatları
-• İnteraktif grafikler ve fiyat alarmları
-• Favoriler, portföy ve günlük ödül sistemi
-• Google ve e-posta ile güvenli giriş
+• Tüm ekranlar farklı telefon ve yazı boyutlarına uyumlu, daha modern bir tasarımla yenilendi
+• Piyasa, varlık detayı ve portföy grafikleri daha okunaklı ve etkileşimli hale getirildi
+• Portföye alım, satım ve diğer işlem ekleme akışı sadeleştirildi
+• Alarmlar, planlar, ödüller ve rozet ilerlemeleri iyileştirildi
+• Kapalı piyasa günlerinde günlük grafiklerin son işlem seansını göstermesi sağlandı
+• Android 7 ve üzerindeki cihazlar için tarih/grafik uyumluluğu güçlendirildi
 ```
 
 ### 2.4 İletişim ve URL'ler

@@ -5,12 +5,14 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -21,7 +23,6 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -37,8 +38,10 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.tsc.forex.data.GamBadge
@@ -47,6 +50,7 @@ import com.example.tsc.forex.data.GamProfile
 import com.example.tsc.forex.store.AuthStore
 import com.example.tsc.forex.store.PriceStore
 import com.example.tsc.forex.ui.Card
+import com.example.tsc.forex.ui.PrimaryActionButton
 import com.example.tsc.forex.ui.ScreenHeader
 import com.example.tsc.forex.ui.StatTile
 import com.example.tsc.forex.ui.ToastOnChange
@@ -136,10 +140,10 @@ fun RewardsScreen(auth: AuthStore, prices: PriceStore) {
                                 verticalArrangement = Arrangement.spacedBy(8.dp),
                             ) {
                                 Text("Ödüller yüklenemedi", color = Th.text, fontWeight = FontWeight.SemiBold)
-                                Button(
+                                PrimaryActionButton(
+                                    text = "Tekrar dene",
                                     onClick = { scope.launch { loading = true; load() } },
-                                    colors = ButtonDefaults.buttonColors(containerColor = Th.accent, contentColor = Th.bg),
-                                ) { Text("Tekrar dene") }
+                                )
                             }
                         }
                     }
@@ -179,11 +183,7 @@ fun RewardsScreen(auth: AuthStore, prices: PriceStore) {
                                 }
                             }
                         }
-                        Button(
-                            onClick = { celebrate = emptyList() },
-                            colors = ButtonDefaults.buttonColors(containerColor = Th.accent, contentColor = Th.bg),
-                            modifier = Modifier.fillMaxWidth(),
-                        ) { Text("Harika!", fontWeight = FontWeight.Bold) }
+                        PrimaryActionButton(text = "Harika!", onClick = { celebrate = emptyList() })
                     }
                 }
             }
@@ -286,15 +286,7 @@ private fun DailyReward(checkedIn: Boolean, busy: Boolean, onClaim: () -> Unit) 
             Text("Günlük giriş tamamlandı — yarın tekrar gel, serini büyüt!", color = Th.up, fontSize = 13.sp)
         }
     } else {
-        Button(
-            onClick = onClaim,
-            enabled = !busy,
-            shape = RoundedCornerShape(12.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = Th.accent, contentColor = Th.bg),
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text("Günlük Ödülü Al", fontWeight = FontWeight.Bold)
-        }
+        PrimaryActionButton(text = "Günlük ödülü al", onClick = onClaim, enabled = !busy)
     }
 }
 
@@ -332,12 +324,22 @@ private fun BadgesCard(badges: List<GamBadge>, onSelect: (GamBadge) -> Unit) {
                 val earned = badges.count { it.earned }
                 Text("$earned/${badges.size}", color = Th.textDim, fontSize = 12.sp, fontWeight = FontWeight.Bold)
             }
-            badges.chunked(4).forEach { row ->
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
-                    row.forEach { b ->
-                        BadgeCell(b, Modifier.weight(1f).clickable { onSelect(b) })
+            BoxWithConstraints(Modifier.fillMaxWidth()) {
+                val fontScale = LocalDensity.current.fontScale
+                val columnCount = when {
+                    fontScale >= 1.2f && maxWidth < 400.dp -> 2
+                    maxWidth < 360.dp -> 3
+                    else -> 4
+                }
+                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    badges.chunked(columnCount).forEach { row ->
+                        Row(horizontalArrangement = Arrangement.spacedBy(10.dp), modifier = Modifier.fillMaxWidth()) {
+                            row.forEach { b ->
+                                BadgeCell(b, Modifier.weight(1f).clickable { onSelect(b) })
+                            }
+                            repeat(columnCount - row.size) { Spacer(Modifier.weight(1f)) }
+                        }
                     }
-                    repeat(4 - row.size) { Spacer(Modifier.weight(1f)) }
                 }
             }
         }
@@ -388,7 +390,11 @@ private fun BadgeCell(b: GamBadge, modifier: Modifier) {
             fontWeight = FontWeight.Medium,
             textAlign = TextAlign.Center,
             maxLines = 2,
-            modifier = Modifier.height(24.dp),
+            overflow = TextOverflow.Ellipsis,
+            lineHeight = 11.sp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 28.dp),
         )
     }
 }
@@ -426,12 +432,23 @@ private fun BadgeDetailSheet(badge: GamBadge, onDismiss: () -> Unit) {
                         Spacer(Modifier.weight(1f))
                         Text("%${badge.progressPercent}", color = if (badge.earned) Th.up else Th.accent, fontSize = 15.sp, fontWeight = FontWeight.Bold)
                     }
-                    LinearProgressIndicator(
-                        progress = { badge.normalizedProgress.toFloat() },
-                        modifier = Modifier.fillMaxWidth().height(6.dp).clip(RoundedCornerShape(3.dp)),
-                        color = if (badge.earned) Th.up else Th.accent,
-                        trackColor = Th.surface,
-                    )
+                    Box(
+                        Modifier
+                            .fillMaxWidth()
+                            .height(6.dp)
+                            .clip(RoundedCornerShape(3.dp))
+                            .background(Th.surface),
+                    ) {
+                        val progress = badge.normalizedProgress.toFloat().coerceIn(0f, 1f)
+                        if (progress > 0f) {
+                            Box(
+                                Modifier
+                                    .fillMaxWidth(progress)
+                                    .height(6.dp)
+                                    .background(if (badge.earned) Th.up else Th.accent),
+                            )
+                        }
+                    }
                     Row(Modifier.fillMaxWidth()) {
                         Text(
                             "${minOf(badge.current, badge.target)} / ${badge.target}",

@@ -68,7 +68,7 @@ fun ResearchArchiveScreen(
         ScreenHeader(
             title = "Araştırma Arşivi",
             subtitle = "Paketinizdeki saklama süresi boyunca",
-            trailing = {
+            leading = {
                 IconButton(onClick = onBack) {
                     Icon(Icons.AutoMirrored.Filled.ArrowBack, "Geri", tint = Th.text)
                 }

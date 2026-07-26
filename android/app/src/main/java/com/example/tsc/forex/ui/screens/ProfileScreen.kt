@@ -156,13 +156,16 @@ fun ProfileSheet(auth: AuthStore, onDismiss: () -> Unit) {
 
 @Composable
 private fun RowHeader(title: String, subtitle: String, onClose: () -> Unit) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Column(Modifier.weight(1f)) {
+    Box(Modifier.fillMaxWidth()) {
+        IconButton(onClick = onClose, modifier = Modifier.align(Alignment.CenterStart)) {
+            Icon(Icons.AutoMirrored.Filled.ArrowBack, "Kapat", tint = Th.text)
+        }
+        Column(
+            Modifier.align(Alignment.Center),
+            horizontalAlignment = Alignment.CenterHorizontally,
+        ) {
             Text(title, color = Th.text, fontSize = 22.sp, fontWeight = FontWeight.Bold)
             Text(subtitle, color = Th.textDim, fontSize = 12.sp)
-        }
-        IconButton(onClick = onClose) {
-            Icon(Icons.AutoMirrored.Filled.ArrowBack, "Kapat", tint = Th.text)
         }
     }
 }

@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -42,6 +43,7 @@ import com.example.tsc.forex.store.AuthStore
 import com.example.tsc.forex.store.BillingStore
 import com.example.tsc.forex.store.PriceStore
 import com.example.tsc.forex.ui.Card
+import com.example.tsc.forex.ui.PrimaryActionButton
 import com.example.tsc.forex.ui.ScreenHeader
 import com.example.tsc.forex.ui.ToastOnChange
 import com.example.tsc.forex.ui.theme.Th
@@ -158,32 +160,24 @@ fun SettingsScreen(
                             Text("$it hak", color = Th.accent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         }
                     }
-                    Button(
+                    PrimaryActionButton(
+                        text = if (billing.hasActiveSubscription) "Planları gör" else "Planları incele",
                         onClick = { billing.message = null; showPaywall = true },
-                        colors = ButtonDefaults.buttonColors(containerColor = Th.accent, contentColor = Th.bg),
-                        shape = RoundedCornerShape(12.dp),
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text(
-                            if (billing.hasActiveSubscription) "Planları Gör" else "Planları İncele",
-                            fontWeight = FontWeight.Bold,
-                        )
-                    }
-                    TextButton(onClick = {
+                    )
+                    SettingsActionRow("Aboneliği yönet") {
                         val url = billing.serverStatus?.manageUrl?.ifBlank { null }
                             ?: "https://play.google.com/store/account/subscriptions"
                         runCatching { uriHandler.openUri(url) }
-                    }) { Text("Aboneliği Yönet", color = Th.accent, fontWeight = FontWeight.SemiBold) }
-                    TextButton(
-                        onClick = { billing.restore() },
-                        enabled = !billing.isLoading && !billing.purchasing,
-                    ) { Text("Satın Almaları Geri Yükle", color = Th.accent, fontWeight = FontWeight.SemiBold) }
-                    TextButton(onClick = {
-                        scope.launch { billing.refreshNow(); billing.message = "Durum yenilendi." }
-                    }) { Text("Durumu Yenile", color = Th.accent, fontWeight = FontWeight.SemiBold) }
-                    TextButton(onClick = onOpenArchive) {
-                        Text("Araştırma Arşivi  ›", color = Th.accent, fontWeight = FontWeight.SemiBold)
                     }
+                    SettingsActionRow(
+                        title = "Satın almaları geri yükle",
+                        enabled = !billing.isLoading && !billing.purchasing,
+                        onClick = { billing.restore() },
+                    )
+                    SettingsActionRow("Abonelik durumunu yenile") {
+                        scope.launch { billing.refreshNow(); billing.message = "Durum yenilendi." }
+                    }
+                    SettingsActionRow("Araştırma arşivi", onClick = onOpenArchive)
                 }
             }
 
@@ -322,5 +316,32 @@ private fun InfoRow(label: String, value: String) {
     Row(Modifier.fillMaxWidth()) {
         Text(label, color = Th.textDim, fontSize = 13.sp, modifier = Modifier.weight(1f))
         Text(value, color = Th.text, fontSize = 13.sp, fontWeight = FontWeight.SemiBold)
+    }
+}
+
+@Composable
+private fun SettingsActionRow(
+    title: String,
+    enabled: Boolean = true,
+    onClick: () -> Unit,
+) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(Th.surfaceAlt)
+            .clickable(enabled = enabled, onClick = onClick)
+            .padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            title,
+            color = if (enabled) Th.text else Th.textFaint,
+            fontSize = 13.sp,
+            fontWeight = FontWeight.SemiBold,
+            modifier = Modifier.weight(1f),
+        )
+        Text("›", color = if (enabled) Th.accent else Th.textFaint, fontSize = 18.sp)
     }
 }

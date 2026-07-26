@@ -4,6 +4,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
@@ -41,6 +42,7 @@ import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LinearProgressIndicator
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -79,7 +81,9 @@ import com.example.tsc.forex.ui.Card
 import com.example.tsc.forex.ui.ChartMode
 import com.example.tsc.forex.ui.Fmt
 import com.example.tsc.forex.ui.PriceChart
+import com.example.tsc.forex.ui.PrimaryActionButton
 import com.example.tsc.forex.ui.ScreenHeader
+import com.example.tsc.forex.ui.SegmentedControl
 import com.example.tsc.forex.ui.ToastOnChange
 import com.example.tsc.forex.ui.theme.Th
 import androidx.compose.ui.graphics.Color
@@ -628,12 +632,40 @@ private fun SummaryCard(overview: com.example.tsc.forex.data.PortfolioOverview?)
                 fontSize = 29.sp,
                 fontWeight = FontWeight.Bold,
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
-                SummaryMetric("Bugün", overview?.dayChangeTry ?: 0.0, overview?.dayChangePct)
-                SummaryMetric("Gerçekleşmemiş", overview?.unrealizedPnlTry ?: 0.0)
-                SummaryMetric("Gerçekleşen", overview?.realizedPnlTry ?: 0.0)
+            BoxWithConstraints(Modifier.fillMaxWidth()) {
+                if (maxWidth < 380.dp) {
+                    Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        SummaryMetricRow("Bugün", overview?.dayChangeTry ?: 0.0, overview?.dayChangePct)
+                        SummaryMetricRow("Gerçekleşmemiş K/Z", overview?.unrealizedPnlTry ?: 0.0)
+                        SummaryMetricRow("Gerçekleşen K/Z", overview?.realizedPnlTry ?: 0.0)
+                    }
+                } else {
+                    Row(horizontalArrangement = Arrangement.spacedBy(14.dp)) {
+                        SummaryMetric("Bugün", overview?.dayChangeTry ?: 0.0, overview?.dayChangePct)
+                        SummaryMetric("Gerçekleşmemiş", overview?.unrealizedPnlTry ?: 0.0)
+                        SummaryMetric("Gerçekleşen", overview?.realizedPnlTry ?: 0.0)
+                    }
+                }
             }
         }
+    }
+}
+
+@Composable
+private fun SummaryMetricRow(label: String, value: Double, pct: Double? = null) {
+    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+        Text(label, color = Th.textDim, fontSize = 11.sp, modifier = Modifier.weight(1f))
+        Text(
+            buildString {
+                append(Fmt.signed(value))
+                append(" ₺")
+                if (pct != null) append("  (${Fmt.signedPct(pct)})")
+            },
+            color = Th.trend(value),
+            fontSize = 12.sp,
+            fontWeight = FontWeight.SemiBold,
+            textAlign = TextAlign.End,
+        )
     }
 }
 
@@ -703,37 +735,17 @@ private fun PerformanceCard(
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("Portföy Performansı", color = Th.text, fontSize = 15.sp, fontWeight = FontWeight.Bold)
             Text("Varlıkların gerçek günlük fiyat geçmişine göre", color = Th.textDim, fontSize = 11.sp)
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(5.dp),
-            ) {
-                listOf(
-                    "value" to ("Değer" to PerformanceValueColor),
-                    "pnl" to ("Toplam K/Z" to PerformancePnlColor),
-                    "cost" to ("Maliyet" to PerformanceCostColor),
-                ).forEach { (id, labelColor) ->
-                    val (label, color) = labelColor
-                    val selected = metric == id
-                    Text(
-                        label,
-                        color = if (selected) Th.bg else color,
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        textAlign = TextAlign.Center,
-                        maxLines = 1,
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(if (selected) color else Th.surfaceAlt)
-                            .clickable {
-                                onMetric(id)
-                                selectedEpochMs = null
-                                chartReset += 1
-                            }
-                            .padding(vertical = 8.dp),
-                    )
-                }
-            }
+            val metricOptions = listOf("Değer", "Toplam K/Z", "Maliyet")
+            val metricIDs = listOf("value", "pnl", "cost")
+            SegmentedControl(
+                options = metricOptions,
+                selectedIndex = metricIDs.indexOf(metric).coerceAtLeast(0),
+                onSelected = {
+                    onMetric(metricIDs[it])
+                    selectedEpochMs = null
+                    chartReset += 1
+                },
+            )
             if (snapshot != null) {
                 Column(
                     Modifier
@@ -769,50 +781,36 @@ private fun PerformanceCard(
                     }
                 }
             }
-            PriceChart(
-                candles = candles,
-                mode = ChartMode.LINE,
-                trendUp = trendUp,
-                currency = "TRY",
-                resetToken = chartReset,
-                heightDp = 220,
-                seriesTitle = seriesTitle,
-                seriesColor = seriesColor,
-                showsMovingAverages = false,
-                showsVolume = false,
-                showsOHLCSelection = false,
-                stickySelection = true,
-                emptyTitle = "Henüz yeterli performans verisi yok",
-                emptySubtitle = "İşlem ekledikçe geçmiş portföy değeri burada oluşur.",
-                interactionHint = "Yatay sürükle, sıkıştırarak yakınlaştır, dokunarak günü seç",
-                onSelectionChange = { selectedEpochMs = it },
-            )
-            Row(
-                Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(4.dp),
-            ) {
-                listOf("1m" to "1 AY", "3m" to "3 AY", "1y" to "1 YIL", "5y" to "5 YIL").forEach { (id, label) ->
-                    val selected = range == id
-                    Text(
-                        label,
-                        color = if (selected) Th.accent else Th.textDim,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.SemiBold,
-                        textAlign = TextAlign.Center,
-                        maxLines = 1,
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(if (selected) Th.accent.copy(alpha = 0.12f) else Th.surfaceAlt)
-                            .clickable {
-                                onRange(id)
-                                selectedEpochMs = null
-                                chartReset += 1
-                            }
-                            .padding(vertical = 8.dp),
-                    )
-                }
+            BoxWithConstraints(Modifier.fillMaxWidth()) {
+                PriceChart(
+                    candles = candles,
+                    mode = ChartMode.LINE,
+                    trendUp = trendUp,
+                    currency = "TRY",
+                    resetToken = chartReset,
+                    heightDp = if (maxWidth < 360.dp) 190 else 220,
+                    seriesTitle = seriesTitle,
+                    seriesColor = seriesColor,
+                    showsMovingAverages = false,
+                    showsVolume = false,
+                    showsOHLCSelection = false,
+                    stickySelection = true,
+                    emptyTitle = "Henüz yeterli performans verisi yok",
+                    emptySubtitle = "İşlem ekledikçe geçmiş portföy değeri burada oluşur.",
+                    interactionHint = "Sürükle · Yakınlaştır · Dokun: gün detayı",
+                    onSelectionChange = { selectedEpochMs = it },
+                )
             }
+            val rangeIDs = listOf("1m", "3m", "1y", "5y")
+            SegmentedControl(
+                options = listOf("1 AY", "3 AY", "1 YIL", "5 YIL"),
+                selectedIndex = rangeIDs.indexOf(range).coerceAtLeast(0),
+                onSelected = {
+                    onRange(rangeIDs[it])
+                    selectedEpochMs = null
+                    chartReset += 1
+                },
+            )
         }
     }
 }
@@ -867,23 +865,44 @@ private fun AllocationCard(positions: List<PortfolioPosition>) {
 @Composable
 private fun PositionRow(position: PortfolioPosition, onClick: () -> Unit, modifier: Modifier = Modifier) {
     Card(modifier.clickable(onClick = onClick)) {
-        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-            AssetBadge(position.code, position.kind == "gold")
-            Column(Modifier.weight(1f).padding(start = 12.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text(position.displayName, color = Th.text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
-                Text(
-                    "${Fmt.number(position.quantity)} adet • Ort. ${Fmt.money(position.averageCostNative, position.currency)}",
-                    color = Th.textDim,
-                    fontSize = 10.sp,
-                )
-            }
-            Column(horizontalAlignment = Alignment.End) {
-                Text(Fmt.tl(position.valueTry), color = Th.text, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-                Text(
-                    "${Fmt.signed(position.unrealizedPnlTry)} ₺ (${Fmt.signedPct(position.unrealizedPnlPct)})",
-                    color = Th.trend(position.unrealizedPnlTry),
-                    fontSize = 10.sp,
-                )
+        BoxWithConstraints(Modifier.fillMaxWidth()) {
+            val compact = maxWidth < 360.dp
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                AssetBadge(position.code, position.kind == "gold")
+                Column(
+                    Modifier
+                        .weight(1f)
+                        .padding(start = 12.dp, end = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(3.dp),
+                ) {
+                    Text(
+                        position.displayName,
+                        color = Th.text,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    )
+                    Text(
+                        if (compact) {
+                            "${Fmt.number(position.quantity)} adet"
+                        } else {
+                            "${Fmt.number(position.quantity)} adet • Ort. ${Fmt.money(position.averageCostNative, position.currency)}"
+                        },
+                        color = Th.textDim,
+                        fontSize = 10.sp,
+                        maxLines = 1,
+                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                    )
+                }
+                Column(horizontalAlignment = Alignment.End) {
+                    Text(Fmt.tl(position.valueTry), color = Th.text, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                    Text(
+                        Fmt.signedPct(position.unrealizedPnlPct),
+                        color = Th.trend(position.unrealizedPnlTry),
+                        fontSize = 10.sp,
+                    )
+                }
             }
         }
     }
@@ -907,17 +926,24 @@ fun PortfolioPositionScreen(
     val position = detail?.position ?: portfolio.activePositions.firstOrNull { it.code == code }
 
     Column(Modifier.fillMaxSize().background(Th.bg)) {
-        Row(
+        Box(
             Modifier
                 .fillMaxWidth()
                 .statusBarsPadding()
                 .padding(horizontal = 8.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
         ) {
-            IconButton(onClick = onBack) { Icon(Icons.AutoMirrored.Filled.ArrowBack, "Geri", tint = Th.text) }
-            Text(code, color = Th.text, fontSize = 19.sp, fontWeight = FontWeight.Bold)
-            Spacer(Modifier.weight(1f))
-            IconButton(onClick = { showAdd = true }) { Icon(Icons.Filled.Add, "İşlem ekle", tint = Th.accent) }
+            IconButton(onClick = onBack, modifier = Modifier.align(Alignment.CenterStart)) {
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, "Geri", tint = Th.text)
+            }
+            Text(
+                code,
+                color = Th.text,
+                style = MaterialTheme.typography.titleLarge,
+                modifier = Modifier.align(Alignment.Center),
+            )
+            IconButton(onClick = { showAdd = true }, modifier = Modifier.align(Alignment.CenterEnd)) {
+                Icon(Icons.Filled.Add, "İşlem ekle", tint = Th.accent)
+            }
         }
         if (position == null) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
@@ -1041,9 +1067,7 @@ private fun PortfolioTransactionDialog(
     onDismiss: () -> Unit,
     onSave: (JSONObject) -> Unit,
 ) {
-    val types = listOf("buy", "sell", "dividend", "fee", "deposit", "withdraw")
     var type by remember(transaction?.id) { mutableStateOf(transaction?.type ?: "buy") }
-    var typeMenu by remember { mutableStateOf(false) }
     var code by remember(transaction?.id) { mutableStateOf(transaction?.code?.ifEmpty { null } ?: initialCode.orEmpty()) }
     var assetKind by remember(transaction?.id) { mutableStateOf(store.prices[code]?.kind.orEmpty()) }
     var showKindPicker by remember { mutableStateOf(false) }
@@ -1079,11 +1103,16 @@ private fun PortfolioTransactionDialog(
         dragHandle = null,
     ) {
         Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp).padding(bottom = 28.dp)) {
-            Row(
-                Modifier.fillMaxWidth().padding(vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
+            Box(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(vertical = 8.dp),
+                contentAlignment = Alignment.Center,
             ) {
-                TextButton(onClick = onDismiss) {
+                TextButton(
+                    onClick = onDismiss,
+                    modifier = Modifier.align(Alignment.CenterStart),
+                ) {
                     Text(
                         "Vazgeç",
                         color = Th.accent,
@@ -1094,41 +1123,15 @@ private fun PortfolioTransactionDialog(
                             .padding(horizontal = 14.dp, vertical = 7.dp),
                     )
                 }
-                Spacer(Modifier.weight(1f))
                 Text(
                     if (transaction == null) "Yeni İşlem" else "İşlemi Düzenle",
                     color = Th.text,
                     fontSize = 17.sp,
                     fontWeight = FontWeight.Bold,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    modifier = Modifier.padding(horizontal = 104.dp),
                 )
-                Spacer(Modifier.weight(1f))
-                TextButton(
-                    enabled = canSave,
-                    onClick = {
-                        val price = store.prices[code]
-                        onSave(
-                            PortfolioStore.transactionBody(
-                                clientId = transaction?.clientId ?: UUID.randomUUID().toString(),
-                                code = if (usesAsset) code else "",
-                                type = type,
-                                quantity = if (trade) decimal(quantity) else 0.0,
-                                unitPrice = if (trade) decimal(unitPrice) else 0.0,
-                                amount = if (trade) 0.0 else decimal(amount),
-                                fee = if (trade) decimal(fee) else 0.0,
-                                currency = if (usesAsset) price?.currency ?: "TRY" else "TRY",
-                                usdtry = 0.0,
-                                occurredAt = PortfolioStore.occurredAtIso(occurredDate),
-                                note = note,
-                            ),
-                        )
-                    },
-                ) {
-                    Text(
-                        "Kaydet",
-                        color = if (canSave) Th.accent else Th.textFaint,
-                        fontWeight = FontWeight.Bold,
-                    )
-                }
             }
 
             Column(
@@ -1137,15 +1140,38 @@ private fun PortfolioTransactionDialog(
                     .clip(RoundedCornerShape(18.dp))
                     .background(Th.surface),
             ) {
-                FormSelectRow("İşlem", typeTitle(type), accent = true) { typeMenu = true }
-                DropdownMenu(expanded = typeMenu, onDismissRequest = { typeMenu = false }) {
-                    types.forEach { item ->
-                        DropdownMenuItem(
-                            text = { Text(typeTitle(item)) },
-                            onClick = { type = item; typeMenu = false },
+                Column(
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 12.dp, vertical = 12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text("İşlem türü", color = Th.textDim, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+                    SegmentedControl(
+                        options = listOf("Alış", "Satış", "Diğer"),
+                        selectedIndex = when (type) {
+                            "buy" -> 0
+                            "sell" -> 1
+                            else -> 2
+                        },
+                        onSelected = {
+                            type = when (it) {
+                                0 -> "buy"
+                                1 -> "sell"
+                                else -> if (type in listOf("dividend", "fee", "deposit", "withdraw")) type else "dividend"
+                            }
+                        },
+                    )
+                    if (type !in listOf("buy", "sell")) {
+                        val otherTypes = listOf("dividend", "fee", "deposit", "withdraw")
+                        SegmentedControl(
+                            options = listOf("Temettü", "Ücret", "Yatır", "Çek"),
+                            selectedIndex = otherTypes.indexOf(type).coerceAtLeast(0),
+                            onSelected = { type = otherTypes[it] },
                         )
                     }
                 }
+                HorizontalRule()
                 if (usesAsset) {
                     FormSelectRow(
                         "Varlık türü",
@@ -1182,6 +1208,29 @@ private fun PortfolioTransactionDialog(
                     ),
                 )
             }
+            Spacer(Modifier.height(14.dp))
+            PrimaryActionButton(
+                text = if (transaction == null) "İşlemi ekle" else "Değişiklikleri kaydet",
+                enabled = canSave,
+                onClick = {
+                    val price = store.prices[code]
+                    onSave(
+                        PortfolioStore.transactionBody(
+                            clientId = transaction?.clientId ?: UUID.randomUUID().toString(),
+                            code = if (usesAsset) code else "",
+                            type = type,
+                            quantity = if (trade) decimal(quantity) else 0.0,
+                            unitPrice = if (trade) decimal(unitPrice) else 0.0,
+                            amount = if (trade) 0.0 else decimal(amount),
+                            fee = if (trade) decimal(fee) else 0.0,
+                            currency = if (usesAsset) price?.currency ?: "TRY" else "TRY",
+                            usdtry = 0.0,
+                            occurredAt = PortfolioStore.occurredAtIso(occurredDate),
+                            note = note,
+                        ),
+                    )
+                },
+            )
         }
     }
 
@@ -1220,39 +1269,48 @@ private fun FormSelectRow(
     search: Boolean = false,
     onClick: () -> Unit,
 ) {
-    Row(
+    Column(
         Modifier
             .fillMaxWidth()
             .clickable(enabled = enabled, onClick = onClick)
-            .padding(horizontal = 16.dp, vertical = 14.dp),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalArrangement = Arrangement.spacedBy(5.dp),
     ) {
-        Text(label, color = Th.text, fontSize = 15.sp, modifier = Modifier.weight(1f))
-        Text(value, color = if (accent) Th.accent else Th.textDim, fontSize = 15.sp, fontWeight = FontWeight.SemiBold)
-        Icon(
-            imageVector = if (search) Icons.Outlined.Search else Icons.Outlined.UnfoldMore,
-            contentDescription = null,
-            tint = if (accent) Th.accent else Th.textFaint,
-            modifier = Modifier.size(16.dp),
-        )
+        Text(label, color = Th.textDim, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(
+                value,
+                color = if (accent) Th.accent else Th.text,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.SemiBold,
+                maxLines = 1,
+                overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                modifier = Modifier.weight(1f),
+            )
+            Icon(
+                imageVector = if (search) Icons.Outlined.Search else Icons.Outlined.UnfoldMore,
+                contentDescription = null,
+                tint = if (accent) Th.accent else Th.textFaint,
+                modifier = Modifier.size(18.dp),
+            )
+        }
     }
     HorizontalRule()
 }
 
 @Composable
 private fun FormFieldRow(label: String, value: String, onChange: (String) -> Unit) {
-    Row(
-        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 6.dp),
-        verticalAlignment = Alignment.CenterVertically,
+    Column(
+        Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 9.dp),
+        verticalArrangement = Arrangement.spacedBy(6.dp),
     ) {
-        Text(label, color = Th.text, fontSize = 15.sp, modifier = Modifier.weight(1f))
+        Text(label, color = Th.textDim, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
         OutlinedTextField(
             value = value,
             onValueChange = onChange,
             singleLine = true,
             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Decimal),
-            modifier = Modifier.fillMaxWidth(0.45f),
+            modifier = Modifier.fillMaxWidth(),
             colors = androidx.compose.material3.OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = Th.stroke,
                 unfocusedBorderColor = Th.stroke,

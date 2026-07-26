@@ -4,8 +4,10 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -23,10 +25,13 @@ import androidx.compose.material.icons.outlined.Shield
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Switch
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -52,6 +57,7 @@ import com.example.tsc.forex.data.LessonStatus
 import com.example.tsc.forex.store.AuthStore
 import com.example.tsc.forex.store.PriceStore
 import com.example.tsc.forex.ui.Card
+import com.example.tsc.forex.ui.PrimaryActionButton
 import com.example.tsc.forex.ui.theme.Th
 import kotlinx.coroutines.launch
 
@@ -123,14 +129,26 @@ fun GamificationExperienceSection(
         notifications = initial.privacy.learningNotifications
     }
 
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            JourneyHubCard(Icons.Outlined.MyLocation, "Günlük Plan", "3 adım · yaklaşık 1 dakika", Modifier.weight(1f)) { openJourney = 0 }
-            JourneyHubCard(Icons.AutoMirrored.Outlined.MenuBook, "Öğrenme", "Kısa ders · tek soru", Modifier.weight(1f)) { openJourney = 1 }
-        }
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-            JourneyHubCard(Icons.Outlined.Checklist, "Karar Günlüğü", "Sanal karar ve sonradan değerlendirme", Modifier.weight(1f)) { openJourney = 2 }
-            JourneyHubCard(Icons.Outlined.Shield, "Gizlilik", "Paylaşım tercihleri", Modifier.weight(1f)) { openJourney = 3 }
+    BoxWithConstraints(Modifier.fillMaxWidth()) {
+        val compact = maxWidth < 360.dp
+        if (compact) {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                JourneyHubCard(Icons.Outlined.MyLocation, "Günlük Plan", "3 adım · yaklaşık 1 dakika", Modifier.fillMaxWidth()) { openJourney = 0 }
+                JourneyHubCard(Icons.AutoMirrored.Outlined.MenuBook, "Öğrenme", "Kısa ders · tek soru", Modifier.fillMaxWidth()) { openJourney = 1 }
+                JourneyHubCard(Icons.Outlined.Checklist, "Karar Günlüğü", "Sanal karar ve sonradan değerlendirme", Modifier.fillMaxWidth()) { openJourney = 2 }
+                JourneyHubCard(Icons.Outlined.Shield, "Gizlilik", "Paylaşım tercihleri", Modifier.fillMaxWidth()) { openJourney = 3 }
+            }
+        } else {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    JourneyHubCard(Icons.Outlined.MyLocation, "Günlük Plan", "3 adım · yaklaşık 1 dakika", Modifier.weight(1f)) { openJourney = 0 }
+                    JourneyHubCard(Icons.AutoMirrored.Outlined.MenuBook, "Öğrenme", "Kısa ders · tek soru", Modifier.weight(1f)) { openJourney = 1 }
+                }
+                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    JourneyHubCard(Icons.Outlined.Checklist, "Karar Günlüğü", "Sanal karar ve sonradan değerlendirme", Modifier.weight(1f)) { openJourney = 2 }
+                    JourneyHubCard(Icons.Outlined.Shield, "Gizlilik", "Paylaşım tercihleri", Modifier.weight(1f)) { openJourney = 3 }
+                }
+            }
         }
     }
 
@@ -150,13 +168,20 @@ fun GamificationExperienceSection(
             Column(
                 Modifier
                     .fillMaxWidth()
-                    .heightIn(max = 640.dp)
+                    .fillMaxHeight(0.92f)
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 16.dp)
                     .padding(bottom = 28.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Text(title, color = Th.text, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                Text(
+                    title,
+                    color = Th.text,
+                    fontSize = 20.sp,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.fillMaxWidth(),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center,
+                )
                 when (tab) {
             0 -> {
                 Card(Modifier.fillMaxWidth()) {
@@ -250,10 +275,20 @@ fun GamificationExperienceSection(
                         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                             ChoiceRow(listOf("buy" to "Alış", "sell" to "Satış"), paperSide, Modifier.fillMaxWidth()) { paperSide = it }
                         }
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            GamField(paperQuantity, { paperQuantity = it }, "Miktar", Modifier.weight(1f), keyboard = KeyboardType.Decimal)
-                            GamField(paperPrice, { paperPrice = it }, "Fiyat", Modifier.weight(1f), keyboard = KeyboardType.Decimal)
-                            GamField(paperRisk, { paperRisk = it }, "Risk %", Modifier.weight(1f), keyboard = KeyboardType.Decimal)
+                        BoxWithConstraints(Modifier.fillMaxWidth()) {
+                            if (maxWidth < 380.dp) {
+                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    GamField(paperQuantity, { paperQuantity = it }, "Miktar", keyboard = KeyboardType.Decimal)
+                                    GamField(paperPrice, { paperPrice = it }, "Fiyat", keyboard = KeyboardType.Decimal)
+                                    GamField(paperRisk, { paperRisk = it }, "Risk %", keyboard = KeyboardType.Decimal)
+                                }
+                            } else {
+                                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    GamField(paperQuantity, { paperQuantity = it }, "Miktar", Modifier.weight(1f), keyboard = KeyboardType.Decimal)
+                                    GamField(paperPrice, { paperPrice = it }, "Fiyat", Modifier.weight(1f), keyboard = KeyboardType.Decimal)
+                                    GamField(paperRisk, { paperRisk = it }, "Risk %", Modifier.weight(1f), keyboard = KeyboardType.Decimal)
+                                }
+                            }
                         }
                         GamField(paperThesis, { paperThesis = it }, "Tez (en az 20 karakter)", minLines = 2)
                         GamField(paperInvalidation, { paperInvalidation = it }, "Geçersizleşme koşulu", minLines = 2)
@@ -423,26 +458,30 @@ private fun JourneyHubCard(
     modifier: Modifier = Modifier,
     onClick: () -> Unit,
 ) {
-    Column(
-        modifier
-            .clip(RoundedCornerShape(16.dp))
-            .background(Th.surface)
-            .clickable(onClick = onClick)
-            .padding(14.dp)
-            .heightIn(min = 96.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+    Surface(
+        onClick = onClick,
+        modifier = modifier.heightIn(min = 104.dp),
+        color = Th.surface,
+        contentColor = Th.text,
+        shape = RoundedCornerShape(18.dp),
+        border = androidx.compose.foundation.BorderStroke(1.dp, Th.stroke),
     ) {
-        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
-            Icon(icon, contentDescription = null, tint = Th.accent, modifier = Modifier.size(22.dp))
-            Icon(
-                Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                contentDescription = null,
-                tint = Th.textFaint,
-                modifier = Modifier.size(18.dp),
-            )
+        Column(
+            Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.Top) {
+                Icon(icon, contentDescription = null, tint = Th.accent, modifier = Modifier.size(22.dp))
+                Icon(
+                    Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = Th.textFaint,
+                    modifier = Modifier.size(18.dp),
+                )
+            }
+            Text(title, color = Th.text, fontSize = 14.sp, fontWeight = FontWeight.Bold)
+            Text(subtitle, color = Th.textDim, fontSize = 11.sp, lineHeight = 14.sp)
         }
-        Text(title, color = Th.text, fontSize = 14.sp, fontWeight = FontWeight.Bold)
-        Text(subtitle, color = Th.textDim, fontSize = 11.sp, lineHeight = 14.sp)
     }
 }
 
@@ -497,9 +536,24 @@ private fun ChoiceRow(
 ) {
     Row(modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
         choices.forEach { (value, title) ->
-            TextButton(onClick = { onSelect(value) }, colors = ButtonDefaults.textButtonColors(
-                contentColor = if (selected == value) Th.accent else Th.textDim,
-            )) { Text(title, fontSize = 11.sp, fontWeight = FontWeight.SemiBold) }
+            val isSelected = selected == value
+            FilterChip(
+                selected = isSelected,
+                onClick = { onSelect(value) },
+                label = { Text(title, fontSize = 11.sp, fontWeight = FontWeight.SemiBold) },
+                colors = FilterChipDefaults.filterChipColors(
+                    containerColor = Th.surfaceAlt,
+                    labelColor = Th.textDim,
+                    selectedContainerColor = Th.accent.copy(alpha = 0.18f),
+                    selectedLabelColor = Th.accent,
+                ),
+                border = FilterChipDefaults.filterChipBorder(
+                    enabled = true,
+                    selected = isSelected,
+                    borderColor = Th.stroke,
+                    selectedBorderColor = Th.accent.copy(alpha = 0.65f),
+                ),
+            )
         }
     }
 }
@@ -530,9 +584,5 @@ private fun SettingToggle(label: String, checked: Boolean, onChange: (Boolean) -
 
 @Composable
 private fun ActionButton(label: String, disabled: Boolean, onClick: () -> Unit) {
-    Button(
-        onClick = onClick, enabled = !disabled, modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(12.dp),
-        colors = ButtonDefaults.buttonColors(containerColor = Th.accent, contentColor = Th.bg),
-    ) { Text(label, fontWeight = FontWeight.Bold) }
+    PrimaryActionButton(text = label, onClick = onClick, enabled = !disabled)
 }

@@ -312,7 +312,14 @@ struct APIClient {
         return try makeDecoder().decode(SparklinesResponse.self, from: data).points
     }
 
-    func candles(code: String, interval: String, from: Date? = nil, to: Date? = nil, limit: Int? = nil) async throws -> [Candle] {
+    func candles(
+        code: String,
+        interval: String,
+        from: Date? = nil,
+        to: Date? = nil,
+        limit: Int? = nil,
+        latestSession: Bool = false
+    ) async throws -> [Candle] {
         var path = "instruments/\(code)/history?interval=\(interval)"
         let iso = ISO8601DateFormatter()
         func enc(_ d: Date) -> String? {
@@ -321,6 +328,7 @@ struct APIClient {
         if let from, let e = enc(from) { path += "&from=\(e)" }
         if let to, let e = enc(to) { path += "&to=\(e)" }
         if let limit { path += "&limit=\(limit)" }
+        if latestSession { path += "&session=latest" }
         let data = try await request(path)
         return try makeDecoder().decode(CandlesResponse.self, from: data).candles ?? []
     }

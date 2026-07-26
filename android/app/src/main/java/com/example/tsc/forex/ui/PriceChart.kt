@@ -12,6 +12,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -36,6 +37,7 @@ import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.drawText
 import androidx.compose.ui.text.font.FontWeight
@@ -112,6 +114,10 @@ fun PriceChart(
 
     val measurer = rememberTextMeasurer()
     val hostView = LocalView.current
+    val density = LocalDensity.current
+    val axisGutterPx = with(density) {
+        (if (fontScale > 1.15f) 68.dp else 58.dp).toPx()
+    }
     val lineColor = seriesColor ?: if (trendUp) Th.up else Th.down
     val multiSeries = overlaySeries.isNotEmpty()
 
@@ -183,7 +189,7 @@ fun PriceChart(
     ) {
         // Header: legend or crosshair readout.
         val sel = selectedIdx?.let { candles.getOrNull(it) }
-        Row(Modifier.fillMaxWidth().height(30.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.fillMaxWidth().heightIn(min = 38.dp), verticalAlignment = Alignment.CenterVertically) {
             if (sel != null) {
                 if (showsOHLCSelection) {
                     val chgPct = if (sel.open != 0.0) (sel.close - sel.open) / sel.open * 100 else 0.0
@@ -226,7 +232,7 @@ fun PriceChart(
                 .height(heightDp.dp)
                 .pointerInput(resetToken, candles.size) {
                     detectTransformGestures { _, pan, zoom, _ ->
-                        val w = size.width.toFloat().coerceAtLeast(1f)
+                        val w = (size.width.toFloat() - axisGutterPx).coerceAtLeast(1f)
                         viewStartMs -= pan.x / w * viewSpanMs
                         if (zoom != 1f) {
                             val center = viewStartMs + viewSpanMs / 2
@@ -240,18 +246,27 @@ fun PriceChart(
                 }
                 .pointerInput(resetToken, candles.size, stickySelection) {
                     detectTapGestures { pos ->
-                        val hit = nearestIndex(candles, pos.x, size.width.toFloat(), viewStartMs, viewSpanMs)
+                        val hit = nearestIndex(
+                            candles, pos.x, size.width.toFloat(), axisGutterPx, viewStartMs, viewSpanMs,
+                        )
                         selectedIdx = if (stickySelection && selectedIdx == hit) null else hit
                     }
                 }
                 .pointerInput(resetToken, candles.size, stickySelection) {
                     detectDragGesturesAfterLongPress(
                         onDragStart = { pos ->
-                            selectedIdx = nearestIndex(candles, pos.x, size.width.toFloat(), viewStartMs, viewSpanMs)
+                            selectedIdx = nearestIndex(
+                                candles, pos.x, size.width.toFloat(), axisGutterPx, viewStartMs, viewSpanMs,
+                            )
                         },
                         onDrag = { change, _ ->
                             selectedIdx = nearestIndex(
-                                candles, change.position.x, size.width.toFloat(), viewStartMs, viewSpanMs,
+                                candles,
+                                change.position.x,
+                                size.width.toFloat(),
+                                axisGutterPx,
+                                viewStartMs,
+                                viewSpanMs,
                             )
                         },
                         onDragEnd = { if (!stickySelection) selectedIdx = null },
@@ -267,13 +282,24 @@ fun PriceChart(
                 showsMovingAverages = showsMovingAverages && !multiSeries,
                 selected = selectedIdx?.let { candles.getOrNull(it) },
                 currency = currency, measurer = measurer, fullSpan = fullSpan,
+                axisGutterPx = axisGutterPx,
             )
         }
 
         if (showsVolume) {
             Canvas(Modifier.fillMaxWidth().height(44.dp)) {
-                drawVolumePane(candles, viewStartMs, viewSpanMs, step)
+                drawVolumePane(candles, viewStartMs, viewSpanMs, step, axisGutterPx)
             }
+        }
+
+        Canvas(Modifier.fillMaxWidth().height(30.dp)) {
+            drawTimeAxis(
+                viewStartMs = viewStartMs,
+                viewSpanMs = viewSpanMs,
+                axisGutterPx = axisGutterPx,
+                measurer = measurer,
+                fullSpan = fullSpan,
+            )
         }
 
         Text(
@@ -318,10 +344,11 @@ private fun DrawScope.drawPricePane(
     currency: String?,
     measurer: androidx.compose.ui.text.TextMeasurer,
     fullSpan: Double,
+    axisGutterPx: Float,
 ) {
     val w = size.width
     val h = size.height
-    val plotRight = w - 54f   // reserve space for the right price axis
+    val plotRight = (w - axisGutterPx).coerceAtLeast(w * 0.55f)
     if (viewSpanMs <= 0) return
 
     fun xOf(ms: Double): Float = ((ms - viewStartMs) / viewSpanMs * plotRight).toFloat()
@@ -357,7 +384,9 @@ private fun DrawScope.drawPricePane(
         val y = yOf(v)
         drawLine(gridColor, Offset(0f, y), Offset(plotRight, y), strokeWidth = 1f)
         val tl = measurer.measure(Fmt.compactPrice(v), labelStyle)
-        drawText(tl, topLeft = Offset(plotRight + 6f, y - tl.size.height / 2))
+        val labelY = (y - tl.size.height / 2)
+            .coerceIn(0f, (h - tl.size.height).coerceAtLeast(0f))
+        drawText(tl, topLeft = Offset(plotRight + 8f, labelY))
     }
 
     // Vertical grid + bottom time labels (a few evenly spaced).
@@ -466,11 +495,15 @@ private fun DrawScope.drawTag(
     val style = TextStyle(color = fg, fontSize = 9.sp, fontWeight = FontWeight.Bold)
     val tl = measurer.measure(text, style)
     val padX = 4f; val padY = 2f
-    val rect = Rect(x, y - tl.size.height / 2 - padY, x + tl.size.width + padX * 2, y + tl.size.height / 2 + padY)
+    val tagWidth = tl.size.width + padX * 2
+    val tagHeight = tl.size.height + padY * 2
+    val left = x.coerceIn(0f, (size.width - tagWidth).coerceAtLeast(0f))
+    val top = (y - tagHeight / 2).coerceIn(0f, (size.height - tagHeight).coerceAtLeast(0f))
+    val rect = Rect(left, top, left + tagWidth, top + tagHeight)
     drawRoundRect(bg, topLeft = Offset(rect.left, rect.top),
         size = androidx.compose.ui.geometry.Size(rect.width, rect.height),
         cornerRadius = androidx.compose.ui.geometry.CornerRadius(4f, 4f))
-    drawText(tl, topLeft = Offset(x + padX, y - tl.size.height / 2))
+    drawText(tl, topLeft = Offset(left + padX, top + padY))
 }
 
 private fun DrawScope.drawVolumePane(
@@ -478,10 +511,11 @@ private fun DrawScope.drawVolumePane(
     viewStartMs: Double,
     viewSpanMs: Double,
     step: Double,
+    axisGutterPx: Float,
 ) {
     if (viewSpanMs <= 0) return
     val w = size.width; val h = size.height
-    val plotRight = w - 54f
+    val plotRight = (w - axisGutterPx).coerceAtLeast(w * 0.55f)
     drawRect(Th.surface.copy(alpha = 0.4f), size = androidx.compose.ui.geometry.Size(plotRight, h))
     val visible = candles.filter {
         val ms = it.epochMs.toDouble()
@@ -499,11 +533,42 @@ private fun DrawScope.drawVolumePane(
     }
 }
 
+private fun DrawScope.drawTimeAxis(
+    viewStartMs: Double,
+    viewSpanMs: Double,
+    axisGutterPx: Float,
+    measurer: androidx.compose.ui.text.TextMeasurer,
+    fullSpan: Double,
+) {
+    if (viewSpanMs <= 0) return
+    val plotRight = (size.width - axisGutterPx).coerceAtLeast(size.width * 0.55f)
+    val style = TextStyle(color = Th.textFaint, fontSize = 9.sp)
+    val ticks = 4
+    for (i in 0..ticks) {
+        val ms = (viewStartMs + viewSpanMs * i / ticks).toLong()
+        val textLayout = measurer.measure(fmtDateTime(ms, fullSpan), style)
+        val x = plotRight * i / ticks
+        val left = (x - textLayout.size.width / 2)
+            .coerceIn(0f, (plotRight - textLayout.size.width).coerceAtLeast(0f))
+        drawText(
+            textLayout,
+            topLeft = Offset(left, (size.height - textLayout.size.height) / 2),
+        )
+    }
+}
+
 // MARK: - Helpers
 
-private fun nearestIndex(candles: List<Candle>, xPx: Float, width: Float, viewStartMs: Double, viewSpanMs: Double): Int? {
+private fun nearestIndex(
+    candles: List<Candle>,
+    xPx: Float,
+    width: Float,
+    axisGutterPx: Float,
+    viewStartMs: Double,
+    viewSpanMs: Double,
+): Int? {
     if (candles.isEmpty() || width <= 0) return null
-    val plotRight = width - 54f
+    val plotRight = (width - axisGutterPx).coerceAtLeast(width * 0.55f)
     val ms = viewStartMs + (xPx / plotRight).coerceIn(0f, 1f) * viewSpanMs
     var best = -1; var bestD = Double.MAX_VALUE
     for (i in candles.indices) {

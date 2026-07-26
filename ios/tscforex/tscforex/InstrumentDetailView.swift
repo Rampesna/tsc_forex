@@ -673,7 +673,8 @@ struct AssetDetailView: View {
             code: code,
             interval: frame.interval,
             from: from,
-            limit: maxWindow
+            limit: maxWindow,
+            latestSession: requestedTimeframe == "1G"
         ) {
             guard tf == requestedTimeframe else { return }
             // Keep only a nearby cache. The renderer further virtualizes this to

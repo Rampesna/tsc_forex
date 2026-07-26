@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -18,8 +19,10 @@ import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -159,17 +162,26 @@ private fun PlanCard(
     busy: Boolean,
     onPurchase: () -> Unit,
 ) {
-    val fallback = NumberFormat.getCurrencyInstance(Locale("tr", "TR")).format(plan.priceHintTry)
+    val fallback = NumberFormat.getCurrencyInstance(Locale.forLanguageTag("tr-TR")).format(plan.priceHintTry)
     val priceLabel = playPrice ?: "$fallback / ay"
     val limits = plan.limits
+    val largeText = LocalDensity.current.fontScale >= 1.2f
     Card {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            Row(Modifier.fillMaxWidth()) {
-                Column(Modifier.weight(1f)) {
+            if (largeText) {
+                Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
                     Text(plan.name, color = Th.text, fontSize = 16.sp, fontWeight = FontWeight.Bold)
                     if (selected) Text("Etkin plan", color = Th.accent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Text(priceLabel, color = Th.accent, fontSize = 13.sp, fontWeight = FontWeight.Bold)
                 }
-                Text(priceLabel, color = Th.accent, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            } else {
+                Row(Modifier.fillMaxWidth()) {
+                    Column(Modifier.weight(1f)) {
+                        Text(plan.name, color = Th.text, fontSize = 16.sp, fontWeight = FontWeight.Bold)
+                        if (selected) Text("Etkin plan", color = Th.accent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+                    Text(priceLabel, color = Th.accent, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                }
             }
             Column(
                 Modifier
@@ -210,8 +222,27 @@ private fun PlanCard(
 
 @Composable
 private fun QuotaRow(label: String, value: String) {
-    Row(Modifier.fillMaxWidth()) {
-        Text(label, color = Th.textDim, fontSize = 10.sp, modifier = Modifier.weight(1f))
-        Text(value, color = Th.text, fontSize = 10.sp, fontWeight = FontWeight.Bold)
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = 30.dp)
+            .padding(vertical = 3.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Text(
+            label,
+            color = Th.textDim,
+            fontSize = 10.sp,
+            maxLines = 2,
+            modifier = Modifier.weight(1f),
+        )
+        Text(
+            value,
+            color = Th.text,
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold,
+            maxLines = 1,
+            modifier = Modifier.padding(start = 12.dp),
+        )
     }
 }
