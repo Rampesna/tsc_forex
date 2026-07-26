@@ -4,7 +4,7 @@ Bu doküman TSC Forex'in güncel iOS sürümünü App Store Connect'e hazırlama
 
 > **Garanti sınırı:** Hiç kimse “sıfır red” garantisi veremez; nihai karar Apple App Review'a aittir ve kurallar değişebilir. Aşağıdaki **Gönderim Kapıları** tamamlanmadan build göndermeyin. Bir kapı doğrulanmadıysa dokümandaki “hazır” ifadesi kanıt sayılmaz.
 
-## 0. Mevcut yayın durumu — 1.0 (6) yayında, 1.1 (7) hazırlanıyor
+## 0. Mevcut yayın durumu — 1.0 (6) yayında, 1.1 (7) incelemede
 
 ### App Store Connect'te tamamlananlar
 
@@ -25,6 +25,9 @@ Bu doküman TSC Forex'in güncel iOS sürümünü App Store Connect'e hazırlama
 - Red düzeltmelerini içeren signed `1.0 (6)` archive 22 Temmuz 2026'da Apple'a yüklendi, processing tamamlandı ve sürüm `1.0` için seçildi. Güncellenen Review Notes misafir erişimini, hesap gerektiren alanları ve Elite metadata düzeltmesini açıklar.
 - `1.0 (6)` app version, dört auto-renewable subscription ve `premium_monthly` subscription group aynı submission'a yeniden eklendi. Submission ID `35107ec9-3de3-4f01-b22a-b4f9e72e658f` korunarak altı öğenin tamamı 22 Temmuz 2026'da yeniden gönderildi ve App Store Connect'te `Waiting for Review` olarak doğrulandı.
 - Apple `1.0 (6)` sürümünü onayladı; 26 Temmuz 2026 App Store Connect kontrolünde sürüm `Ready for Distribution` durumundadır. Önceki red, yeni bir açık red değildir.
+- `1.1 (7)` için signed Release archive alındı ve Xcode ile App Store Connect'e başarıyla yüklendi. Processing tamamlandı, Build 7 sürüme bağlandı; altı dil, Arapça RTL, portföy donut grafiği ve önceki review düzeltmeleri Review Notes'a işlendi.
+- Product Page Optimization içindeki **Yeni Ekran Görüntüleri** treatment'ı Guideline **2.3.3 — Accurate Metadata** nedeniyle reddedildi: yedi adet 13 inç iPad görseli yalnız giriş ekranını gösteriyor ve uygulamanın temel kullanımını temsil etmiyordu. Eski görseller kaldırıldı; temiz 13 inç iPad simülatöründe çalışan güncel build'den alınan gerçek **2064×2752 Piyasalar** ekranı yüklendi ve treatment yeniden incelemeye gönderildi. PPO submission `c4dae2d5-1b6d-45fa-ae03-624ee4b730de` 26 Temmuz 2026 23:54 itibarıyla `Waiting for Review` durumundadır.
+- `1.1 (7)` app version 27 Temmuz 2026'da ayrı submission `57ab4e70-1fc0-4bc0-b058-f20ff8ff8d7c` ile App Review'a gönderildi ve App Store Connect'te `Waiting for Review` olarak doğrulandı. Onay sonrası otomatik yayın ve bütün kullanıcılara anında dağıtım seçilidir.
 - Uygulama indirme fiyatı Türkiye baz ülke olarak `₺0,00` ayarlandı; ilk sürüm yalnız Türkiye storefront'unda, iPhone/iPad için public dağıtıma açıldı. Apple Silicon Mac, Apple Vision Pro ve Apple School Manager indirimi kapalı bırakıldı.
 - App Review iletişim alanları ve production login'i doğrulanmış ayrı demo hesabı App Store Connect'in güvenli alanlarında kaydedildi.
 - Exact `1284×2778` iPhone 6.5-inch ve `2064×2752` iPad 13-inch screenshot'ları sürüme yüklendi.
@@ -60,6 +63,7 @@ Bu doküman TSC Forex'in güncel iOS sürümünü App Store Connect'e hazırlama
 - Portföy dağılımı, eski doğrusal listeden ilk yedi pozisyonu ve gerektiğinde `Diğer` dilimini gösteren erişilebilir donut grafik + yüzde listesine dönüştürüldü. Dar genişlikte grafik ve lejant dikey yerleşir.
 - `1.0 (5)` reddine neden olan kamusal piyasa içeriğinin giriş duvarı arkasında kalması tekrar edilmedi: misafir Piyasalar, arama, kategoriler, varlık detayları ve grafiklere erişmeye devam eder.
 - Guideline 2.3.2 kapsamında kaldırılan Elite storefront promotional image yeniden eklenmemelidir. IAP Review Information görselleri bundan farklıdır ve korunur.
+- `1.1 (7)` signed archive upload/processing, build seçimi, metadata kaydı ve `Submit for Review` adımları tamamlandı; authoritative durum `Waiting for Review`'dur.
 
 ### İnceleme ve canlı satış öncesi takip edilecek açık riskler
 
@@ -70,8 +74,8 @@ Bu doküman TSC Forex'in güncel iOS sürümünü App Store Connect'e hazırlama
 | App Privacy | 10 veri türü ve privacy URL kayıtlı; submission validation geçti | Production veri akışı değişirse form ve politika release'ten önce yeniden güncellenir. |
 | Review erişimi | İletişim alanları ve production login'i HTTP 200 ile doğrulanmış ayrı demo credentials kaydedildi | Account Holder review süresince iletişim bilgilerini erişilebilir tutar; demo hesabı silmez/değiştirmez. |
 | Copyright / yasal sahip | Apple'ın zorunlu alan kontrolü geçti; girilen yasal unvanın dayanağı teknik çalışmada bağımsız doğrulanmadı | Account Holder gerçek hak sahibi/yıl bilgisinin doğruluğunu korur; değişiklik varsa Apple'a bildirilir. |
-| Screenshots / iPad | App version görselleri ve dört subscription Review Information görseli yüklendi | Review görseli Account Holder'ın açık onayıyla yalnız Apple'a gönderildi; repository'ye eklenmez. Gelecek sürümlerde kişisel profil yerine ayrı review/demo hesabı kullanılır. |
-| Signed build | `1.0 (6)` onaylandı ve `Ready for Distribution`; `1.1 (7)` kaynak/Debug kontrolleri tamamlandı | `1.1 (7)` signed archive validate/upload, processing, build seçimi ve yeni submission durumu bu dokümana işlenir. |
+| Screenshots / iPad | PPO'daki login-only 13 inç iPad seti Guideline 2.3.3 nedeniyle reddedildi; eski set kaldırılıp güncel build'in gerçek 2064×2752 Piyasalar ekranıyla yeniden gönderildi. App version görselleri ve dört subscription Review Information görseli yüklendi. | Review görseli Account Holder'ın açık onayıyla yalnız Apple'a gönderildi; repository'ye eklenmez. Gelecek sürümlerde temel işlevi göstermeyen login-only set kullanılmaz. |
+| Signed build | `1.0 (6)` onaylandı ve `Ready for Distribution`; `1.1 (7)` signed archive upload/processing ve build seçimi tamamlanarak submission `57ab4e70-1fc0-4bc0-b058-f20ff8ff8d7c` içinde `Waiting for Review` durumuna geçti. | App Review mesajları izlenir; Apple kararı gelmeden sürüm “yayında” sayılmaz. |
 | Apple anahtarları | DeviceCheck ve Sign in with Apple `.p8`/Key ID değerleri GitHub Actions ve Kubernetes production secret'larında mevcut; pod içi dosya/KID kontrolleri geçti | Gerçek DeviceCheck free-trial claim ve Sign in with Apple revoke senaryolarının fiziksel cihaz/sandbox kanıtları saklanır. |
 | StoreKit uçtan uca test | Purchase/restore/plan değişimi/refund/revoke matrisi tamamlanmadı | Bölüm 9.1'deki matris kanıtlarıyla PASS olur. |
 
@@ -441,7 +445,7 @@ Bağlı iPhone 14 Pro Max'in native **1290 × 2796 px** görüntüsü bu alana d
 
 Uygulama kaydı şu anda universal iPhone + iPad desteği içeriyor. Bu nedenle iPad üzerinde bütün kritik akışlar ayrıca QA edilmeli ve App Store Connect'in sürüm sayfasında istediği iPad screenshot seti yüklenmelidir. iPad desteğini kaldırma kararı yalnız ürün ve teknik kapsam kararı olarak, signed archive'daki device family ile tutarlı biçimde alınabilir; eksik screenshot'ı saklamak için son anda metadata hilesi yapılmaz.
 
-17 Temmuz 2026'da `docs/store/screenshots/ios/iphone-6.5/01-markets.png` exact **1284×2778** ve `docs/store/screenshots/ios/ipad-13/01-markets.png` exact **2064×2752** olarak doğrulanıp App Store Connect'e yüklendi. iPhone görseli Piyasalar ekranını, iPad görseli gerçek açılış/giriş ekranını gösterir. Bunlar Apple'ın minimum screenshot alanını kapatır; aşağıdaki kapsamlı pazarlama seti ve iPad'in login sonrası kritik akış QA'sı hâlâ önerilir.
+17 Temmuz 2026'da `docs/store/screenshots/ios/iphone-6.5/01-markets.png` exact **1284×2778** olarak doğrulanıp App Store Connect'e yüklendi. Aynı tarihteki iPad login görseli, uygulamanın temel kullanımını göstermediği için PPO incelemesinde Guideline 2.3.3 reddine yol açtı. 26 Temmuz 2026'da bu görsel ve treatment içindeki diğer login-only iPad görselleri kaldırıldı; temiz 13 inç iPad simülatöründe güncel build'in gerçek Piyasalar ekranından alınan exact **2064×2752** görsel hem `1.1` app version'a hem PPO treatment'a yüklendi. Her iki kayıt da App Review'a yeniden gönderildi. Aşağıdaki kapsamlı pazarlama seti hâlâ önerilir.
 
 ### Önerilen 8 screenshot sırası
 
@@ -510,13 +514,13 @@ Grace Period **OFF** olduğu için grace-period erişim satırı ilk release iç
 4. Xcode'da `Any iOS Device (arm64)` / generic device seçip **Product → Archive** çalıştırın. Organizer'da app + widget signing team, provisioning profile, capabilities, privacy manifest ve export compliance özetini inceleyin.
 5. Organizer → **Validate App** çalıştırın. Error kalmamalı; warning'ler de tek tek açıklanıp release riski taşımadığı doğrulanmalıdır.
 6. Organizer → **Distribute App → App Store Connect → Upload** ile build'i yükleyin. Upload başarı mesajı yetmez; App Store Connect'te processing tamamlanıp build görünene kadar bekleyin.
-7. İşlenen build'i `1.1 Prepare for Submission` sürümüne seçin; encryption/export compliance sorusunu gerçek archive davranışına göre cevaplayın.
+7. İşlenen build'i `1.1 Prepare for Submission` sürümüne seçin; encryption/export compliance sorusunu gerçek archive davranışına göre cevaplayın. Build 7 için bu adım tamamlandı; `ITSAppUsesNonExemptEncryption=false` archive ile uyumludur.
 8. 6.5-inch exact iPhone screenshot setini ve mevcut universal destek nedeniyle iPad setini yükleyin. Description, promotional text, keywords, Support/Marketing/Privacy URL'lerini son production UI ile karşılaştırın.
 9. Dört subscription'ı aynı app version'ın **In-App Purchases and Subscriptions** bölümüne ekleyin; her üründe localization, availability, fiyat ve ayrı review screenshot'ı bulunduğunu doğrulayın.
 10. App Privacy formunu production veri akışına göre publish edin; Content Rights, copyright ve review contact alanlarını Account Holder doğrulanmış bilgilerle tamamlasın. Çalışan demo credentials yalnız güvenli review alanlarına girilsin.
 11. Review Notes'u güncel navigation yollarıyla kaydedin. İlk sürümde kontrol için **manual release** seçmek operasyonel olarak daha güvenlidir; automatic release seçilecekse bunun bilinçli ürün kararı olduğunu doğrulayın.
 12. Önce **Add for Review** ile Apple'ın eksik alan kontrollerini çalıştırın. App ve dört IAP'nin aynı submission içinde olduğunu görün; bütün uyarılar kapandıktan sonra Account Holder/authorized role **Submit for Review** işlemini yapar.
-13. Submission ID, build numarası ve gönderim zamanını release kaydına yazın. App Review mesajlarını izleyin; metadata/build değişikliği gerekirse hangi submission'ın geri çekildiğini açıkça kaydedin.
+13. Submission ID, build numarası ve gönderim zamanını release kaydına yazın. Build 7 submission'ı `57ab4e70-1fc0-4bc0-b058-f20ff8ff8d7c`, durumu `Waiting for Review`'dur. App Review mesajlarını izleyin; metadata/build değişikliği gerekirse hangi submission'ın geri çekildiğini açıkça kaydedin.
 
 ---
 
@@ -570,10 +574,10 @@ Grace Period **OFF** olduğu için grace-period erişim satırı ilk release iç
 - [x] Age Rating formu mevcut özelliklere göre dolduruldu; global sonuç `4+`.
 - [ ] Copyright gerçek ve doğrulanmış yasal hak sahibiyle dolduruldu; App Review iletişim adı, telefon ve e-posta çalışan kişiye ait.
 - [ ] Bütün piyasa/haber/web kaynakları ve marka görselleri için içerik/yeniden dağıtım hakları belgelendi; Content Rights cevabı kanıtla uyumlu.
-- [ ] Encryption/export compliance doğru cevaplandı.
+- [x] Build 7 archive `ITSAppUsesNonExemptEncryption=false` ile yüklendi; App Store Connect processing ve build seçimi export-compliance engeli olmadan tamamlandı.
 - [x] App Review için ayrı demo hesabın production login'i doğrulandı ve credentials yalnız App Store Connect'in güvenli alanlarında tutuluyor.
-- [x] Review Notes Build 6 misafir erişimini ve hesap temelli yolları açıkça içeriyor; 1.1 notlarında aynı düzeltme korunacak ve production login'i HTTP 200 ile doğrulanan credentials yalnız ayrı güvenli username/password alanlarında tutulacak.
-- [x] Minimum screenshot alanları için exact `1284×2778` iPhone ve `2064×2752` iPad görselleri yüklendi; kapsamlı pazarlama seti ayrıca geliştirilecek.
+- [x] Review Notes Build 7, altı dili, Arapça RTL'yi, donut dağılımı, misafir erişimini ve Guideline 2.3.3 ekran görüntüsü düzeltmesini içeriyor; credentials yalnız ayrı güvenli username/password alanlarında tutuluyor.
+- [x] Exact `1284×2778` iPhone ve temel Piyasalar işlevini gösteren exact `2064×2752` iPad görseli yüklendi; login-only PPO seti kaldırılıp yeniden incelemeye gönderildi.
 - [ ] App ve IAP review screenshots kişisel veri/debug öğesi içermiyor.
 - [ ] Support iletişimi izleniyor; reviewer sorusuna hızlı yanıt verilecek.
 

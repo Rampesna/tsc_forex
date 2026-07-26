@@ -6,6 +6,16 @@ Bu doküman, TSC Forex Android uygulamasını Google Play'e **ilk seferde, red/a
 
 ---
 
+## 0. Güncel yayın durumu — 1.2.0 (5) kapalı Alpha incelemesinde
+
+- Release AAB `versionCode 5` / `versionName 1.2.0`, target SDK 36 ve Google Play Billing 9.1.0 ile üretildi; lint ve release bundle görevleri başarıyla tamamlandı.
+- AAB, Google Play Console tarafından `5 (1.2.0)` olarak kabul edildi. Türkçe, İngilizce, Arapça, Almanca, İtalyanca ve İspanyolca için altı ayrı mağaza sürüm notu kaydedildi.
+- `1.2.0 (5) – Çoklu Dil ve Donut Portföy` sürümü kapalı **Alpha** kanalına %100 sunumla gönderildi. Devam eden `1.1.1 (4)` incelemesi bilinçli olarak yeni paketle yeniden başlatıldı; güncel değişiklik Google'ın hızlı otomatik kontrolleri ardından incelemeye geçmek üzere **İncelenmekte olan değişiklikler** alanındadır.
+- Play doğrulaması yalnız iki engelleyici olmayan teşhis uyarısı gösterdi: R8/ProGuard mapping dosyası bulunmaması ve üçüncü taraf yerel kod için debug symbol yüklenmemesi. Yükleme veya review engeli, cihaz kaybı ve Billing 8 uyumsuzluk uyarısı yoktur.
+- Üretim erişimi henüz açık değildir: 26 Temmuz 2026 kontrolünde kapalı teste 9 kullanıcı katılmıştır; Google'ın üretime erişim için gösterdiği 12 kullanıcı / 14 gün koşulu tamamlanmalıdır.
+
+---
+
 ## 1. Uygulama Kimliği
 
 | Alan | Değer |
@@ -220,14 +230,14 @@ Uygulamanın bir kısmı giriş gerektirdiğinden, inceleme ekibine erişim veri
 
 ## 10. Yayın Öncesi Kontrol Listesi (Checklist)
 
-- [ ] `applicationId = com.talhacan.tscforex` (com.example kaldırıldı — doğrulandı)
-- [ ] Uygulama adı/etiket: **TSC Forex** (doğrulandı: `app_name`)
-- [ ] `versionCode`/`versionName` artırıldı
-- [ ] `versionCode 5` / `versionName 1.2.0` içeren release artifact doğrulandı
-- [ ] `tr`, `en`, `ar`, `de`, `it`, `es` locale config ve Arapça RTL smoke testi doğrulandı
-- [ ] Portföy donut grafik + lejant dar ve geniş telefonlarda doğrulandı
-- [ ] Çözülmüş bağımlılık ağacında `com.android.billingclient:*:9.1.0` doğrulandı
-- [ ] Release AAB, Play App Signing ile imzalandı
+- [x] `applicationId = com.talhacan.tscforex` (com.example kaldırıldı — doğrulandı)
+- [x] Uygulama adı/etiket: **TSC Forex** (doğrulandı: `app_name`)
+- [x] `versionCode`/`versionName` artırıldı
+- [x] `versionCode 5` / `versionName 1.2.0` içeren release artifact yerel olarak ve Play Console'da doğrulandı
+- [x] `tr`, `en`, `ar`, `de`, `it`, `es` locale config ve Arapça RTL smoke testi doğrulandı
+- [x] Portföy donut grafik + lejant dar ve geniş yerleşimde doğrulandı
+- [x] Çözülmüş bağımlılık ağacında `com.android.billingclient:*:9.1.0` doğrulandı
+- [x] Release AAB upload anahtarıyla imzalandı, Google Play tarafından kabul edilip Play App Signing akışına alındı
 - [ ] Google Sign-In için Play App Signing SHA-1 + paket adı ayrı OAuth istemcisine eklendi (Bölüm 1.2)
 - [ ] Data Safety formu Bölüm 3'e göre dolduruldu
 - [ ] Privacy Policy URL erişilebilir: https://tsc.talhacan.com/privacy
