@@ -67,12 +67,12 @@ struct MarketsView: View {
     }
 
     private var tabs: [(value: MarketCategory, label: String, icon: String)] {
-        [(.favorites, "Favoriler", "star.fill"),
-         (.all, "Tümü", "square.grid.2x2.fill"),
-         (.gold, "Altın", "circle.hexagongrid.fill"),
-         (.currency, "Döviz", "banknote.fill"),
-         (.crypto, "Kripto", "bitcoinsign.circle.fill"),
-         (.stock, "Hisse", "chart.line.uptrend.xyaxis")]
+        [(.favorites, L10n.text("Favoriler"), "star.fill"),
+         (.all, L10n.text("Tümü"), "square.grid.2x2.fill"),
+         (.gold, L10n.text("Altın"), "circle.hexagongrid.fill"),
+         (.currency, L10n.text("Döviz"), "banknote.fill"),
+         (.crypto, L10n.text("Kripto"), "bitcoinsign.circle.fill"),
+         (.stock, L10n.text("Hisse"), "chart.line.uptrend.xyaxis")]
     }
 
     private func filtered(_ base: [InstrumentPrice]) -> [InstrumentPrice] {

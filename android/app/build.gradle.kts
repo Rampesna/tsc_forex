@@ -1,8 +1,17 @@
 import java.util.Properties
+import org.gradle.api.tasks.Sync
 
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
+}
+
+val generatedLocalizationAssets = layout.buildDirectory.dir("generated/assets/localizations").get().asFile
+val syncSharedLocalizations = tasks.register<Sync>("syncSharedLocalizations") {
+    from(rootProject.file("../ios/tscforex/tscforex")) {
+        include("*.lproj/Localizable.strings")
+    }
+    into(generatedLocalizationAssets)
 }
 
 android {
@@ -20,8 +29,8 @@ android {
         applicationId = "com.talhacan.tscforex"
         minSdk = 24
         targetSdk = 36
-        versionCode = 4
-        versionName = "1.1.1"
+        versionCode = 5
+        versionName = "1.2.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -68,6 +77,21 @@ android {
         compose = true
         buildConfig = true
     }
+    bundle {
+        // The app has its own runtime language picker. Keep every supported
+        // locale in the base install so switching also works while offline.
+        language {
+            enableSplit = false
+        }
+    }
+
+    sourceSets {
+        getByName("main").assets.directories.add(generatedLocalizationAssets.absolutePath)
+    }
+}
+
+tasks.named("preBuild").configure {
+    dependsOn(syncSharedLocalizations)
 }
 
 dependencies {

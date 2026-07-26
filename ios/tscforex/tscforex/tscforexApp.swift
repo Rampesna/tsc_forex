@@ -14,6 +14,7 @@ struct tscforexApp: App {
     @StateObject private var prices = PriceStore()
     @StateObject private var portfolio = PortfolioStore()
     @StateObject private var billing = BillingStore()
+    @StateObject private var language = LanguageStore()
 
     var body: some Scene {
         WindowGroup {
@@ -22,6 +23,9 @@ struct tscforexApp: App {
                 .environmentObject(prices)
                 .environmentObject(portfolio)
                 .environmentObject(billing)
+                .environmentObject(language)
+                .environment(\.locale, language.current.locale)
+                .environment(\.layoutDirection, language.current.layoutDirection)
                 .onAppear {
                     prices.connect(token: auth.accessToken)
                 }

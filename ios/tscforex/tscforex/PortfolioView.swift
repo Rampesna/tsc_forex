@@ -1,6 +1,13 @@
 import SwiftUI
 import UIKit
 
+private struct PortfolioAllocationSlice: Identifiable {
+    let id: String
+    let label: String
+    let percentage: Double
+    let color: Color
+}
+
 private enum PortfolioChartMetric: String, CaseIterable, Identifiable {
     case value
     case totalPnL
@@ -10,9 +17,9 @@ private enum PortfolioChartMetric: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .value: return "Değer"
-        case .totalPnL: return "Toplam K/Z"
-        case .costBasis: return "Maliyet"
+        case .value: return L10n.text("Değer")
+        case .totalPnL: return L10n.text("Toplam K/Z")
+        case .costBasis: return L10n.text("Maliyet")
         }
     }
 
@@ -558,7 +565,7 @@ struct PortfolioView: View {
     private func performanceValue(_ title: String, _ value: Double, trend: Double? = nil) -> some View {
         let color = trend.map { Theme.trend($0) } ?? Theme.text
         return VStack(alignment: .leading, spacing: 2) {
-            Text(title).font(.system(size: 9)).foregroundStyle(Theme.textFaint)
+            Text(L10n.text(title)).font(.system(size: 9)).foregroundStyle(Theme.textFaint)
             Text("₺\(Fmt.compactPrice(value))")
                 .font(Theme.number(12, weight: .semibold))
                 .foregroundStyle(color)
@@ -567,29 +574,112 @@ struct PortfolioView: View {
     }
 
     private var allocationCard: some View {
-        Card {
+        let slices = allocationSlices
+        return Card {
             VStack(alignment: .leading, spacing: 12) {
                 Text("Dağılım").font(.system(size: 15, weight: .semibold)).foregroundStyle(Theme.text)
-                ForEach(portfolio.activePositions.prefix(8)) { position in
-                    VStack(spacing: 5) {
-                        HStack {
-                            Text(position.code).font(.system(size: 11, weight: .medium)).foregroundStyle(Theme.text)
-                            Spacer()
-                            Text("%\(String(format: "%.1f", position.allocationPct))")
-                                .font(Theme.number(11)).foregroundStyle(Theme.textDim)
-                        }
-                        GeometryReader { geo in
-                            ZStack(alignment: .leading) {
-                                Capsule().fill(Theme.surface)
-                                Capsule().fill(Theme.accent)
-                                    .frame(width: geo.size.width * min(max(position.allocationPct / 100, 0), 1))
-                            }
-                        }
-                        .frame(height: 5)
+
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .center, spacing: 18) {
+                        allocationDonut(slices)
+                        allocationLegend(slices)
+                    }
+                    VStack(spacing: 16) {
+                        allocationDonut(slices)
+                        allocationLegend(slices)
                     }
                 }
             }
         }
+    }
+
+    private var allocationSlices: [PortfolioAllocationSlice] {
+        let colors: [Color] = [
+            Theme.accent,
+            Color(hex: 0x6C8CFF),
+            Color(hex: 0xA873E8),
+            Color(hex: 0xF3B84B),
+            Color(hex: 0x43C59E),
+            Color(hex: 0xF06A78),
+            Color(hex: 0x57A7D8),
+            Color(hex: 0x9BA7B8),
+        ]
+        let ordered = portfolio.activePositions
+            .filter { $0.allocationPct > 0 }
+            .sorted { $0.allocationPct > $1.allocationPct }
+        let shown = Array(ordered.prefix(7))
+        var result = shown.enumerated().map { index, position in
+            PortfolioAllocationSlice(
+                id: position.id,
+                label: position.code,
+                percentage: position.allocationPct,
+                color: colors[index % colors.count]
+            )
+        }
+        let remainder = ordered.dropFirst(shown.count).reduce(0) { $0 + $1.allocationPct }
+        if remainder > 0.01 {
+            result.append(
+                PortfolioAllocationSlice(
+                    id: "other",
+                    label: L10n.text("Diğer"),
+                    percentage: remainder,
+                    color: colors[7]
+                )
+            )
+        }
+        return result
+    }
+
+    private func allocationDonut(_ slices: [PortfolioAllocationSlice]) -> some View {
+        let total = max(slices.reduce(0) { $0 + $1.percentage }, 0.0001)
+        return ZStack {
+            Circle()
+                .stroke(Theme.surfaceHi, lineWidth: 22)
+            ForEach(Array(slices.enumerated()), id: \.element.id) { index, slice in
+                let start = slices.prefix(index).reduce(0) { $0 + $1.percentage } / total
+                let end = start + slice.percentage / total
+                Circle()
+                    .trim(from: start, to: end)
+                    .stroke(
+                        slice.color,
+                        style: StrokeStyle(lineWidth: 22, lineCap: .butt, lineJoin: .round)
+                    )
+                    .rotationEffect(.degrees(-90))
+            }
+            VStack(spacing: 2) {
+                Text("\(portfolio.activePositions.count)")
+                    .font(Theme.number(22, weight: .bold))
+                    .foregroundStyle(Theme.text)
+                Text("varlık")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(Theme.textDim)
+            }
+        }
+        .frame(width: 142, height: 142)
+        .padding(4)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(L10n.format("Portföy dağılımı, %d varlık", portfolio.activePositions.count))
+    }
+
+    private func allocationLegend(_ slices: [PortfolioAllocationSlice]) -> some View {
+        VStack(spacing: 9) {
+            ForEach(slices) { slice in
+                HStack(spacing: 8) {
+                    Circle()
+                        .fill(slice.color)
+                        .frame(width: 9, height: 9)
+                    Text(slice.label)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(Theme.text)
+                        .lineLimit(1)
+                    Spacer(minLength: 8)
+                    Text(Fmt.pct(slice.percentage))
+                        .font(Theme.number(11, weight: .semibold))
+                        .foregroundStyle(Theme.textDim)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity)
     }
 
     private var positionsCard: some View {

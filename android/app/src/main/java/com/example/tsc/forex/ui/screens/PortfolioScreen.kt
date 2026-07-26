@@ -1,6 +1,7 @@
 package com.example.tsc.forex.ui.screens
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -41,10 +42,9 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.Text
+import com.example.tsc.forex.ui.LocalizedText as Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -57,6 +57,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -835,28 +836,103 @@ private fun performanceCandles(
 
 @Composable
 private fun AllocationCard(positions: List<PortfolioPosition>) {
+    val colors = listOf(
+        Th.accent,
+        Color(0xFF6C8CFF),
+        Color(0xFFA873E8),
+        Color(0xFFF3B84B),
+        Color(0xFF43C59E),
+        Color(0xFFF06A78),
+        Color(0xFF57A7D8),
+        Color(0xFF9BA7B8),
+    )
+    val ordered = positions.filter { it.allocationPct > 0 }.sortedByDescending { it.allocationPct }
+    val shown = ordered.take(7)
+    val slices = shown.mapIndexed { index, position ->
+        AllocationSlice(position.id, position.code, position.allocationPct, colors[index])
+    }.toMutableList()
+    val remainder = ordered.drop(shown.size).sumOf { it.allocationPct }
+    if (remainder > 0.01) {
+        slices += AllocationSlice("other", "Diğer", remainder, colors.last())
+    }
+
     Card(Modifier.padding(horizontal = 16.dp)) {
         Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Text("Dağılım", color = Th.text, fontSize = 15.sp, fontWeight = FontWeight.Bold)
-            positions.take(8).forEach { position ->
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Row {
-                        Text(
-                            position.displayName.ifBlank { position.code },
-                            color = Th.text,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold,
-                        )
-                        Spacer(Modifier.weight(1f))
-                        Text("%${"%.1f".format(position.allocationPct)}", color = Th.textDim, fontSize = 11.sp)
+            BoxWithConstraints(Modifier.fillMaxWidth()) {
+                if (maxWidth >= 350.dp) {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(18.dp),
+                    ) {
+                        AllocationDonut(slices, positions.size)
+                        AllocationLegend(slices, Modifier.weight(1f))
                     }
-                    LinearProgressIndicator(
-                        progress = { (position.allocationPct / 100).toFloat().coerceIn(0f, 1f) },
-                        color = Th.accent,
-                        trackColor = Th.surfaceAlt,
-                        modifier = Modifier.fillMaxWidth().height(5.dp),
-                    )
+                } else {
+                    Column(
+                        Modifier.fillMaxWidth(),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(16.dp),
+                    ) {
+                        AllocationDonut(slices, positions.size)
+                        AllocationLegend(slices, Modifier.fillMaxWidth())
+                    }
                 }
+            }
+        }
+    }
+}
+
+private data class AllocationSlice(
+    val id: String,
+    val label: String,
+    val percentage: Double,
+    val color: Color,
+)
+
+@Composable
+private fun AllocationDonut(slices: List<AllocationSlice>, assetCount: Int) {
+    val total = slices.sumOf { it.percentage }.coerceAtLeast(0.0001)
+    Box(Modifier.size(146.dp), contentAlignment = Alignment.Center) {
+        Canvas(Modifier.fillMaxSize()) {
+            val stroke = 22.dp.toPx()
+            drawCircle(color = Th.surfaceAlt, style = Stroke(width = stroke))
+            var start = -90f
+            slices.forEach { slice ->
+                val sweep = ((slice.percentage / total) * 360.0).toFloat()
+                drawArc(
+                    color = slice.color,
+                    startAngle = start,
+                    sweepAngle = (sweep - 0.8f).coerceAtLeast(0.2f),
+                    useCenter = false,
+                    style = Stroke(width = stroke),
+                )
+                start += sweep
+            }
+        }
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text("$assetCount", color = Th.text, fontSize = 22.sp, fontWeight = FontWeight.Bold)
+            Text("varlık", color = Th.textDim, fontSize = 10.sp, fontWeight = FontWeight.SemiBold)
+        }
+    }
+}
+
+@Composable
+private fun AllocationLegend(slices: List<AllocationSlice>, modifier: Modifier = Modifier) {
+    Column(modifier, verticalArrangement = Arrangement.spacedBy(9.dp)) {
+        slices.forEach { slice ->
+            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Box(Modifier.size(9.dp).clip(androidx.compose.foundation.shape.CircleShape).background(slice.color))
+                Text(
+                    slice.label,
+                    color = Th.text,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.SemiBold,
+                    maxLines = 1,
+                    modifier = Modifier.padding(horizontal = 8.dp).weight(1f),
+                )
+                Text(Fmt.pctUnsigned(slice.percentage), color = Th.textDim, fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
             }
         }
     }

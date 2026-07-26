@@ -3,9 +3,10 @@ package com.example.tsc.forex.ui
 import java.util.Locale
 import kotlin.math.abs
 
-/** Turkish-locale number/price formatting helpers. */
+/** Locale-aware number and price formatting helpers. */
 object Fmt {
-    private val tr: Locale = Locale.forLanguageTag("tr-TR")
+    private val locale: Locale
+        get() = Locale.getDefault()
 
     private fun decimals(v: Double): Int = when {
         abs(v) < 1e-9 -> 2
@@ -17,7 +18,7 @@ object Fmt {
     }
 
     fun number(v: Double): String =
-        String.format(tr, "%,.${decimals(v)}f", v)
+        String.format(locale, "%,.${decimals(v)}f", v)
 
     /** Price with the Turkish Lira symbol, e.g. "₺46,9947". */
     fun tl(v: Double): String = "₺" + number(v)
@@ -31,7 +32,7 @@ object Fmt {
         val a = abs(v)
         return when {
             a >= 1_000_000 -> compact(v)
-            a >= 1000 -> String.format(tr, "%,.0f", v)
+            a >= 1000 -> String.format(locale, "%,.0f", v)
             else -> number(v)
         }
     }
@@ -39,12 +40,12 @@ object Fmt {
     /** Signed percentage, e.g. "+3.42%". */
     fun signedPct(v: Double): String {
         val sign = if (v > 0) "+" else ""
-        return String.format(tr, "%s%.2f%%", sign, v)
+        return String.format(locale, "%s%.2f%%", sign, v)
     }
 
     fun pct(v: Double): String {
         val sign = if (v > 0) "+" else ""
-        return String.format(tr, "%s%.2f%%", sign, v)
+        return String.format(locale, "%s%.2f%%", sign, v)
     }
 
     fun signed(v: Double): String {
@@ -56,10 +57,10 @@ object Fmt {
     fun compact(v: Double): String {
         val a = abs(v)
         return when {
-            a >= 1_000_000_000_000 -> String.format(tr, "%.2f Tn", v / 1_000_000_000_000)
-            a >= 1_000_000_000 -> String.format(tr, "%.2f Mr", v / 1_000_000_000)
-            a >= 1_000_000 -> String.format(tr, "%.2f Mn", v / 1_000_000)
-            a >= 1_000 -> String.format(tr, "%.2f B", v / 1_000)
+            a >= 1_000_000_000_000 -> String.format(locale, "%.2f T", v / 1_000_000_000_000)
+            a >= 1_000_000_000 -> String.format(locale, "%.2f B", v / 1_000_000_000)
+            a >= 1_000_000 -> String.format(locale, "%.2f M", v / 1_000_000)
+            a >= 1_000 -> String.format(locale, "%.2f K", v / 1_000)
             else -> number(v)
         }
     }
@@ -71,7 +72,7 @@ object Fmt {
     fun tlCompact(v: Double): String = "₺" + compact(v)
 
     /** Unsigned percentage, e.g. "3.42%". */
-    fun pctUnsigned(v: Double): String = String.format(tr, "%.2f%%", v)
+    fun pctUnsigned(v: Double): String = String.format(locale, "%.2f%%", v)
 
     /** Trims an ISO date/time to just the date (YYYY-MM-DD). */
     fun dateShort(iso: String): String = iso.take(10)

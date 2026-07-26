@@ -9,6 +9,7 @@ struct SettingsView: View {
     @EnvironmentObject var auth: AuthStore
     @EnvironmentObject var prices: PriceStore
     @EnvironmentObject var billing: BillingStore
+    @EnvironmentObject var language: LanguageStore
     @State private var showProfile = false
     @State private var confirmDelete = false
     @State private var deleting = false
@@ -28,6 +29,48 @@ struct SettingsView: View {
                 ScreenHeader(title: "Ayarlar", subtitle: "Hesap & uygulama")
                 ScrollView {
                     VStack(spacing: 14) {
+                        Card {
+                            VStack(alignment: .leading, spacing: 12) {
+                                sectionLabel("DİL")
+                                Menu {
+                                    ForEach(AppLanguage.allCases) { item in
+                                        Button {
+                                            language.select(item)
+                                            Haptics.tap()
+                                        } label: {
+                                            if item == language.current {
+                                                Label(item.nativeName, systemImage: "checkmark")
+                                            } else {
+                                                Text(item.nativeName)
+                                            }
+                                        }
+                                    }
+                                } label: {
+                                    HStack(spacing: 12) {
+                                        Image(systemName: "globe")
+                                            .font(.system(size: 18, weight: .semibold))
+                                            .foregroundStyle(Theme.accent)
+                                            .frame(width: 28)
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text("Uygulama dili")
+                                                .font(.system(size: 14, weight: .semibold))
+                                                .foregroundStyle(Theme.text)
+                                            Text(language.current.nativeName)
+                                                .font(.system(size: 11))
+                                                .foregroundStyle(Theme.textDim)
+                                        }
+                                        Spacer()
+                                        Image(systemName: "chevron.up.chevron.down")
+                                            .font(.system(size: 11, weight: .bold))
+                                            .foregroundStyle(Theme.textFaint)
+                                    }
+                                    .padding(12)
+                                    .background(Theme.bgElevated, in: RoundedRectangle(cornerRadius: 12))
+                                }
+                                .buttonStyle(.plain)
+                            }
+                        }
+
                         Card {
                             VStack(alignment: .leading, spacing: 12) {
                                 sectionLabel("HESAP")
@@ -214,7 +257,7 @@ struct SettingsView: View {
 
     private func billingStatusRow(_ text: String, retry: Bool) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(text)
+            Text(L10n.text(text))
                 .font(.system(size: 11))
                 .foregroundStyle(retry ? Theme.down : Theme.textDim)
                 .fixedSize(horizontal: false, vertical: true)
@@ -273,7 +316,7 @@ struct SettingsView: View {
     private func legalRow(_ title: String, _ icon: String) -> some View {
         HStack(spacing: 12) {
             Image(systemName: icon).foregroundStyle(Theme.accent).frame(width: 22)
-            Text(title).font(.system(size: 14)).foregroundStyle(Theme.text)
+            Text(L10n.text(title)).font(.system(size: 14)).foregroundStyle(Theme.text)
             Spacer()
             Image(systemName: "arrow.up.right").font(.system(size: 11)).foregroundStyle(Theme.textFaint)
         }
@@ -294,12 +337,12 @@ struct SettingsView: View {
     }
 
     private func sectionLabel(_ t: String) -> some View {
-        Text(t).font(.system(size: 11, weight: .bold)).foregroundStyle(Theme.textDim).tracking(1)
+        Text(L10n.text(t)).font(.system(size: 11, weight: .bold)).foregroundStyle(Theme.textDim).tracking(1)
     }
 
     private func infoRow(_ label: String, _ value: String) -> some View {
         HStack {
-            Text(label).font(.system(size: 13)).foregroundStyle(Theme.textDim)
+            Text(L10n.text(label)).font(.system(size: 13)).foregroundStyle(Theme.textDim)
             Spacer()
             Text(value).font(.system(size: 13, weight: .semibold)).foregroundStyle(Theme.text)
         }

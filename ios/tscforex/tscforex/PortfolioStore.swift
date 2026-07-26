@@ -126,12 +126,12 @@ enum PortfolioTransactionType: String, Codable, CaseIterable, Identifiable {
     var id: String { rawValue }
     var title: String {
         switch self {
-        case .buy: return "Alış"
-        case .sell: return "Satış"
-        case .dividend: return "Temettü"
-        case .fee: return "Ücret"
-        case .deposit: return "Para yatırma"
-        case .withdraw: return "Para çekme"
+        case .buy: return L10n.text("Alış")
+        case .sell: return L10n.text("Satış")
+        case .dividend: return L10n.text("Temettü")
+        case .fee: return L10n.text("Ücret")
+        case .deposit: return L10n.text("Para yatırma")
+        case .withdraw: return L10n.text("Para çekme")
         }
     }
     var usesAsset: Bool { self != .deposit && self != .withdraw }

@@ -69,10 +69,10 @@ struct PriceChart: View {
             Image(systemName: "chart.xyaxis.line")
                 .font(.system(size: 28))
                 .foregroundStyle(Theme.textFaint)
-            Text(emptyTitle)
+            Text(L10n.text(emptyTitle))
                 .font(.system(size: 13))
                 .foregroundStyle(Theme.textDim)
-            Text(emptySubtitle)
+            Text(L10n.text(emptySubtitle))
                 .font(.system(size: 11))
                 .foregroundStyle(Theme.textFaint)
         }

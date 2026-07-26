@@ -1,10 +1,10 @@
 # TSC Forex — App Store Yayın Dokümanı (iOS)
 
-Bu doküman TSC Forex'in güncel iOS sürümünü App Store Connect'e hazırlamak, otomatik yenilenen abonelikleri göndermek ve App Review risklerini en aza indirmek için tek kaynak olarak kullanılmalıdır. Durum bilgileri 22 Temmuz 2026 tarihindeki App Store Connect kaydını yansıtır; Apple ekranında sonradan yapılan her değişiklik bu dokümana da işlenmelidir.
+Bu doküman TSC Forex'in güncel iOS sürümünü App Store Connect'e hazırlamak, otomatik yenilenen abonelikleri göndermek ve App Review risklerini en aza indirmek için tek kaynak olarak kullanılmalıdır. Durum bilgileri 26 Temmuz 2026 tarihindeki App Store Connect kaydını yansıtır; Apple ekranında sonradan yapılan her değişiklik bu dokümana da işlenmelidir.
 
 > **Garanti sınırı:** Hiç kimse “sıfır red” garantisi veremez; nihai karar Apple App Review'a aittir ve kurallar değişebilir. Aşağıdaki **Gönderim Kapıları** tamamlanmadan build göndermeyin. Bir kapı doğrulanmadıysa dokümandaki “hazır” ifadesi kanıt sayılmaz.
 
-## 0. Mevcut yayın durumu — Build 6 App Review bekliyor
+## 0. Mevcut yayın durumu — 1.0 (6) yayında, 1.1 (7) hazırlanıyor
 
 ### App Store Connect'te tamamlananlar
 
@@ -24,6 +24,7 @@ Bu doküman TSC Forex'in güncel iOS sürümünü App Store Connect'e hazırlama
 - Elite Aylık'ın storefront/win-back için kullanılan isteğe bağlı tanıtım görseli kaldırıldı. App Review satın alma yolunu gösteren **Review Information screenshot** korunmuştur; bu iki görsel alanı birbirine karıştırılmamalıdır.
 - Red düzeltmelerini içeren signed `1.0 (6)` archive 22 Temmuz 2026'da Apple'a yüklendi, processing tamamlandı ve sürüm `1.0` için seçildi. Güncellenen Review Notes misafir erişimini, hesap gerektiren alanları ve Elite metadata düzeltmesini açıklar.
 - `1.0 (6)` app version, dört auto-renewable subscription ve `premium_monthly` subscription group aynı submission'a yeniden eklendi. Submission ID `35107ec9-3de3-4f01-b22a-b4f9e72e658f` korunarak altı öğenin tamamı 22 Temmuz 2026'da yeniden gönderildi ve App Store Connect'te `Waiting for Review` olarak doğrulandı.
+- Apple `1.0 (6)` sürümünü onayladı; 26 Temmuz 2026 App Store Connect kontrolünde sürüm `Ready for Distribution` durumundadır. Önceki red, yeni bir açık red değildir.
 - Uygulama indirme fiyatı Türkiye baz ülke olarak `₺0,00` ayarlandı; ilk sürüm yalnız Türkiye storefront'unda, iPhone/iPad için public dağıtıma açıldı. Apple Silicon Mac, Apple Vision Pro ve Apple School Manager indirimi kapalı bırakıldı.
 - App Review iletişim alanları ve production login'i doğrulanmış ayrı demo hesabı App Store Connect'in güvenli alanlarında kaydedildi.
 - Exact `1284×2778` iPhone 6.5-inch ve `2064×2752` iPad 13-inch screenshot'ları sürüme yüklendi.
@@ -51,6 +52,15 @@ Bu doküman TSC Forex'in güncel iOS sürümünü App Store Connect'e hazırlama
 - `1.0 (6)` Debug simulator build'i başarıyla derlendi; yeni, oturumsuz iPhone 17 Pro Max simulator kurulumunda giriş duvarı olmadan canlı Piyasalar ekranının açıldığı görsel olarak doğrulandı.
 - `1.0 (6)` arm64 Release archive başarıyla alındı, Xcode upload tamamlandı ve App Store Connect'te işlenmiş Build 6 seçilerek yeniden gönderildi.
 
+### 1.1 (7) — Altı dil ve portföy dağılımı
+
+- Uygulama Türkçe, İngilizce, Arapça, Almanca, İtalyanca ve İspanyolca destekler. İlk açılışta desteklenen sistem dili seçilir; Ayarlar → Uygulama dili alanından uygulama içinde değiştirilebilir.
+- Arapça için sağdan sola yerleşim ve locale tabanlı sayı/tarih biçimlendirmesi etkindir. İngilizce ve Arapça görünümler iPhone simülatöründe görsel olarak doğrulanmıştır.
+- Xcode localization export ile bulunan 323 görünür kaydın 295 anlamlı kullanıcı metni her hedef dilde karşılanır; kalan 28 kayıt sayı, sembol veya teknik bundle anahtarıdır.
+- Portföy dağılımı, eski doğrusal listeden ilk yedi pozisyonu ve gerektiğinde `Diğer` dilimini gösteren erişilebilir donut grafik + yüzde listesine dönüştürüldü. Dar genişlikte grafik ve lejant dikey yerleşir.
+- `1.0 (5)` reddine neden olan kamusal piyasa içeriğinin giriş duvarı arkasında kalması tekrar edilmedi: misafir Piyasalar, arama, kategoriler, varlık detayları ve grafiklere erişmeye devam eder.
+- Guideline 2.3.2 kapsamında kaldırılan Elite storefront promotional image yeniden eklenmemelidir. IAP Review Information görselleri bundan farklıdır ve korunur.
+
 ### İnceleme ve canlı satış öncesi takip edilecek açık riskler
 
 | Engel | Güncel durum | Kapatma koşulu / yetki sahibi |
@@ -61,7 +71,7 @@ Bu doküman TSC Forex'in güncel iOS sürümünü App Store Connect'e hazırlama
 | Review erişimi | İletişim alanları ve production login'i HTTP 200 ile doğrulanmış ayrı demo credentials kaydedildi | Account Holder review süresince iletişim bilgilerini erişilebilir tutar; demo hesabı silmez/değiştirmez. |
 | Copyright / yasal sahip | Apple'ın zorunlu alan kontrolü geçti; girilen yasal unvanın dayanağı teknik çalışmada bağımsız doğrulanmadı | Account Holder gerçek hak sahibi/yıl bilgisinin doğruluğunu korur; değişiklik varsa Apple'a bildirilir. |
 | Screenshots / iPad | App version görselleri ve dört subscription Review Information görseli yüklendi | Review görseli Account Holder'ın açık onayıyla yalnız Apple'a gönderildi; repository'ye eklenmez. Gelecek sürümlerde kişisel profil yerine ayrı review/demo hesabı kullanılır. |
-| Signed build | `1.0 (6)` signed archive/upload ve processing tamamlandı; altı öğeli submission `Waiting for Review` | Apple inceleme sonucu izlenir; yeni metadata/build değişikliği yapılırsa release kaydı güncellenir. |
+| Signed build | `1.0 (6)` onaylandı ve `Ready for Distribution`; `1.1 (7)` kaynak/Debug kontrolleri tamamlandı | `1.1 (7)` signed archive validate/upload, processing, build seçimi ve yeni submission durumu bu dokümana işlenir. |
 | Apple anahtarları | DeviceCheck ve Sign in with Apple `.p8`/Key ID değerleri GitHub Actions ve Kubernetes production secret'larında mevcut; pod içi dosya/KID kontrolleri geçti | Gerçek DeviceCheck free-trial claim ve Sign in with Apple revoke senaryolarının fiziksel cihaz/sandbox kanıtları saklanır. |
 | StoreKit uçtan uca test | Purchase/restore/plan değişimi/refund/revoke matrisi tamamlanmadı | Bölüm 9.1'deki matris kanıtlarıyla PASS olur. |
 
@@ -495,12 +505,12 @@ Grace Period **OFF** olduğu için grace-period erişim satırı ilk release iç
 ### 9.2 Signed archive, upload ve review sırası
 
 1. Bölüm 10'daki teknik kapıları tamamlayın; Paid Apps Agreement/Tax/Banking, Content Rights, App Privacy ve gerçek review erişimi çözülmeden review'a göndermeyin.
-2. Xcode target'larında Marketing Version `1.0`, daha önce yüklenmemiş benzersiz bir Build numarası, bundle ID `talhacan.tscforex` ve widget ID `talhacan.tscforex.TSCWidget` olduğunu doğrulayın. Release scheme production API ve production entitlements kullanmalıdır.
+2. Xcode target'larında Marketing Version `1.1`, daha önce yüklenmemiş Build `7`, bundle ID `talhacan.tscforex` ve widget ID `talhacan.tscforex.TSCWidget` olduğunu doğrulayın. Release scheme production API ve production entitlements kullanmalıdır.
 3. Fiziksel iPhone'da signed Release smoke testi yapın; ardından iPad desteği korunuyorsa fiziksel cihaz veya uygun simulator'da bütün kritik layout/akışları test edin.
 4. Xcode'da `Any iOS Device (arm64)` / generic device seçip **Product → Archive** çalıştırın. Organizer'da app + widget signing team, provisioning profile, capabilities, privacy manifest ve export compliance özetini inceleyin.
 5. Organizer → **Validate App** çalıştırın. Error kalmamalı; warning'ler de tek tek açıklanıp release riski taşımadığı doğrulanmalıdır.
 6. Organizer → **Distribute App → App Store Connect → Upload** ile build'i yükleyin. Upload başarı mesajı yetmez; App Store Connect'te processing tamamlanıp build görünene kadar bekleyin.
-7. İşlenen build'i `1.0 Prepare for Submission` sürümüne seçin; encryption/export compliance sorusunu gerçek archive davranışına göre cevaplayın.
+7. İşlenen build'i `1.1 Prepare for Submission` sürümüne seçin; encryption/export compliance sorusunu gerçek archive davranışına göre cevaplayın.
 8. 6.5-inch exact iPhone screenshot setini ve mevcut universal destek nedeniyle iPad setini yükleyin. Description, promotional text, keywords, Support/Marketing/Privacy URL'lerini son production UI ile karşılaştırın.
 9. Dört subscription'ı aynı app version'ın **In-App Purchases and Subscriptions** bölümüne ekleyin; her üründe localization, availability, fiyat ve ayrı review screenshot'ı bulunduğunu doğrulayın.
 10. App Privacy formunu production veri akışına göre publish edin; Content Rights, copyright ve review contact alanlarını Account Holder doğrulanmış bilgilerle tamamlasın. Çalışan demo credentials yalnız güvenli review alanlarına girilsin.
@@ -514,7 +524,9 @@ Grace Period **OFF** olduğu için grace-period erişim satırı ilk release iç
 
 ### Ürün ve UX
 
-- [x] App name, bundle ID ve ikon doğru; `1.0 (5)` red nedenleri belgelendi ve build numarası `1.0 (6)` olarak artırıldı.
+- [x] App name, bundle ID ve ikon doğru; `1.0 (5)` red nedenleri belgelendi, `1.0 (6)` onaylandı ve yeni sürüm `1.1 (7)` olarak artırıldı.
+- [x] Türkçe, İngilizce, Arapça, Almanca, İtalyanca ve İspanyolca bundle localization'ları mevcut; Arapça RTL ve uygulama içi dil seçimi doğrulandı.
+- [x] Portföy dağılımı erişilebilir donut grafik + lejant olarak uygulandı; dar ekran yerleşimi için dikey fallback var.
 - [x] Kamusal piyasa listesi, arama, kategoriler, varlık detayları ve grafikler temiz oturumda kayıt/giriş olmadan açılıyor; account-based alanlar açıklamalı giriş kapısı kullanıyor.
 - [x] Uygulama fiyatı Türkiye bazında `₺0,00`; ilk sürüm yalnız Türkiye'de public iPhone/iPad dağıtımına açık, Mac/Vision Pro kapalı.
 - [ ] iPhone ve destek sürüyorsa iPad'de launch, login/logout, cold start ve offline/error durumları çalışıyor.
@@ -529,7 +541,7 @@ Grace Period **OFF** olduğu için grace-period erişim satırı ilk release iç
 - [x] Level sırası Elite → Uzman → Pro → Başlangıç olarak kaydedildi.
 - [x] Her ürünün bir aylık duration, Türkçe localization, Türkiye availability ve exact TRY price point'i kaydedildi.
 - [x] Dört ürünün Review Information screenshot'ı tamamlandı.
-- [x] Dört IAP ve subscription group Build 6 app version ile birlikte submission `35107ec9-3de3-4f01-b22a-b4f9e72e658f` içine eklendi; altı öğe `Waiting for Review`.
+- [x] Dört IAP ve subscription group Build 6 app version ile birlikte submission `35107ec9-3de3-4f01-b22a-b4f9e72e658f` içinde onaylandı; yeni 1.1 güncellemesinde mevcut ürün metadata'sı değiştirilmeden korunur.
 - [ ] Paywall StoreKit fiyatı, ay, auto-renew, Terms, Privacy, Restore ve Manage gösteriyor.
 - [ ] Satın alma yalnız verified transaction/backend entitlement sonrası açılıyor.
 - [ ] Restore, upgrade/downgrade, expiration, refund/revoke ve billing retry testleri geçti.
@@ -560,7 +572,7 @@ Grace Period **OFF** olduğu için grace-period erişim satırı ilk release iç
 - [ ] Bütün piyasa/haber/web kaynakları ve marka görselleri için içerik/yeniden dağıtım hakları belgelendi; Content Rights cevabı kanıtla uyumlu.
 - [ ] Encryption/export compliance doğru cevaplandı.
 - [x] App Review için ayrı demo hesabın production login'i doğrulandı ve credentials yalnız App Store Connect'in güvenli alanlarında tutuluyor.
-- [x] Review Notes Build 6 misafir erişimini ve hesap temelli yolları açıkça içeriyor; production login'i HTTP 200 ile doğrulanan credentials yalnız ayrı güvenli username/password alanlarında kayıtlı.
+- [x] Review Notes Build 6 misafir erişimini ve hesap temelli yolları açıkça içeriyor; 1.1 notlarında aynı düzeltme korunacak ve production login'i HTTP 200 ile doğrulanan credentials yalnız ayrı güvenli username/password alanlarında tutulacak.
 - [x] Minimum screenshot alanları için exact `1284×2778` iPhone ve `2064×2752` iPad görselleri yüklendi; kapsamlı pazarlama seti ayrıca geliştirilecek.
 - [ ] App ve IAP review screenshots kişisel veri/debug öğesi içermiyor.
 - [ ] Support iletişimi izleniyor; reviewer sorusuna hızlı yanıt verilecek.

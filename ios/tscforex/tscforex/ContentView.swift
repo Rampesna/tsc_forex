@@ -31,11 +31,11 @@ enum AppTab: Int, CaseIterable {
     case markets, portfolio, rewards, alerts, settings
     var title: String {
         switch self {
-        case .markets: return "Piyasa"
-        case .portfolio: return "Portföy"
-        case .rewards: return "Ödüller"
-        case .alerts: return "Alarm"
-        case .settings: return "Ayarlar"
+        case .markets: return L10n.text("Piyasa")
+        case .portfolio: return L10n.text("Portföy")
+        case .rewards: return L10n.text("Ödüller")
+        case .alerts: return L10n.text("Alarm")
+        case .settings: return L10n.text("Ayarlar")
         }
     }
     var icon: String {
@@ -177,10 +177,10 @@ private struct AccountRequiredView: View {
 
     private var explanation: String {
         switch tab {
-        case .portfolio: return "Portföyünüzü cihazlar arasında güvenle eşitlemek için hesabınızla giriş yapın."
-        case .rewards: return "Görevlerinizi, öğrenme ilerlemenizi ve rozetlerinizi hesabınıza kaydedin."
-        case .alerts: return "Fiyat alarmlarınızı oluşturmak ve bildirim almak için hesabınızla giriş yapın."
-        case .settings: return "Profilinizi, aboneliğinizi ve uygulama tercihlerinizi yönetmek için giriş yapın."
+        case .portfolio: return L10n.text("Portföyünüzü cihazlar arasında güvenle eşitlemek için hesabınızla giriş yapın.")
+        case .rewards: return L10n.text("Görevlerinizi, öğrenme ilerlemenizi ve rozetlerinizi hesabınıza kaydedin.")
+        case .alerts: return L10n.text("Fiyat alarmlarınızı oluşturmak ve bildirim almak için hesabınızla giriş yapın.")
+        case .settings: return L10n.text("Profilinizi, aboneliğinizi ve uygulama tercihlerinizi yönetmek için giriş yapın.")
         case .markets: return ""
         }
     }
@@ -196,7 +196,7 @@ private struct AccountRequiredView: View {
                         .foregroundStyle(Theme.accent)
                         .frame(width: 74, height: 74)
                         .background(Theme.accentSoft, in: RoundedRectangle(cornerRadius: 22, style: .continuous))
-                    Text("\(tab.title) için giriş yapın")
+                    Text(L10n.format("%@ için giriş yapın", tab.title))
                         .font(.system(size: 23, weight: .bold))
                         .foregroundStyle(Theme.text)
                     Text(explanation)
@@ -305,6 +305,7 @@ struct ContentView_Previews: PreviewProvider {
             .environmentObject(PriceStore())
             .environmentObject(PortfolioStore())
             .environmentObject(BillingStore())
+            .environmentObject(LanguageStore())
     }
 }
 #endif

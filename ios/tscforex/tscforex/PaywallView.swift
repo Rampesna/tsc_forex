@@ -32,7 +32,7 @@ struct PaywallView: View {
                                     Text("App Store seçenekleri yükleniyor…")
                                         .font(.system(size: 12)).foregroundStyle(Theme.textDim)
                                 } else if let error = billing.catalogError {
-                                    Text(error)
+                                    Text(L10n.text(error))
                                         .font(.system(size: 12)).foregroundStyle(Theme.down)
                                         .multilineTextAlignment(.center)
                                     Button("Tekrar Dene") {
@@ -85,7 +85,7 @@ struct PaywallView: View {
             HStack(alignment: .top, spacing: 10) {
                 Image(systemName: isError ? "exclamationmark.triangle" : "info.circle")
                     .foregroundStyle(isError ? Theme.down : Theme.accent)
-                Text(text)
+                Text(L10n.text(text))
                     .font(.system(size: 11)).foregroundStyle(Theme.textDim)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 Button("Kapat") { billing.message = nil }

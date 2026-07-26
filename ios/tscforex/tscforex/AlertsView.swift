@@ -332,9 +332,9 @@ struct ScreenHeader: View {
     var body: some View {
         HStack {
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).font(.system(size: 26, weight: .bold)).foregroundStyle(Theme.text)
+                Text(L10n.text(title)).font(.system(size: 26, weight: .bold)).foregroundStyle(Theme.text)
                 if let subtitle {
-                    Text(subtitle).font(.system(size: 12)).foregroundStyle(Theme.textDim)
+                    Text(L10n.text(subtitle)).font(.system(size: 12)).foregroundStyle(Theme.textDim)
                 }
             }
             Spacer()

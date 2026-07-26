@@ -8,7 +8,7 @@ import androidx.compose.ui.platform.LocalContext
 
 /** Shows a short Android system toast. Prefer this over inline error text. */
 fun Context.appToast(message: String, long: Boolean = true) {
-    val text = message.trim()
+    val text = AppLocale.text(this, message.trim())
     if (text.isEmpty()) return
     Toast.makeText(this, text, if (long) Toast.LENGTH_LONG else Toast.LENGTH_SHORT).show()
 }

@@ -94,7 +94,7 @@ struct SegBar<T: Hashable>: View {
         HStack(spacing: 4) {
             ForEach(items, id: \.value) { item in
                 let active = item.value == selection
-                Text(item.label)
+                Text(L10n.text(item.label))
                     .font(.system(size: 13, weight: active ? .bold : .medium))
                     .foregroundStyle(active ? Theme.text : Theme.textDim)
                     .frame(maxWidth: .infinity)
@@ -123,7 +123,7 @@ struct StatTile: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text(label).font(.system(size: 11)).foregroundStyle(Theme.textDim).lineLimit(1)
+            Text(L10n.text(label)).font(.system(size: 11)).foregroundStyle(Theme.textDim).lineLimit(1)
             Text(value).font(Theme.number(14, weight: .semibold)).foregroundStyle(tint)
                 .lineLimit(1).minimumScaleFactor(0.55)
         }

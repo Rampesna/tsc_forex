@@ -75,6 +75,9 @@ Fiyat verileri üçüncü taraf kaynaklardan alınır; gecikme veya hata içereb
 
 ### 2.3 Yenilikler (Release notes)
 ```
+• Türkçe, İngilizce, Arapça, Almanca, İtalyanca ve İspanyolca dil desteği eklendi
+• Arapça için sağdan sola yerleşim ve dile uygun sayı/tarih biçimlendirmesi eklendi
+• Portföy dağılımı donut grafik ve yanında ayrıntılı yüzde listesi olarak yenilendi
 • Tüm ekranlar farklı telefon ve yazı boyutlarına uyumlu, daha modern bir tasarımla yenilendi
 • Piyasa, varlık detayı ve portföy grafikleri daha okunaklı ve etkileşimli hale getirildi
 • Portföye alım, satım ve diğer işlem ekleme akışı sadeleştirildi
@@ -220,6 +223,9 @@ Uygulamanın bir kısmı giriş gerektirdiğinden, inceleme ekibine erişim veri
 - [ ] `applicationId = com.talhacan.tscforex` (com.example kaldırıldı — doğrulandı)
 - [ ] Uygulama adı/etiket: **TSC Forex** (doğrulandı: `app_name`)
 - [ ] `versionCode`/`versionName` artırıldı
+- [ ] `versionCode 5` / `versionName 1.2.0` içeren release artifact doğrulandı
+- [ ] `tr`, `en`, `ar`, `de`, `it`, `es` locale config ve Arapça RTL smoke testi doğrulandı
+- [ ] Portföy donut grafik + lejant dar ve geniş telefonlarda doğrulandı
 - [ ] Çözülmüş bağımlılık ağacında `com.android.billingclient:*:9.1.0` doğrulandı
 - [ ] Release AAB, Play App Signing ile imzalandı
 - [ ] Google Sign-In için Play App Signing SHA-1 + paket adı ayrı OAuth istemcisine eklendi (Bölüm 1.2)
@@ -266,4 +272,4 @@ Uygulamanın bir kısmı giriş gerektirdiğinden, inceleme ekibine erişim veri
 
 ---
 
-_Son güncelleme: 14 Temmuz 2026_
+_Son güncelleme: 26 Temmuz 2026_

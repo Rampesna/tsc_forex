@@ -5,6 +5,17 @@
 	<!-- The app uses only HTTPS/WSS and does not weaken App Transport Security. -->
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>tr</string>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>tr</string>
+		<string>en</string>
+		<string>ar</string>
+		<string>de</string>
+		<string>it</string>
+		<string>es</string>
+	</array>
 	<!-- Google Sign-In OAuth callback (reversed iOS client ID). -->
 	<key>CFBundleURLTypes</key>
 	<array>

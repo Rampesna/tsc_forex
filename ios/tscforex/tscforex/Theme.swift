@@ -94,11 +94,11 @@ enum Fmt {
     }
 
     static func signedPct(_ v: Double) -> String {
-        String(format: "%+.2f%%", v)
+        String(format: "%+.2f%%", locale: L10n.language.locale, arguments: [v])
     }
 
     static func signed(_ v: Double) -> String {
-        String(format: "%+.2f", v)
+        String(format: "%+.2f", locale: L10n.language.locale, arguments: [v])
     }
 
     // Compact large-number formatting with Turkish scale suffixes
@@ -106,10 +106,10 @@ enum Fmt {
     static func compactNum(_ v: Double) -> String {
         let a = abs(v)
         switch a {
-        case 1e12...: return grouped(v / 1e12, digits: 2) + " Tn"
-        case 1e9...:  return grouped(v / 1e9, digits: 2) + " Mr"
-        case 1e6...:  return grouped(v / 1e6, digits: 2) + " Mn"
-        case 1e3...:  return grouped(v / 1e3, digits: 2) + " B"
+        case 1e12...: return grouped(v / 1e12, digits: 2) + " " + L10n.text("Tn")
+        case 1e9...:  return grouped(v / 1e9, digits: 2) + " " + L10n.text("Mr")
+        case 1e6...:  return grouped(v / 1e6, digits: 2) + " " + L10n.text("Mn")
+        case 1e3...:  return grouped(v / 1e3, digits: 2) + " " + L10n.text("B")
         default:      return grouped(v, digits: a >= 1 ? 2 : 4)
         }
     }
@@ -139,20 +139,19 @@ enum Fmt {
     static func trim(_ v: Double) -> String {
         let f = NumberFormatter()
         f.numberStyle = .decimal
+        f.locale = L10n.language.locale
         f.minimumFractionDigits = 0
         f.maximumFractionDigits = 4
-        f.groupingSeparator = "."
-        f.decimalSeparator = ","
         return f.string(from: NSNumber(value: v)) ?? String(v)
     }
 
     private static func grouped(_ v: Double, digits: Int) -> String {
         let f = NumberFormatter()
         f.numberStyle = .decimal
+        f.locale = L10n.language.locale
         f.minimumFractionDigits = digits
         f.maximumFractionDigits = digits
-        f.groupingSeparator = "."
-        f.decimalSeparator = ","
-        return f.string(from: NSNumber(value: v)) ?? String(format: "%.\(digits)f", v)
+        return f.string(from: NSNumber(value: v))
+            ?? String(format: "%.\(digits)f", locale: L10n.language.locale, arguments: [v])
     }
 }

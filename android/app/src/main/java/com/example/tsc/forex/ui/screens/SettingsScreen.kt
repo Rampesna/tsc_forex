@@ -18,7 +18,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Text
+import com.example.tsc.forex.ui.LocalizedText as Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -31,6 +31,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalUriHandler
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -38,11 +39,14 @@ import androidx.compose.ui.unit.sp
 import coil.compose.AsyncImage
 import com.example.tsc.forex.AppConfig
 import com.example.tsc.forex.BuildConfig
+import com.example.tsc.forex.auth.findActivity
 import com.example.tsc.forex.data.Prefs
 import com.example.tsc.forex.store.AuthStore
 import com.example.tsc.forex.store.BillingStore
 import com.example.tsc.forex.store.PriceStore
 import com.example.tsc.forex.ui.Card
+import com.example.tsc.forex.ui.AppLanguage
+import com.example.tsc.forex.ui.AppLocale
 import com.example.tsc.forex.ui.PrimaryActionButton
 import com.example.tsc.forex.ui.ScreenHeader
 import com.example.tsc.forex.ui.ToastOnChange
@@ -58,11 +62,13 @@ fun SettingsScreen(
     onOpenArchive: () -> Unit,
 ) {
     val uriHandler = LocalUriHandler.current
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var confirmDelete by remember { mutableStateOf(false) }
     var showPaywall by remember { mutableStateOf(false) }
     var showProfile by remember { mutableStateOf(false) }
     var acceptedAI by remember { mutableStateOf(false) }
+    var showLanguage by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
         auth.loadProfile()
@@ -84,6 +90,28 @@ fun SettingsScreen(
                 .padding(bottom = 100.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) {
+            Card {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("DİL", color = Th.textDim, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(Th.surfaceAlt)
+                            .clickable { showLanguage = true }
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text("🌐", fontSize = 20.sp)
+                        Column(Modifier.weight(1f).padding(horizontal = 12.dp)) {
+                            Text("Uygulama dili", color = Th.text, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                            Text(AppLocale.selected(context).nativeName, color = Th.textDim, fontSize = 11.sp)
+                        }
+                        Text("›", color = Th.accent, fontSize = 18.sp)
+                    }
+                }
+            }
+
             Card {
                 Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                     Text("HESAP", color = Th.textDim, fontSize = 11.sp, fontWeight = FontWeight.Bold)
@@ -294,6 +322,57 @@ fun SettingsScreen(
             },
         )
     }
+    if (showLanguage) {
+        LanguageDialog(
+            selected = AppLocale.selected(context),
+            onDismiss = { showLanguage = false },
+            onSelect = { language ->
+                AppLocale.select(context, language)
+                showLanguage = false
+                context.findActivity()?.recreate()
+            },
+        )
+    }
+}
+
+@Composable
+private fun LanguageDialog(
+    selected: AppLanguage,
+    onDismiss: () -> Unit,
+    onSelect: (AppLanguage) -> Unit,
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = Th.surface,
+        title = { Text("Uygulama dili", color = Th.text, fontWeight = FontWeight.Bold) },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                AppLanguage.entries.forEach { language ->
+                    Row(
+                        Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .background(if (language == selected) Th.accent.copy(alpha = 0.14f) else Th.surfaceAlt)
+                            .clickable { onSelect(language) }
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            language.nativeName,
+                            color = if (language == selected) Th.accent else Th.text,
+                            fontSize = 14.sp,
+                            fontWeight = if (language == selected) FontWeight.Bold else FontWeight.Medium,
+                            modifier = Modifier.weight(1f),
+                        )
+                        if (language == selected) Text("✓", color = Th.accent, fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismiss) { Text("Kapat", color = Th.accent) }
+        },
+    )
 }
 
 @Composable
