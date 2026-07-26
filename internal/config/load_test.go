@@ -40,6 +40,26 @@ func TestLoadDefaults(t *testing.T) {
 	}
 }
 
+func TestLoadAndroidAssetLinkFingerprintsFromEnv(t *testing.T) {
+	clearAppEnv(t)
+	t.Setenv("APP_OAUTH_ANDROID_PACKAGE_NAME", "com.talhacan.tscforex")
+	t.Setenv("APP_OAUTH_ANDROID_SHA256", "DEBUG_SHA256,PLAY_SHA256")
+
+	m, err := Load("")
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	cfg := m.Get()
+	if cfg.OAuth.AndroidPackageName != "com.talhacan.tscforex" {
+		t.Fatalf("AndroidPackageName = %q", cfg.OAuth.AndroidPackageName)
+	}
+	if len(cfg.OAuth.AndroidSHA256) != 2 ||
+		cfg.OAuth.AndroidSHA256[0] != "DEBUG_SHA256" ||
+		cfg.OAuth.AndroidSHA256[1] != "PLAY_SHA256" {
+		t.Fatalf("AndroidSHA256 = %#v", cfg.OAuth.AndroidSHA256)
+	}
+}
+
 func TestLoadFromYAML(t *testing.T) {
 	clearAppEnv(t)
 

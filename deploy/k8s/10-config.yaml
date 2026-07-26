@@ -76,7 +76,7 @@ data:
   APP_OAUTH_APPLE_KEY_ID: ""
   APP_OAUTH_APPLE_PRIVATE_KEY_PATH: "/etc/apple-auth/sign-in-with-apple.p8"
   APP_OAUTH_ANDROID_PACKAGE_NAME: "com.talhacan.tscforex"
-  APP_OAUTH_ANDROID_SHA256: "0A:AB:C2:DD:D5:A9:70:55:0A:8C:45:E9:A6:5B:82:29:91:28:0B:04:AD:34:3A:BE:FF:0E:1D:CB:F8:31:62:38"
+  APP_OAUTH_ANDROID_SHA256: "0A:AB:C2:DD:D5:A9:70:55:0A:8C:45:E9:A6:5B:82:29:91:28:0B:04:AD:34:3A:BE:FF:0E:1D:CB:F8:31:62:38,AE:7C:A1:5C:06:57:50:8D:DC:0E:2F:11:7D:DE:3A:4D:78:83:B1:32:8A:80:E4:AE:BA:A6:A7:EF:5D:00:F8:16"
   # Sign in with Apple (web) domain verification. Paste the verbatim content of
   # the file Apple issues on the Services ID (tscforex) config
   # screen; it is then served at

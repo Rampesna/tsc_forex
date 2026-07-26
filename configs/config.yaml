@@ -178,9 +178,10 @@ oauth:
   apple_key_id: ""
   apple_private_key_path: ""
   android_package_name: com.talhacan.tscforex
-  # Debug keystore SHA-256 (local release installs). Add Play App Signing SHA-256 before store release.
+  # Debug/local release and Google Play App Signing SHA-256 fingerprints.
   android_sha256:
     - "0A:AB:C2:DD:D5:A9:70:55:0A:8C:45:E9:A6:5B:82:29:91:28:0B:04:AD:34:3A:BE:FF:0E:1D:CB:F8:31:62:38"
+    - "AE:7C:A1:5C:06:57:50:8D:DC:0E:2F:11:7D:DE:3A:4D:78:83:B1:32:8A:80:E4:AE:BA:A6:A7:EF:5D:00:F8:16"
   # Sign in with Apple (web) domain verification file content (from the Services
   # ID config screen). Served at
   # /.well-known/apple-developer-domain-association.txt. Set via

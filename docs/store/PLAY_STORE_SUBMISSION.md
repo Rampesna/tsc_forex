@@ -31,11 +31,13 @@ Passkey/WebAuthn login (`/auth/passkey/login/*`) Android'de Credential Manager i
 > Bu yapılandırma tamamlanana kadar passkey butonu "kayıtlı geçiş anahtarı bulunamadı" mesajı verir; e-posta/Google girişi etkilenmez.
 
 ### 1.2 Google Sign-In için ZORUNLU adım (release)
-`applicationId` ve release imzası değiştiği için, Google Cloud Console'da **yeni bir OAuth Android istemcisi** tanımlanmalıdır:
+Google Play, indirilen uygulamayı Play App Signing anahtarıyla yeniden imzalar. Bu nedenle yerel/debug istemcisini değiştirmeden, mağaza sürümü için **ayrı bir OAuth Android istemcisi** tanımlanmalıdır:
 1. Google Cloud Console → APIs & Services → Credentials → Create OAuth client ID → **Android**.
 2. Package name: `com.talhacan.tscforex`.
-3. SHA-1: **Play App Signing** sertifikasının SHA-1'i (Play Console → Setup → App integrity → App signing key certificate) **ve** yükleme (upload) anahtarının SHA-1'i.
+3. SHA-1: Play Console → Google Play ile korunanlar → Uygulama imzalama → **Klasik anahtar** altındaki Play App Signing SHA-1'i.
 4. Uygulama, Credential Manager `serverClientId` olarak **web client ID**'yi kullanır (`AppConfig.GOOGLE_WEB_CLIENT_ID`); Android istemcisi yalnızca doğrulama içindir.
+
+> Upload anahtarının SHA-1'i, Play Store'dan indirilen uygulamanın çalışma zamanı imzası değildir. Aynı paket adıyla birden fazla imza kullanılacaksa her imza için ayrı Android OAuth istemcisi oluşturun.
 
 ---
 
@@ -215,7 +217,7 @@ Uygulamanın bir kısmı giriş gerektirdiğinden, inceleme ekibine erişim veri
 - [ ] Uygulama adı/etiket: **TSC Forex** (doğrulandı: `app_name`)
 - [ ] `versionCode`/`versionName` artırıldı
 - [ ] Release AAB, Play App Signing ile imzalandı
-- [ ] Google Sign-In için release SHA-1 + paket adı OAuth istemcisine eklendi (Bölüm 1.1)
+- [ ] Google Sign-In için Play App Signing SHA-1 + paket adı ayrı OAuth istemcisine eklendi (Bölüm 1.2)
 - [ ] Data Safety formu Bölüm 3'e göre dolduruldu
 - [ ] Privacy Policy URL erişilebilir: https://tsc.talhacan.com/privacy
 - [ ] Hesap silme: uygulama içi + URL (Bölüm 5)

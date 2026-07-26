@@ -23,17 +23,13 @@ class GoogleSignInFailed(message: String) : Exception(message)
  * verifies it and issues our own session.
  *
  * Requires a Google Cloud **Android** OAuth client with package
- * `com.talhacan.tscforex` + this build's SHA-1. Missing/wrong Android client
- * often surfaces as [GetCredentialCancellationException] ("Activity is
- * cancelled by the user") right after the account is selected — not a real
- * user cancel.
+ * `com.talhacan.tscforex` + this build's SHA-1. Local builds and Google Play
+ * builds are signed with different certificates, so each SHA-1 must have its
+ * own Android OAuth client. A missing client often surfaces as
+ * [GetCredentialCancellationException] right after the account is selected.
  */
 object GoogleSignIn {
     private const val TAG = "GoogleSignIn"
-    private const val OAUTH_HINT =
-        "Google Cloud → OAuth Android istemcisi: paket com.talhacan.tscforex, " +
-            "SHA-1 0E:F8:E0:12:51:04:AA:39:DE:90:D5:17:A2:24:A6:5F:FC:72:37:66 " +
-            "(debug/local release). serverClientId web client olmalı."
 
     suspend fun idToken(context: Context): String {
         val activity = context.requireActivity()
@@ -74,7 +70,7 @@ object GoogleSignIn {
             )
         } catch (e: NoCredentialException) {
             throw GoogleSignInFailed(
-                "Cihazda kullanılabilir Google hesabı bulunamadı. $OAUTH_HINT",
+                "Cihazda kullanılabilir Google hesabı bulunamadı.",
             )
         }
     }
@@ -103,12 +99,10 @@ object GoogleSignIn {
             // Misconfigured Android OAuth client commonly looks like a user cancel.
             val looksLikeConfig =
                 detail?.contains("reauth", ignoreCase = true) == true ||
-                    detail?.contains("cancelled by the user", ignoreCase = true) == true ||
-                    detail.isNullOrBlank()
+                    detail?.contains("developer console", ignoreCase = true) == true
             if (looksLikeConfig) {
                 throw GoogleSignInFailed(
-                    "Google hesabı seçildi ama giriş tamamlanamadı. $OAUTH_HINT" +
-                        (detail?.let { " ($it)" } ?: ""),
+                    "Google girişi şu anda tamamlanamıyor. Lütfen birkaç dakika sonra tekrar deneyin.",
                 )
             }
             throw GoogleSignInCancelled()
@@ -124,9 +118,8 @@ object GoogleSignIn {
                 when {
                     detail?.contains("10:", ignoreCase = true) == true ||
                         detail?.contains("Developer console", ignoreCase = true) == true ->
-                        "Google OAuth yapılandırması hatalı. $OAUTH_HINT ($detail)"
-                    detail != null -> "Google girişi başarısız: $detail"
-                    else -> "Google girişi başarısız. $OAUTH_HINT"
+                        "Google girişi şu anda kullanılamıyor. Lütfen daha sonra tekrar deneyin."
+                    else -> "Google girişi tamamlanamadı. Lütfen tekrar deneyin."
                 },
             )
         }

@@ -189,6 +189,8 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("oauth.apple_revoke_client_id", "talhacan.tscforex")
 	v.SetDefault("oauth.apple_key_id", "")
 	v.SetDefault("oauth.apple_private_key_path", "")
+	v.SetDefault("oauth.android_package_name", "")
+	v.SetDefault("oauth.android_sha256", []string{})
 
 	// Safe default when no config file/env is present (tests, bare runs): the
 	// mock provider needs no network. Production sets yahoo via config/ConfigMap.
