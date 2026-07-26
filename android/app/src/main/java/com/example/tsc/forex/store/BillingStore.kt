@@ -16,9 +16,9 @@ import com.android.billingclient.api.ProductDetails
 import com.android.billingclient.api.Purchase
 import com.android.billingclient.api.PurchasesUpdatedListener
 import com.android.billingclient.api.QueryProductDetailsParams
+import com.android.billingclient.api.QueryProductDetailsResult
 import com.android.billingclient.api.QueryPurchasesParams
 import com.android.billingclient.api.acknowledgePurchase
-import com.android.billingclient.api.queryProductDetails
 import com.android.billingclient.api.queryPurchasesAsync
 import com.example.tsc.forex.data.ApiClient
 import com.example.tsc.forex.data.BillingStatus
@@ -29,9 +29,11 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlin.coroutines.resume
 
 /**
  * Google Play Billing + server entitlement sync.
@@ -50,6 +52,7 @@ class BillingStore(
 
     private val billingClient: BillingClient = BillingClient.newBuilder(app)
         .setListener(this)
+        .enableAutoServiceReconnection()
         .enablePendingPurchases(
             PendingPurchasesParams.newBuilder().enableOneTimeProducts().build(),
         )
@@ -310,14 +313,33 @@ class BillingStore(
                 },
             )
             .build()
-        val result = billingClient.queryProductDetails(params)
-        if (result.billingResult.responseCode != BillingClient.BillingResponseCode.OK) {
-            Log.w(TAG, "queryProductDetails: ${result.billingResult.debugMessage}")
+        val (billingResult, detailsResult) = queryProductDetailsV9(params)
+        if (billingResult.responseCode != BillingClient.BillingResponseCode.OK) {
+            Log.w(TAG, "queryProductDetails: ${billingResult.debugMessage}")
             return
         }
-        playProductDetails = result.productDetailsList
-            .orEmpty()
+        if (detailsResult.unfetchedProductList.isNotEmpty()) {
+            Log.w(
+                TAG,
+                "unfetched products: ${
+                    detailsResult.unfetchedProductList.joinToString {
+                        "${it.productId}:${it.statusCode}"
+                    }
+                }",
+            )
+        }
+        playProductDetails = detailsResult.productDetailsList
             .associateBy { it.productId }
+    }
+
+    private suspend fun queryProductDetailsV9(
+        params: QueryProductDetailsParams,
+    ): Pair<BillingResult, QueryProductDetailsResult> = suspendCancellableCoroutine { continuation ->
+        billingClient.queryProductDetailsAsync(params) { billingResult, detailsResult ->
+            if (continuation.isActive) {
+                continuation.resume(billingResult to detailsResult)
+            }
+        }
     }
 
     private suspend fun queryOwnedSubscriptions(): List<Purchase> {
@@ -359,6 +381,13 @@ class BillingStore(
     }
 
     private fun playBillingMessage(result: BillingResult): String {
+        when (result.onPurchasesUpdatedSubResponseCode) {
+            BillingClient.OnPurchasesUpdatedSubResponseCode.PAYMENT_DECLINED_DUE_TO_INSUFFICIENT_FUNDS ->
+                return "Google Play: Ödeme yöntemi bakiyesi yetersiz."
+
+            BillingClient.OnPurchasesUpdatedSubResponseCode.USER_INELIGIBLE ->
+                return "Google Play: Bu hesap seçilen abonelik teklifinden yararlanamıyor."
+        }
         val detail = result.debugMessage.trim().ifBlank { "kod ${result.responseCode}" }
         return "Google Play: $detail"
     }

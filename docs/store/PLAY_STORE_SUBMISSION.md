@@ -20,6 +20,7 @@ Bu doküman, TSC Forex Android uygulamasını Google Play'e **ilk seferde, red/a
 | Reklam | Yok (No ads) |
 | Hedef API düzeyi | 36 (Android 16) — Play güncellik gereksinimini karşılar |
 | Min SDK | 24 (Android 7.0) |
+| Google Play Billing | 9.1.0 — 31 Ağustos 2026 gereksinimini karşılar |
 
 > **ÖNEMLİ:** `applicationId` artık `com.talhacan.tscforex`'tir. `com.example.*` paketleri Play tarafından **reddedilir**; bu düzeltildi. Dahili `namespace` (com.example.tsc.forex) yalnızca R/BuildConfig üretimi içindir ve yayınlanan pakete yansımaz.
 
@@ -80,6 +81,7 @@ Fiyat verileri üçüncü taraf kaynaklardan alınır; gecikme veya hata içereb
 • Alarmlar, planlar, ödüller ve rozet ilerlemeleri iyileştirildi
 • Kapalı piyasa günlerinde günlük grafiklerin son işlem seansını göstermesi sağlandı
 • Android 7 ve üzerindeki cihazlar için tarih/grafik uyumluluğu güçlendirildi
+• Google Play Billing 9.1.0 uyumluluğu ve satın alma bağlantı güvenilirliği eklendi
 ```
 
 ### 2.4 İletişim ve URL'ler
@@ -218,6 +220,7 @@ Uygulamanın bir kısmı giriş gerektirdiğinden, inceleme ekibine erişim veri
 - [ ] `applicationId = com.talhacan.tscforex` (com.example kaldırıldı — doğrulandı)
 - [ ] Uygulama adı/etiket: **TSC Forex** (doğrulandı: `app_name`)
 - [ ] `versionCode`/`versionName` artırıldı
+- [ ] Çözülmüş bağımlılık ağacında `com.android.billingclient:*:9.1.0` doğrulandı
 - [ ] Release AAB, Play App Signing ile imzalandı
 - [ ] Google Sign-In için Play App Signing SHA-1 + paket adı ayrı OAuth istemcisine eklendi (Bölüm 1.2)
 - [ ] Data Safety formu Bölüm 3'e göre dolduruldu
