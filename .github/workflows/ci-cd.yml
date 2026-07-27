@@ -328,9 +328,33 @@ jobs:
             kubectl -n "$NS" rollout restart deployment/tsc-forex-app
           fi
 
-          kubectl -n "$NS" rollout status deployment/tsc-forex-app --timeout=420s
-          kubectl -n "$NS" rollout status deployment/tsc-forex-web --timeout=180s
-          kubectl -n "$NS" rollout status deployment/tsc-forex-webadmin --timeout=180s
+          rollout_or_diagnose() {
+            local deployment="$1"
+            local timeout="$2"
+            local selector="$3"
+            if kubectl -n "$NS" rollout status "deployment/$deployment" --timeout="$timeout"; then
+              return 0
+            fi
+
+            # Keep production failures diagnosable without opening a broad
+            # interactive server shell. Secret values are referenced through
+            # envFrom/volumes and are never printed by these commands.
+            echo "::group::Kubernetes diagnostics for $deployment"
+            kubectl -n "$NS" get deployment "$deployment" -o wide || true
+            kubectl -n "$NS" get pods -l "$selector" \
+              -o custom-columns='NAME:.metadata.name,PHASE:.status.phase,READY:.status.containerStatuses[*].ready,RESTARTS:.status.containerStatuses[*].restartCount,IMAGE:.spec.containers[*].image,NODE:.spec.nodeName' || true
+            kubectl -n "$NS" describe pods -l "$selector" || true
+            kubectl -n "$NS" logs -l "$selector" --all-containers \
+              --tail=160 --prefix --max-log-requests=20 || true
+            kubectl -n "$NS" logs -l "$selector" --all-containers \
+              --previous --tail=160 --prefix --max-log-requests=20 || true
+            echo "::endgroup::"
+            return 1
+          }
+
+          rollout_or_diagnose tsc-forex-app 420s app=tsc-forex-app
+          rollout_or_diagnose tsc-forex-web 180s app=tsc-forex-web
+          rollout_or_diagnose tsc-forex-webadmin 180s app=tsc-forex-webadmin
           # Validate mounted credential files and non-empty KIDs without printing
           # secret material. Real DeviceCheck remains a physical-device smoke.
           kubectl -n "$NS" exec deployment/tsc-forex-app -- sh -ec '
