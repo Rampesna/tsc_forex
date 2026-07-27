@@ -12,12 +12,16 @@ import (
 
 // Client is a single WebSocket connection managed by the Hub.
 type Client struct {
-	ID     string
-	UserID string // set when the connection is authenticated (JWT); "" = anonymous
-	hub    *Hub
-	conn   *websocket.Conn
-	send   chan []byte
-	log    *zap.Logger
+	ID          string
+	UserID      string // set when the connection is authenticated (JWT); "" = anonymous
+	Platform    string
+	UserAgent   string
+	RemoteAddr  string
+	ConnectedAt time.Time
+	hub         *Hub
+	conn        *websocket.Conn
+	send        chan []byte
+	log         *zap.Logger
 
 	sendOnce sync.Once
 }
@@ -27,11 +31,12 @@ func newClient(hub *Hub, conn *websocket.Conn, log *zap.Logger) *Client {
 		log = zap.NewNop()
 	}
 	return &Client{
-		ID:   uuid.NewString(),
-		hub:  hub,
-		conn: conn,
-		send: make(chan []byte, hub.cfg.SendBufferSize),
-		log:  log,
+		ID:          uuid.NewString(),
+		ConnectedAt: time.Now().UTC(),
+		hub:         hub,
+		conn:        conn,
+		send:        make(chan []byte, hub.cfg.SendBufferSize),
+		log:         log,
 	}
 }
 
@@ -50,6 +55,7 @@ func (c *Client) readPump() {
 	c.conn.SetReadLimit(cfg.MaxMessageSize)
 	_ = c.conn.SetReadDeadline(time.Now().Add(cfg.PongWait))
 	c.conn.SetPongHandler(func(string) error {
+		c.hub.touchPresence(c)
 		return c.conn.SetReadDeadline(time.Now().Add(cfg.PongWait))
 	})
 

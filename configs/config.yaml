@@ -242,6 +242,19 @@ billing:
   google_package_name: com.talhacan.tscforex
   google_credentials_path: ""
 
+# Private operations console. Production injects bootstrap_password through a
+# Kubernetes Secret; it must never be committed to this file.
+admin:
+  enabled: false
+  bootstrap_email: ""
+  bootstrap_password: ""
+  allowed_origin: http://localhost:5174
+  cookie_secure: false
+  max_recipients: 100000
+  campaign_batch_size: 100
+  send_per_second: 20
+  presence_ttl: 90s
+
 log:
   level: info
   encoding: json

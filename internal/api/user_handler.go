@@ -557,6 +557,7 @@ func (h *UserHandler) ListNotifications(c *gin.Context) {
 			Code:      n.Code,
 			Title:     n.Title,
 			Body:      n.Body,
+			DeepLink:  n.DeepLink,
 			Price:     n.Price,
 			ReadAt:    n.ReadAt,
 			CreatedAt: n.CreatedAt,
@@ -633,10 +634,14 @@ func (h *UserHandler) RegisterDevice(c *gin.Context) {
 		return
 	}
 	dt := &models.DeviceToken{
-		ID:       uuid.New(),
-		UserID:   uid,
-		Platform: req.Platform,
-		Token:    req.Token,
+		ID:          uuid.New(),
+		UserID:      uid,
+		Platform:    req.Platform,
+		Token:       req.Token,
+		Locale:      req.Locale,
+		AppVersion:  req.AppVersion,
+		DeviceModel: req.DeviceModel,
+		LastSeenAt:  time.Now().UTC(),
 	}
 	if err := h.devices.Upsert(c.Request.Context(), dt); err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "register failed"})

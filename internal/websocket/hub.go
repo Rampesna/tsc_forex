@@ -1,13 +1,22 @@
 package websocket
 
 import (
+	"context"
 	"sync"
 	"sync/atomic"
+	"time"
 
 	"go.uber.org/zap"
 
 	"github.com/tsc-forex/tsc_forex/internal/config"
+	"github.com/tsc-forex/tsc_forex/internal/presence"
 )
+
+type PresenceRecorder interface {
+	Connected(context.Context, presence.Entry) error
+	Heartbeat(context.Context, string) error
+	Disconnected(context.Context, string) error
+}
 
 // Hub maintains the set of active clients and broadcasts messages.
 // A single Run goroutine owns the clients map — no mutex on the hot path
@@ -29,8 +38,9 @@ type Hub struct {
 	droppedMsgs atomic.Int64
 	broadcasts  atomic.Int64
 
-	done chan struct{}
-	once sync.Once
+	done     chan struct{}
+	once     sync.Once
+	presence PresenceRecorder
 }
 
 // userMessage targets a single authenticated user's connections.
@@ -81,6 +91,7 @@ func (h *Hub) Run() {
 				set[c] = struct{}{}
 			}
 			h.clientCount.Store(int64(len(h.clients)))
+			h.recordPresence(c)
 			h.log.Debug("ws client registered",
 				zap.String("client_id", c.ID),
 				zap.Int64("clients", h.clientCount.Load()),
@@ -131,6 +142,45 @@ func (h *Hub) closeClient(c *Client) {
 		}
 	}
 	c.closeSend()
+	if h.presence != nil && c.UserID != "" {
+		go func(id string) {
+			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+			defer cancel()
+			_ = h.presence.Disconnected(ctx, id)
+		}(c.ID)
+	}
+}
+
+func (h *Hub) recordPresence(c *Client) {
+	if h.presence == nil || c == nil || c.UserID == "" {
+		return
+	}
+	entry := presence.Entry{
+		ConnectionID: c.ID, UserID: c.UserID, Platform: c.Platform,
+		UserAgent: c.UserAgent, RemoteAddr: c.RemoteAddr, ConnectedAt: c.ConnectedAt,
+	}
+	go func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_ = h.presence.Connected(ctx, entry)
+	}()
+}
+
+func (h *Hub) touchPresence(c *Client) {
+	if h.presence == nil || c == nil || c.UserID == "" {
+		return
+	}
+	go func(id string) {
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		_ = h.presence.Heartbeat(ctx, id)
+	}(c.ID)
+}
+
+// SetPresenceRecorder enables cross-pod online-user tracking after Redis is
+// available. Existing WebSocket behavior is unchanged when it is nil.
+func (h *Hub) SetPresenceRecorder(recorder PresenceRecorder) {
+	h.presence = recorder
 }
 
 // SendToUser queues a message for all connections belonging to a user.

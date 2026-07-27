@@ -3,6 +3,7 @@ package websocket
 import (
 	"encoding/json"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -68,6 +69,9 @@ func (h *Handler) ServeWS(c *gin.Context) {
 	}
 
 	client := newClient(h.hub, conn, h.log)
+	client.Platform = inferClientPlatform(c.Query("platform"), c.GetHeader("User-Agent"))
+	client.UserAgent = c.GetHeader("User-Agent")
+	client.RemoteAddr = c.ClientIP()
 	if h.verify != nil {
 		if tok := c.Query("token"); tok != "" {
 			if uid, ok := h.verify(tok); ok {
@@ -92,6 +96,24 @@ func (h *Handler) ServeWS(c *gin.Context) {
 
 	go client.writePump()
 	go client.readPump()
+}
+
+func inferClientPlatform(explicit, userAgent string) string {
+	explicit = strings.ToLower(strings.TrimSpace(explicit))
+	if explicit == "ios" || explicit == "android" || explicit == "web" {
+		return explicit
+	}
+	ua := strings.ToLower(userAgent)
+	switch {
+	case strings.Contains(ua, "iphone"), strings.Contains(ua, "ipad"), strings.Contains(ua, "cfnetwork"):
+		return "ios"
+	case strings.Contains(ua, "android"), strings.Contains(ua, "okhttp"):
+		return "android"
+	case ua != "":
+		return "web"
+	default:
+		return "unknown"
+	}
 }
 
 // EncodePrice marshals a price update envelope (used by calculator / redis bridge).

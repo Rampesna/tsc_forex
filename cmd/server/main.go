@@ -23,6 +23,7 @@ import (
 	"github.com/tsc-forex/tsc_forex/internal/domain"
 	"github.com/tsc-forex/tsc_forex/internal/logger"
 	"github.com/tsc-forex/tsc_forex/internal/metrics"
+	"github.com/tsc-forex/tsc_forex/internal/presence"
 	"github.com/tsc-forex/tsc_forex/internal/provider"
 	"github.com/tsc-forex/tsc_forex/internal/repository"
 	"github.com/tsc-forex/tsc_forex/internal/routes"
@@ -92,6 +93,16 @@ func run() error {
 
 	// --- WebSocket hub ---
 	hub := ws.NewHub(cfg.WebSocket, log)
+	var presenceStore *presence.Store
+	if cfg.Admin.Enabled {
+		if store, presenceErr := presence.New(ctx, cfg.Redis, cfg.Admin.PresenceTTL); presenceErr != nil {
+			log.Warn("cross-pod presence unavailable", zap.Error(presenceErr))
+		} else {
+			presenceStore = store
+			hub.SetPresenceRecorder(store)
+			defer func() { _ = store.Close() }()
+		}
+	}
 	go hub.Run()
 	defer hub.Close()
 
@@ -145,7 +156,9 @@ func run() error {
 		gamH            *api.GamificationHandler
 		portfolioH      *api.PortfolioHandler
 		billingH        *api.BillingHandler
+		adminH          *api.AdminHandler
 		subscriptionSvc *service.SubscriptionService
+		notifier        *service.Notifier
 		instrRepo       repository.PriceRepository
 		histWriter      *service.HistoryWriter
 		instrWriter     *service.InstrumentWriter
@@ -217,6 +230,9 @@ func run() error {
 			WithOAuth(cfg.OAuth).
 			WithIdentities(identityRepo)
 		authH = api.NewAuthHandler(authSvc)
+		if err := service.EnsureBootstrapAdmin(ctx, db, cfg.Admin); err != nil {
+			return fmt.Errorf("admin bootstrap: %w", err)
+		}
 
 		// Object storage (avatars): shared MinIO/S3 so every pod sees uploads.
 		var avatarStore storage.Store
@@ -273,7 +289,7 @@ func run() error {
 		} else if cfg.Notify.FCMEnabled {
 			log.Warn("fcm push disabled", zap.Error(err))
 		}
-		notifier := service.NewNotifier(notifRepo, deviceRepo, hub, senders, log)
+		notifier = service.NewNotifier(notifRepo, deviceRepo, hub, senders, log)
 		alertEngine = service.NewAlertEngine(bus, alertRepo, notifier, cfg.Notify.AlertCooldown, log)
 		alertEngine.Start(ctx)
 
@@ -284,6 +300,13 @@ func run() error {
 		gamSvc := service.NewGamificationService(gamRepo, notifier, log)
 		gamH = api.NewGamificationHandler(gamSvc)
 		userH.WithGamification(gamSvc)
+
+		if cfg.Admin.Enabled {
+			adminSvc := service.NewAdminService(db, presenceStore, notifier, cfg.Admin, cfg.AI, log)
+			adminSvc.StartCampaignWorker(ctx)
+			adminH = api.NewAdminHandler(authSvc, adminSvc, cfg.Admin)
+			log.Info("admin console enabled", zap.String("email", cfg.Admin.BootstrapEmail))
+		}
 
 		// Passkey (WebAuthn) — optional; enabled when configured.
 		credRepo := repository.NewWebAuthnCredentialRepository(db, m)
@@ -373,6 +396,7 @@ func run() error {
 		Portfolio:    portfolioH,
 		AI:           aiHandler,
 		Billing:      billingH,
+		Admin:        adminH,
 		AuthService:  authSvc,
 		Ready:        readinessCheck,
 	})

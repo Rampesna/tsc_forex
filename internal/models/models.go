@@ -1,6 +1,9 @@
 package models
 
 import (
+	"database/sql/driver"
+	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/google/uuid"
@@ -34,10 +37,13 @@ func (g *GoldPrice) BeforeCreate(_ *gorm.DB) error {
 
 // User is an authenticated API consumer (JWT + bcrypt).
 type User struct {
-	ID           uuid.UUID `gorm:"type:uuid;primaryKey" json:"id"`
-	Email        string    `gorm:"type:varchar(255);uniqueIndex;not null" json:"email"`
-	PasswordHash string    `gorm:"type:varchar(255)" json:"-"` // empty for social-login users
-	Role         string    `gorm:"type:varchar(32);not null;default:'user'" json:"role"`
+	ID                 uuid.UUID  `gorm:"type:uuid;primaryKey" json:"id"`
+	Email              string     `gorm:"type:varchar(255);uniqueIndex;not null" json:"email"`
+	PasswordHash       string     `gorm:"type:varchar(255)" json:"-"` // empty for social-login users
+	Role               string     `gorm:"type:varchar(32);not null;default:'user'" json:"role"`
+	MustChangePassword bool       `gorm:"not null;default:false" json:"-"`
+	PasswordChangedAt  *time.Time `json:"-"`
+	LastLoginAt        *time.Time `json:"last_login_at,omitempty"`
 	// Provider identifies how the account was created: "local", "google", "apple".
 	Provider    string    `gorm:"type:varchar(32);not null;default:'local'" json:"provider"`
 	DisplayName string    `gorm:"type:varchar(255)" json:"display_name"`
@@ -162,15 +168,17 @@ func (a *PriceAlert) BeforeCreate(_ *gorm.DB) error {
 
 // Notification is a delivered/queued user notification.
 type Notification struct {
-	ID        uuid.UUID  `gorm:"type:uuid;primaryKey" json:"id"`
-	UserID    uuid.UUID  `gorm:"type:uuid;index;not null" json:"user_id"`
-	AlertID   *uuid.UUID `gorm:"type:uuid" json:"alert_id,omitempty"`
-	Code      string     `gorm:"type:varchar(32)" json:"code"`
-	Title     string     `gorm:"type:varchar(128)" json:"title"`
-	Body      string     `gorm:"type:varchar(512)" json:"body"`
-	Price     float64    `json:"price"`
-	ReadAt    *time.Time `json:"read_at"`
-	CreatedAt time.Time  `gorm:"index" json:"created_at"`
+	ID                  uuid.UUID  `gorm:"type:uuid;primaryKey" json:"id"`
+	UserID              uuid.UUID  `gorm:"type:uuid;index;not null" json:"user_id"`
+	AlertID             *uuid.UUID `gorm:"type:uuid" json:"alert_id,omitempty"`
+	CampaignRecipientID *uuid.UUID `gorm:"type:uuid;uniqueIndex" json:"-"`
+	Code                string     `gorm:"type:varchar(32)" json:"code"`
+	Title               string     `gorm:"type:varchar(128)" json:"title"`
+	Body                string     `gorm:"type:varchar(512)" json:"body"`
+	DeepLink            string     `gorm:"type:varchar(256)" json:"deep_link,omitempty"`
+	Price               float64    `json:"price"`
+	ReadAt              *time.Time `json:"read_at"`
+	CreatedAt           time.Time  `gorm:"index" json:"created_at"`
 }
 
 func (Notification) TableName() string { return "notifications" }
@@ -203,11 +211,16 @@ func (r *RefreshToken) BeforeCreate(_ *gorm.DB) error {
 
 // DeviceToken stores a push token (APNs/FCM) for a user's device.
 type DeviceToken struct {
-	ID        uuid.UUID `gorm:"type:uuid;primaryKey" json:"id"`
-	UserID    uuid.UUID `gorm:"type:uuid;index;not null" json:"user_id"`
-	Platform  string    `gorm:"type:varchar(16);not null" json:"platform"` // ios | android
-	Token     string    `gorm:"type:varchar(256);uniqueIndex;not null" json:"token"`
-	CreatedAt time.Time `json:"created_at"`
+	ID          uuid.UUID `gorm:"type:uuid;primaryKey" json:"id"`
+	UserID      uuid.UUID `gorm:"type:uuid;index;not null" json:"user_id"`
+	Platform    string    `gorm:"type:varchar(16);not null;index" json:"platform"` // ios | android
+	Token       string    `gorm:"type:varchar(256);uniqueIndex;not null" json:"token"`
+	Locale      string    `gorm:"type:varchar(16)" json:"locale,omitempty"`
+	AppVersion  string    `gorm:"type:varchar(32)" json:"app_version,omitempty"`
+	DeviceModel string    `gorm:"type:varchar(96)" json:"device_model,omitempty"`
+	LastSeenAt  time.Time `gorm:"index" json:"last_seen_at"`
+	CreatedAt   time.Time `json:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at"`
 }
 
 func (DeviceToken) TableName() string { return "device_tokens" }
@@ -216,7 +229,48 @@ func (d *DeviceToken) BeforeCreate(_ *gorm.DB) error {
 	if d.ID == uuid.Nil {
 		d.ID = uuid.New()
 	}
+	if d.LastSeenAt.IsZero() {
+		d.LastSeenAt = time.Now().UTC()
+	}
 	return nil
+}
+
+// JSONDocument stores structured, validated campaign/audit data as JSONB in
+// Postgres while remaining compatible with the SQLite test suite.
+type JSONDocument []byte
+
+func (j JSONDocument) Value() (driver.Value, error) {
+	if len(j) == 0 {
+		return "{}", nil
+	}
+	if !json.Valid(j) {
+		return nil, fmt.Errorf("invalid JSON document")
+	}
+	return string(j), nil
+}
+
+func (j *JSONDocument) Scan(value any) error {
+	switch v := value.(type) {
+	case nil:
+		*j = JSONDocument(`{}`)
+	case []byte:
+		*j = append((*j)[:0], v...)
+	case string:
+		*j = append((*j)[:0], v...)
+	default:
+		return fmt.Errorf("unsupported JSON document type %T", value)
+	}
+	return nil
+}
+
+func (j JSONDocument) MarshalJSON() ([]byte, error) {
+	if len(j) == 0 {
+		return []byte("{}"), nil
+	}
+	if !json.Valid(j) {
+		return nil, fmt.Errorf("invalid JSON document")
+	}
+	return j, nil
 }
 
 // AuthIdentity links an external provider identity (Google/Apple subject) to a
@@ -919,3 +973,87 @@ type SubscriptionRestoreTombstone struct {
 }
 
 func (SubscriptionRestoreTombstone) TableName() string { return "subscription_restore_tombstones" }
+
+// NotificationCampaign is an admin-created, audited push campaign. The AI
+// produces only a constrained TargetingPlan JSON document; it never stores or
+// executes model-authored SQL.
+type NotificationCampaign struct {
+	ID                  uuid.UUID    `gorm:"type:uuid;primaryKey" json:"id"`
+	AdminID             uuid.UUID    `gorm:"type:uuid;not null;index" json:"admin_id"`
+	Name                string       `gorm:"type:varchar(120);not null" json:"name"`
+	Prompt              string       `gorm:"type:text;not null" json:"prompt"`
+	Status              string       `gorm:"type:varchar(24);not null;index" json:"status"`
+	TargetingPlan       JSONDocument `gorm:"type:jsonb;not null" json:"targeting_plan"`
+	Preview             JSONDocument `gorm:"type:jsonb;not null" json:"preview"`
+	Title               string       `gorm:"type:varchar(128);not null" json:"title"`
+	Body                string       `gorm:"type:varchar(512);not null" json:"body"`
+	DeepLink            string       `gorm:"type:varchar(256)" json:"deep_link,omitempty"`
+	EstimatedRecipients int          `gorm:"not null;default:0" json:"estimated_recipients"`
+	ResolvedRecipients  int          `gorm:"not null;default:0" json:"resolved_recipients"`
+	ProcessedRecipients int          `gorm:"not null;default:0" json:"processed_recipients"`
+	FailedRecipients    int          `gorm:"not null;default:0" json:"failed_recipients"`
+	ApprovalFingerprint string       `gorm:"type:char(64);not null" json:"-"`
+	ApprovedAt          *time.Time   `json:"approved_at,omitempty"`
+	StartedAt           *time.Time   `json:"started_at,omitempty"`
+	CompletedAt         *time.Time   `json:"completed_at,omitempty"`
+	CreatedAt           time.Time    `gorm:"not null;index" json:"created_at"`
+	UpdatedAt           time.Time    `gorm:"not null" json:"updated_at"`
+}
+
+func (NotificationCampaign) TableName() string { return "notification_campaigns" }
+
+func (c *NotificationCampaign) BeforeCreate(_ *gorm.DB) error {
+	if c.ID == uuid.Nil {
+		c.ID = uuid.New()
+	}
+	return nil
+}
+
+// NotificationCampaignRecipient is the durable work queue. A unique
+// campaign+user key makes approval and worker retries idempotent across pods.
+type NotificationCampaignRecipient struct {
+	ID              uuid.UUID  `gorm:"type:uuid;primaryKey" json:"id"`
+	CampaignID      uuid.UUID  `gorm:"type:uuid;not null;uniqueIndex:uq_campaign_recipient,priority:1;index" json:"campaign_id"`
+	UserID          uuid.UUID  `gorm:"type:uuid;not null;uniqueIndex:uq_campaign_recipient,priority:2;index" json:"user_id"`
+	PlatformSummary string     `gorm:"type:varchar(32)" json:"platform_summary"`
+	Status          string     `gorm:"type:varchar(24);not null;index" json:"status"`
+	Attempts        int        `gorm:"not null;default:0" json:"attempts"`
+	LastError       string     `gorm:"type:varchar(512)" json:"last_error,omitempty"`
+	ProcessedAt     *time.Time `json:"processed_at,omitempty"`
+	CreatedAt       time.Time  `gorm:"not null" json:"created_at"`
+	UpdatedAt       time.Time  `gorm:"not null" json:"updated_at"`
+}
+
+func (NotificationCampaignRecipient) TableName() string {
+	return "notification_campaign_recipients"
+}
+
+func (r *NotificationCampaignRecipient) BeforeCreate(_ *gorm.DB) error {
+	if r.ID == uuid.Nil {
+		r.ID = uuid.New()
+	}
+	return nil
+}
+
+// AdminAuditLog is append-only evidence for privileged reads and mutations.
+// Metadata deliberately stores structured IDs/counts rather than credentials.
+type AdminAuditLog struct {
+	ID           uuid.UUID    `gorm:"type:uuid;primaryKey" json:"id"`
+	ActorID      *uuid.UUID   `gorm:"type:uuid;index" json:"actor_id,omitempty"`
+	Action       string       `gorm:"type:varchar(80);not null;index" json:"action"`
+	ResourceType string       `gorm:"type:varchar(64);not null;index" json:"resource_type"`
+	ResourceID   string       `gorm:"type:varchar(128);index" json:"resource_id,omitempty"`
+	Metadata     JSONDocument `gorm:"type:jsonb;not null" json:"metadata"`
+	IPAddress    string       `gorm:"type:varchar(64)" json:"ip_address,omitempty"`
+	UserAgent    string       `gorm:"type:varchar(320)" json:"user_agent,omitempty"`
+	CreatedAt    time.Time    `gorm:"not null;index" json:"created_at"`
+}
+
+func (AdminAuditLog) TableName() string { return "admin_audit_logs" }
+
+func (a *AdminAuditLog) BeforeCreate(_ *gorm.DB) error {
+	if a.ID == uuid.Nil {
+		a.ID = uuid.New()
+	}
+	return nil
+}

@@ -109,6 +109,17 @@ data:
   APP_NOTIFY_FCM_ENABLED: "true"
   APP_NOTIFY_FCM_PROJECT_ID: "tscforex-16f7e"
   APP_NOTIFY_FCM_CREDENTIAL_PATH: "/etc/push/fcm.json"
+  # Private operations console. The bootstrap password is injected from the
+  # tsc-forex-secrets Secret and is only consumed if this account does not yet
+  # exist. It is never stored in this ConfigMap or a container image.
+  APP_ADMIN_ENABLED: "true"
+  APP_ADMIN_BOOTSTRAP_EMAIL: "talha@talhacan.com"
+  APP_ADMIN_ALLOWED_ORIGIN: "https://tscfm.talhacan.com"
+  APP_ADMIN_COOKIE_SECURE: "true"
+  APP_ADMIN_MAX_RECIPIENTS: "100000"
+  APP_ADMIN_CAMPAIGN_BATCH_SIZE: "100"
+  APP_ADMIN_SEND_PER_SECOND: "20"
+  APP_ADMIN_PRESENCE_TTL: "90s"
 # NOTE: the Secret "tsc-forex-secrets" is intentionally NOT defined here so it is
 # never committed to git and never clobbered by `kubectl apply -k`. It is created
 # out-of-band from real values (CI/CD from GitHub Actions secrets, or manually):
@@ -116,4 +127,4 @@ data:
 #     --from-literal=APP_DATABASE_USER=... --from-literal=APP_DATABASE_PASSWORD=... \
 #     --from-literal=APP_JWT_SECRET=... --from-literal=APP_REDIS_PASSWORD=... \
 #     --from-literal=APP_STORAGE_ACCESS_KEY=... --from-literal=APP_STORAGE_SECRET_KEY=... \
-#     --from-literal=APP_AI_API_KEY=...
+#     --from-literal=APP_AI_API_KEY=... --from-literal=APP_ADMIN_BOOTSTRAP_PASSWORD=...

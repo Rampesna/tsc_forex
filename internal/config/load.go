@@ -314,6 +314,16 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("billing.google_package_name", "com.talhacan.tscforex")
 	v.SetDefault("billing.google_credentials_path", "")
 
+	v.SetDefault("admin.enabled", false)
+	v.SetDefault("admin.bootstrap_email", "")
+	v.SetDefault("admin.bootstrap_password", "")
+	v.SetDefault("admin.allowed_origin", "http://localhost:5174")
+	v.SetDefault("admin.cookie_secure", false)
+	v.SetDefault("admin.max_recipients", 100000)
+	v.SetDefault("admin.campaign_batch_size", 100)
+	v.SetDefault("admin.send_per_second", 20)
+	v.SetDefault("admin.presence_ttl", "90s")
+
 	v.SetDefault("webauthn.enabled", false)
 	v.SetDefault("webauthn.rp_display_name", "TSC Forex")
 

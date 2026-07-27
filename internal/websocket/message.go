@@ -50,11 +50,12 @@ type InstrumentPayload struct {
 
 // NotificationPayload is a targeted alert/notification pushed to one user.
 type NotificationPayload struct {
-	ID    string  `json:"id,omitempty"`
-	Code  string  `json:"code"`
-	Title string  `json:"title"`
-	Body  string  `json:"body"`
-	Price float64 `json:"price"`
+	ID       string  `json:"id,omitempty"`
+	Code     string  `json:"code"`
+	Title    string  `json:"title"`
+	Body     string  `json:"body"`
+	DeepLink string  `json:"deep_link,omitempty"`
+	Price    float64 `json:"price"`
 }
 
 // ClientHello is an optional first message from the client (subscribe hints).

@@ -7,6 +7,7 @@ import (
 
 	"github.com/google/uuid"
 	"gorm.io/gorm"
+	"gorm.io/gorm/clause"
 
 	"github.com/tsc-forex/tsc_forex/internal/metrics"
 	"github.com/tsc-forex/tsc_forex/internal/models"
@@ -38,6 +39,7 @@ type AlertRepository interface {
 // NotificationRepository stores user notifications.
 type NotificationRepository interface {
 	Create(ctx context.Context, n *models.Notification) error
+	CreateOnce(ctx context.Context, n *models.Notification) (bool, error)
 	ListByUser(ctx context.Context, userID uuid.UUID, limit int) ([]models.Notification, error)
 	MarkRead(ctx context.Context, userID, id uuid.UUID) error
 	Delete(ctx context.Context, userID, id uuid.UUID) error
@@ -226,6 +228,24 @@ func (r *notificationRepository) Create(ctx context.Context, n *models.Notificat
 	return err
 }
 
+// CreateOnce inserts an idempotent campaign notification. The unique
+// campaign_recipient_id prevents a worker retry or pod takeover from creating
+// duplicate inbox entries and duplicate push fan-out.
+func (r *notificationRepository) CreateOnce(ctx context.Context, n *models.Notification) (bool, error) {
+	start := time.Now()
+	if n == nil || n.CampaignRecipientID == nil {
+		err := errors.New("campaign recipient id is required")
+		r.observe(start, err)
+		return false, err
+	}
+	result := r.db.WithContext(ctx).Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "campaign_recipient_id"}},
+		DoNothing: true,
+	}).Create(n)
+	r.observe(start, result.Error)
+	return result.RowsAffected == 1, result.Error
+}
+
 func (r *notificationRepository) ListByUser(ctx context.Context, userID uuid.UUID, limit int) ([]models.Notification, error) {
 	start := time.Now()
 	if limit <= 0 || limit > 500 {
@@ -325,17 +345,23 @@ func NewDeviceTokenRepository(db *gorm.DB, m *metrics.Metrics) DeviceTokenReposi
 
 func (r *deviceTokenRepository) Upsert(ctx context.Context, t *models.DeviceToken) error {
 	start := time.Now()
-	var existing models.DeviceToken
-	err := r.db.WithContext(ctx).Where("token = ?", t.Token).First(&existing).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		if t.ID == uuid.Nil {
-			t.ID = uuid.New()
-		}
-		t.CreatedAt = time.Now().UTC()
-		err = r.db.WithContext(ctx).Create(t).Error
-		r.observe(start, err)
-		return err
+	if t.ID == uuid.Nil {
+		t.ID = uuid.New()
 	}
+	now := time.Now().UTC()
+	t.CreatedAt = now
+	t.UpdatedAt = now
+	if t.LastSeenAt.IsZero() {
+		t.LastSeenAt = now
+	}
+	err := r.db.WithContext(ctx).Clauses(clause.OnConflict{
+		Columns: []clause.Column{{Name: "token"}},
+		DoUpdates: clause.Assignments(map[string]any{
+			"user_id": t.UserID, "platform": t.Platform, "locale": t.Locale,
+			"app_version": t.AppVersion, "device_model": t.DeviceModel,
+			"last_seen_at": t.LastSeenAt, "updated_at": now,
+		}),
+	}).Create(t).Error
 	r.observe(start, err)
 	return err
 }

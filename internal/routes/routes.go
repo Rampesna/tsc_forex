@@ -34,6 +34,7 @@ type Deps struct {
 	Portfolio    *api.PortfolioHandler    // transaction ledger + analytics; may be nil
 	AI           *api.MarketAIHandler     // server-side market briefs; may be nil
 	Billing      *api.BillingHandler      // App Store plans/entitlements; may be nil
+	Admin        *api.AdminHandler        // private operations console; may be nil
 	Ready        func(context.Context) error
 
 	AuthService *service.AuthService // for protected-route middleware; may be nil
@@ -46,7 +47,30 @@ func NewEngine(d Deps) *gin.Engine {
 	r.Use(gin.Recovery())
 	r.Use(middleware.RequestID())
 	r.Use(middleware.SecurityHeaders())
-	r.Use(middleware.CORS(d.Config.CORS.AllowedOrigins))
+	corsCfg := d.Config.CORS
+	if d.Config.Admin.Enabled && d.Config.Admin.AllowedOrigin != "" {
+		// Credentialed responses can never use a wildcard origin. Remove any
+		// development wildcard before adding the exact operations-console host.
+		origins := make([]string, 0, len(corsCfg.AllowedOrigins)+1)
+		for _, origin := range corsCfg.AllowedOrigins {
+			if origin != "*" {
+				origins = append(origins, origin)
+			}
+		}
+		corsCfg.AllowedOrigins = origins
+		found := false
+		for _, origin := range corsCfg.AllowedOrigins {
+			if origin == d.Config.Admin.AllowedOrigin {
+				found = true
+				break
+			}
+		}
+		if !found {
+			corsCfg.AllowedOrigins = append(corsCfg.AllowedOrigins, d.Config.Admin.AllowedOrigin)
+		}
+		corsCfg.AllowCredentials = true
+	}
+	r.Use(middleware.CORSWithConfig(corsCfg))
 	if d.Metrics != nil {
 		r.Use(middleware.Metrics(d.Metrics))
 	}
@@ -125,6 +149,30 @@ func NewEngine(d Deps) *gin.Engine {
 			v1.POST("/auth/apple", d.Auth.Apple)
 			v1.POST("/auth/refresh", d.Auth.Refresh)
 			v1.POST("/auth/logout", d.Auth.Logout)
+		}
+
+		if d.Admin != nil && d.AuthService != nil {
+			adminAuth := v1.Group("/admin/auth")
+			{
+				adminAuth.POST("/login", middleware.RateLimit(8, 300), d.Admin.Login)
+				adminAuth.POST("/refresh", d.Admin.Refresh)
+				adminAuth.POST("/logout", d.Admin.Logout)
+			}
+			admin := v1.Group("/admin")
+			admin.Use(middleware.JWTAuth(d.AuthService), middleware.AdminOnly())
+			{
+				admin.GET("/me", d.Admin.Me)
+				admin.POST("/auth/password", d.Admin.ChangePassword)
+				admin.GET("/dashboard", d.Admin.Dashboard)
+				admin.GET("/users", d.Admin.Users)
+				admin.GET("/users/:id", d.Admin.UserDetail)
+				admin.GET("/online", d.Admin.Online)
+				admin.GET("/campaigns", d.Admin.Campaigns)
+				admin.POST("/campaigns/preview", d.Admin.PreviewCampaign)
+				admin.POST("/campaigns/:id/approve", d.Admin.ApproveCampaign)
+				admin.POST("/campaigns/:id/cancel", d.Admin.CancelCampaign)
+				admin.GET("/audit", d.Admin.AuditLogs)
+			}
 		}
 
 		// Passkey (WebAuthn) usernameless login (public begin/finish).

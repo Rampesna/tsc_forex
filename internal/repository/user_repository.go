@@ -190,6 +190,7 @@ func (r *userRepository) DeleteUser(ctx context.Context, id uuid.UUID, subscript
 			&models.WatchlistItem{},
 			&models.PriceAlert{},
 			&models.Notification{},
+			&models.NotificationCampaignRecipient{},
 			&models.DeviceToken{},
 			&models.RefreshToken{},
 			&models.AuthIdentity{},

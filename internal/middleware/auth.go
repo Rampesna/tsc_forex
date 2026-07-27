@@ -36,3 +36,21 @@ func JWTAuth(auth *service.AuthService) gin.HandlerFunc {
 		c.Next()
 	}
 }
+
+// AdminOnly rejects ordinary user JWTs even when they are otherwise valid.
+// It must run after JWTAuth.
+func AdminOnly() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		raw, ok := c.Get(ClaimsKey)
+		if !ok {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing claims"})
+			return
+		}
+		claims, ok := raw.(*service.Claims)
+		if !ok || claims.Role != "admin" {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "admin access required"})
+			return
+		}
+		c.Next()
+	}
+}

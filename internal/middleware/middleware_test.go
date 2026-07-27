@@ -7,6 +7,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"github.com/tsc-forex/tsc_forex/internal/config"
 	"github.com/tsc-forex/tsc_forex/internal/middleware"
 )
 
@@ -85,6 +86,38 @@ func TestCORSAllowList(t *testing.T) {
 	r.ServeHTTP(w, req)
 	if w.Header().Get("Access-Control-Allow-Origin") == "https://evil.com" {
 		t.Fatal("evil origin allowed")
+	}
+}
+
+func TestCredentialedCORSRequiresExactOrigin(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.Use(middleware.CORSWithConfig(config.CORSConfig{
+		AllowedOrigins:   []string{"https://tscfm.talhacan.com"},
+		AllowCredentials: true,
+	}))
+	r.GET("/x", func(c *gin.Context) { c.Status(http.StatusOK) })
+
+	allowed := httptest.NewRecorder()
+	allowedRequest := httptest.NewRequest(http.MethodGet, "/x", nil)
+	allowedRequest.Header.Set("Origin", "https://tscfm.talhacan.com")
+	r.ServeHTTP(allowed, allowedRequest)
+	if got := allowed.Header().Get("Access-Control-Allow-Origin"); got != "https://tscfm.talhacan.com" {
+		t.Fatalf("allowed origin = %q", got)
+	}
+	if got := allowed.Header().Get("Access-Control-Allow-Credentials"); got != "true" {
+		t.Fatalf("allow credentials = %q", got)
+	}
+
+	blocked := httptest.NewRecorder()
+	blockedRequest := httptest.NewRequest(http.MethodGet, "/x", nil)
+	blockedRequest.Header.Set("Origin", "https://tscfm.talhacan.com.evil.example")
+	r.ServeHTTP(blocked, blockedRequest)
+	if got := blocked.Header().Get("Access-Control-Allow-Origin"); got != "" {
+		t.Fatalf("unexpected reflected origin = %q", got)
+	}
+	if got := blocked.Header().Get("Access-Control-Allow-Credentials"); got != "" {
+		t.Fatalf("unexpected credential permission = %q", got)
 	}
 }
 

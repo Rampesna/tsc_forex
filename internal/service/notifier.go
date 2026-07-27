@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/google/uuid"
@@ -58,6 +59,16 @@ func NewNotifier(notifs repository.NotificationRepository, devices repository.De
 
 // Notify records and delivers a notification to a user across all channels.
 func (n *Notifier) Notify(ctx context.Context, userID uuid.UUID, alertID *uuid.UUID, code, title, body string, price float64) {
+	_ = n.NotifyWithResult(ctx, userID, alertID, code, title, body, price)
+}
+
+// NotifyWithResult is the campaign-safe variant. Success means the durable
+// in-app notification was recorded and fan-out was attempted; APNs/FCM delivery
+// remains best-effort because providers acknowledge acceptance, not display.
+func (n *Notifier) NotifyWithResult(ctx context.Context, userID uuid.UUID, alertID *uuid.UUID, code, title, body string, price float64) error {
+	if n == nil || n.notifs == nil {
+		return errors.New("notification store unavailable")
+	}
 	rec := &models.Notification{
 		ID:        uuid.New(),
 		UserID:    userID,
@@ -68,19 +79,46 @@ func (n *Notifier) Notify(ctx context.Context, userID uuid.UUID, alertID *uuid.U
 		Price:     price,
 		CreatedAt: time.Now().UTC(),
 	}
-	if n.notifs != nil {
-		if err := n.notifs.Create(ctx, rec); err != nil {
-			n.log.Warn("persist notification failed", zap.Error(err))
-		}
+	if err := n.notifs.Create(ctx, rec); err != nil {
+		n.log.Warn("persist notification failed", zap.Error(err))
+		return err
 	}
-	n.deliver(ctx, rec)
+	n.deliver(ctx, rec, nil)
+	return nil
+}
+
+// NotifyCampaignWithResult is idempotent per durable campaign recipient and
+// optionally restricts delivery to the requested mobile platforms.
+func (n *Notifier) NotifyCampaignWithResult(
+	ctx context.Context,
+	recipientID, userID uuid.UUID,
+	title, body, deepLink string,
+	platforms []string,
+) error {
+	if n == nil || n.notifs == nil {
+		return errors.New("notification store unavailable")
+	}
+	rec := &models.Notification{
+		ID: uuid.New(), UserID: userID, CampaignRecipientID: &recipientID,
+		Title: title, Body: body, DeepLink: deepLink, CreatedAt: time.Now().UTC(),
+	}
+	created, err := n.notifs.CreateOnce(ctx, rec)
+	if err != nil {
+		n.log.Warn("persist campaign notification failed", zap.Error(err))
+		return err
+	}
+	if !created {
+		return nil
+	}
+	n.deliver(ctx, rec, platforms)
+	return nil
 }
 
 // deliver sends a notification that has already been constructed (and, for a
 // one-shot price alert, atomically persisted with the alert state transition).
 // Push/WebSocket delivery remains best-effort; the durable notification record
 // is the source of truth users can always see in their notification history.
-func (n *Notifier) deliver(ctx context.Context, rec *models.Notification) {
+func (n *Notifier) deliver(ctx context.Context, rec *models.Notification, platforms []string) {
 	if rec == nil {
 		return
 	}
@@ -88,11 +126,12 @@ func (n *Notifier) deliver(ctx context.Context, rec *models.Notification) {
 	// Live WS push to the user's active connections.
 	if n.hub != nil {
 		if msg, err := ws.EncodeNotification(ws.NotificationPayload{
-			ID:    rec.ID.String(),
-			Code:  rec.Code,
-			Title: rec.Title,
-			Body:  rec.Body,
-			Price: rec.Price,
+			ID:       rec.ID.String(),
+			Code:     rec.Code,
+			Title:    rec.Title,
+			Body:     rec.Body,
+			DeepLink: rec.DeepLink,
+			Price:    rec.Price,
 		}); err == nil {
 			n.hub.SendToUser(rec.UserID.String(), msg)
 		}
@@ -102,8 +141,15 @@ func (n *Notifier) deliver(ctx context.Context, rec *models.Notification) {
 	if n.devices != nil && len(n.senders) > 0 {
 		tokens, err := n.devices.ListByUser(ctx, rec.UserID)
 		if err == nil && len(tokens) > 0 {
+			allowed := make(map[string]bool, len(platforms))
+			for _, platform := range platforms {
+				allowed[platform] = true
+			}
 			byPlatform := make(map[string][]string, len(n.senders))
 			for _, t := range tokens {
+				if len(allowed) > 0 && !allowed[t.Platform] {
+					continue
+				}
 				byPlatform[t.Platform] = append(byPlatform[t.Platform], t.Token)
 			}
 			for platform, addrs := range byPlatform {
@@ -111,7 +157,11 @@ func (n *Notifier) deliver(ctx context.Context, rec *models.Notification) {
 				if !ok || len(addrs) == 0 {
 					continue
 				}
-				if err := sender.Send(ctx, addrs, rec.Title, rec.Body, map[string]string{"code": rec.Code}); err != nil {
+				data := map[string]string{"code": rec.Code}
+				if rec.DeepLink != "" {
+					data["deep_link"] = rec.DeepLink
+				}
+				if err := sender.Send(ctx, addrs, rec.Title, rec.Body, data); err != nil {
 					n.log.Warn("push send failed", zap.String("platform", platform), zap.Error(err))
 				}
 			}

@@ -15,7 +15,7 @@ import (
 	"github.com/tsc-forex/tsc_forex/internal/models"
 )
 
-const currentSchemaVersion int64 = 2026071701
+const currentSchemaVersion int64 = 2026072702
 
 type schemaState struct {
 	Component string    `gorm:"type:varchar(64);primaryKey"`
@@ -120,6 +120,9 @@ func migrateSchema(db *gorm.DB) error {
 		&models.AppAttestKey{},
 		&models.DeviceCheckRedemption{},
 		&models.SubscriptionRestoreTombstone{},
+		&models.NotificationCampaign{},
+		&models.NotificationCampaignRecipient{},
+		&models.AdminAuditLog{},
 	); err != nil {
 		return err
 	}
@@ -235,6 +238,13 @@ func addProductionIndexes(db *gorm.DB) error {
 		`CREATE INDEX IF NOT EXISTS idx_research_archive_expiry ON market_research_archives (expires_at)`,
 		`CREATE INDEX IF NOT EXISTS idx_research_jobs_provider ON market_research_jobs (provider_response_id) WHERE provider_response_id <> ''`,
 		`CREATE INDEX IF NOT EXISTS idx_app_attest_challenges_expiry ON app_attest_challenges (expires_at)`,
+
+		// Admin operations: campaign workers claim pending recipients newest
+		// first, while the audit screen reads privileged actions by time.
+		`CREATE INDEX IF NOT EXISTS idx_campaigns_status_created ON notification_campaigns (status, created_at)`,
+		`CREATE INDEX IF NOT EXISTS idx_campaign_recipients_work ON notification_campaign_recipients (campaign_id, status, created_at)`,
+		`CREATE INDEX IF NOT EXISTS idx_admin_audit_created ON admin_audit_logs (created_at DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_device_tokens_platform_seen ON device_tokens (platform, last_seen_at DESC)`,
 	}
 	for _, s := range stmts {
 		if err := db.Exec(s).Error; err != nil {

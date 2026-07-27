@@ -118,7 +118,7 @@ func (e *AlertEngine) evaluate(ctx context.Context, ip domain.InstrumentPrice) {
 		if !claimed {
 			continue
 		}
-		e.notifier.deliver(ctx, notification)
+		e.notifier.deliver(ctx, notification, nil)
 	}
 }
 

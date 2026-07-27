@@ -27,6 +27,7 @@ func TestDeleteUserRemovesPortfolioLedger(t *testing.T) {
 		&models.WatchlistItem{},
 		&models.PriceAlert{},
 		&models.Notification{},
+		&models.NotificationCampaignRecipient{},
 		&models.DeviceToken{},
 		&models.RefreshToken{},
 		&models.AuthIdentity{},

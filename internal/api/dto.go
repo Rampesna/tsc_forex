@@ -109,6 +109,7 @@ type NotificationResponse struct {
 	Code      string     `json:"code"`
 	Title     string     `json:"title"`
 	Body      string     `json:"body"`
+	DeepLink  string     `json:"deep_link,omitempty"`
 	Price     float64    `json:"price"`
 	ReadAt    *time.Time `json:"read_at,omitempty"`
 	CreatedAt time.Time  `json:"created_at"`
@@ -116,8 +117,11 @@ type NotificationResponse struct {
 
 // DeviceTokenRequest registers a push token for the current user.
 type DeviceTokenRequest struct {
-	Platform string `json:"platform" binding:"required,oneof=ios android"`
-	Token    string `json:"token" binding:"required"`
+	Platform    string `json:"platform" binding:"required,oneof=ios android"`
+	Token       string `json:"token" binding:"required,max=256"`
+	Locale      string `json:"locale" binding:"omitempty,max=16"`
+	AppVersion  string `json:"app_version" binding:"omitempty,max=32"`
+	DeviceModel string `json:"device_model" binding:"omitempty,max=96"`
 }
 
 // GoldResponse is the current gram-gold price payload.

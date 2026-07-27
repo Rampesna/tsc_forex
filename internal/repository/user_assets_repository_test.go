@@ -164,6 +164,37 @@ func TestAlertAndNotificationRepository(t *testing.T) {
 	}
 }
 
+func TestCampaignNotificationCreateOnce(t *testing.T) {
+	t.Parallel()
+	db := newUserAssetsDB(t)
+	notifs := repository.NewNotificationRepository(db, nil)
+	ctx := context.Background()
+	userID := uuid.New()
+	recipientID := uuid.New()
+
+	first := &models.Notification{
+		ID: uuid.New(), UserID: userID, CampaignRecipientID: &recipientID,
+		Title: "Haftalık piyasa özeti", Body: "Takip listenizi gözden geçirin.",
+		DeepLink: "tscforex://markets", CreatedAt: time.Now().UTC(),
+	}
+	created, err := notifs.CreateOnce(ctx, first)
+	if err != nil || !created {
+		t.Fatalf("first create once = %t, err=%v", created, err)
+	}
+	retry := &models.Notification{
+		ID: uuid.New(), UserID: userID, CampaignRecipientID: &recipientID,
+		Title: first.Title, Body: first.Body, DeepLink: first.DeepLink, CreatedAt: time.Now().UTC(),
+	}
+	created, err = notifs.CreateOnce(ctx, retry)
+	if err != nil || created {
+		t.Fatalf("retry create once = %t, err=%v; want false, nil", created, err)
+	}
+	rows, err := notifs.ListByUser(ctx, userID, 10)
+	if err != nil || len(rows) != 1 || rows[0].DeepLink != first.DeepLink {
+		t.Fatalf("campaign notifications=%+v err=%v", rows, err)
+	}
+}
+
 func TestClaimTriggeredRollsBackWhenNotificationCannotBePersisted(t *testing.T) {
 	t.Parallel()
 	db := newUserAssetsDB(t)
