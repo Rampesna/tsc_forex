@@ -382,3 +382,21 @@ button.table-row:hover { background: rgba(255,255,255,.022); }
   .login-form-shell { padding: 18px; }.login-card { padding: 24px 20px; }
   .settings-profile { grid-template-columns: 50px 1fr; }.settings-profile > .status-pill { grid-column: 2; }
 }
+.route-error {
+  display: grid;
+  justify-items: start;
+  gap: 12px;
+  max-width: 680px;
+  margin: 48px auto;
+  padding: 32px;
+}
+
+.route-error h2,
+.route-error p {
+  margin: 0;
+}
+
+.route-error p {
+  color: var(--muted);
+  line-height: 1.6;
+}

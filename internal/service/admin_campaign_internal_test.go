@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -38,6 +39,35 @@ func TestAdminTargetingPlanIsAllowListedAndBounded(t *testing.T) {
 	}
 	if len(plan.AssetSources) != 1 || plan.AssetSources[0] != "watchlist" || plan.MaxRecipients != 250 {
 		t.Fatalf("sources=%v max=%d", plan.AssetSources, plan.MaxRecipients)
+	}
+}
+
+func TestAdminCampaignPreviewEncodesEmptyCollectionsAsArrays(t *testing.T) {
+	t.Parallel()
+	preview := AdminCampaignPreview{}
+	normalizeAdminCampaignPreview(&preview)
+
+	raw, err := json.Marshal(preview)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var decoded struct {
+		Plan struct {
+			Platforms    []string `json:"platforms"`
+			PlanCodes    []string `json:"plan_codes"`
+			AssetCodes   []string `json:"asset_codes"`
+			AssetSources []string `json:"asset_sources"`
+		} `json:"plan"`
+		MatchedAssets []AdminCampaignAsset      `json:"matched_assets"`
+		SampleUsers   []AdminCampaignSampleUser `json:"sample_users"`
+	}
+	if err := json.Unmarshal(raw, &decoded); err != nil {
+		t.Fatal(err)
+	}
+	if decoded.Plan.Platforms == nil || decoded.Plan.PlanCodes == nil ||
+		decoded.Plan.AssetCodes == nil || decoded.Plan.AssetSources == nil ||
+		decoded.MatchedAssets == nil || decoded.SampleUsers == nil {
+		t.Fatalf("empty campaign collections must encode as JSON arrays: %s", raw)
 	}
 }
 

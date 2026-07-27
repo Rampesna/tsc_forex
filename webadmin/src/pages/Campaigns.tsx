@@ -3,8 +3,75 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api, ApiError } from "../api";
 import { trDate } from "../format";
 import { Icon } from "../Icon";
-import type { Campaign, CampaignPreview } from "../types";
+import type { Campaign, CampaignPreview, PerformanceFilter, TargetingPlan } from "../types";
 import { EmptyState, Modal, StatusPill } from "../UI";
+
+type CampaignsResponse = {
+  items: Campaign[] | null;
+  total: number;
+};
+
+function stringArray(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return value.filter((item): item is string => typeof item === "string");
+}
+
+function finiteNumber(value: unknown): number {
+  return typeof value === "number" && Number.isFinite(value) ? value : 0;
+}
+
+function normalizePerformance(value: unknown): PerformanceFilter | null {
+  if (!value || typeof value !== "object") return null;
+  const filter = value as Partial<PerformanceFilter>;
+  if (filter.direction !== "decliners" && filter.direction !== "gainers") return null;
+  return {
+    direction: filter.direction,
+    lookback_days: finiteNumber(filter.lookback_days),
+    top_n: finiteNumber(filter.top_n),
+    min_abs_change_pct: finiteNumber(filter.min_abs_change_pct),
+  };
+}
+
+function normalizePreview(value: CampaignPreview): CampaignPreview {
+  const plan = (value?.plan || {}) as Partial<TargetingPlan>;
+  return {
+    ...value,
+    name: typeof value?.name === "string" ? value.name : "Bildirim kampanyası",
+    summary: typeof value?.summary === "string" ? value.summary : "",
+    title: typeof value?.title === "string" ? value.title : "",
+    body: typeof value?.body === "string" ? value.body : "",
+    deep_link: typeof value?.deep_link === "string" ? value.deep_link : "",
+    recipient_count: finiteNumber(value?.recipient_count),
+    total_matched: finiteNumber(value?.total_matched),
+    approval_fingerprint: typeof value?.approval_fingerprint === "string" ? value.approval_fingerprint : "",
+    plan: {
+      audience: typeof plan.audience === "string" ? plan.audience : "all_users",
+      platforms: stringArray(plan.platforms),
+      plan_codes: stringArray(plan.plan_codes),
+      asset_codes: stringArray(plan.asset_codes),
+      asset_sources: stringArray(plan.asset_sources),
+      performance: normalizePerformance(plan.performance),
+      registered_within_days: finiteNumber(plan.registered_within_days),
+      inactive_for_days: finiteNumber(plan.inactive_for_days),
+      max_recipients: finiteNumber(plan.max_recipients),
+    },
+    matched_assets: Array.isArray(value?.matched_assets)
+      ? value.matched_assets
+        .filter((asset) => asset && typeof asset.code === "string")
+        .map((asset) => ({ code: asset.code, change_pct: finiteNumber(asset.change_pct) }))
+      : [],
+    sample_users: Array.isArray(value?.sample_users)
+      ? value.sample_users
+        .filter((user) => user && typeof user.id === "string")
+        .map((user) => ({
+          id: user.id,
+          email: typeof user.email === "string" ? user.email : "",
+          display_name: typeof user.display_name === "string" ? user.display_name : "",
+          device_platform: typeof user.device_platform === "string" ? user.device_platform : "unknown",
+        }))
+      : [],
+  };
+}
 
 export function Campaigns() {
   const queryClient = useQueryClient();
@@ -19,13 +86,20 @@ export function Campaigns() {
 
   const campaigns = useQuery({
     queryKey: ["admin-campaigns"],
-    queryFn: () => api<{ items: Campaign[]; total: number }>("/admin/campaigns?page_size=50"),
+    queryFn: async () => {
+      const value = await api<CampaignsResponse>("/admin/campaigns?page_size=50");
+      return {
+        items: Array.isArray(value.items) ? value.items : [],
+        total: finiteNumber(value.total),
+      };
+    },
     refetchInterval: 10_000,
   });
   const previewMutation = useMutation({
     mutationFn: () => api<CampaignPreview>("/admin/campaigns/preview", { method: "POST", body: JSON.stringify({ prompt }) }),
     onSuccess: (value) => {
-      setPreview(value); setTitle(value.title); setBody(value.body); setError("");
+      const safeValue = normalizePreview(value);
+      setPreview(safeValue); setTitle(safeValue.title); setBody(safeValue.body); setError("");
       queryClient.invalidateQueries({ queryKey: ["admin-campaigns"] });
     },
     onError: (value) => setError(value instanceof ApiError ? value.message : "Önizleme oluşturulamadı"),

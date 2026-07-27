@@ -1,6 +1,7 @@
 import { lazy, Suspense, type ReactNode } from "react";
 import { Navigate, useLocation } from "./router";
 import { useAuth } from "./auth";
+import { RouteErrorBoundary } from "./ErrorBoundary";
 import { Layout } from "./Layout";
 import { Login } from "./pages/Login";
 import { LoadingBlock } from "./UI";
@@ -32,5 +33,5 @@ export default function App() {
   else if (pathname === "/settings") page = <Settings />;
   else return <Navigate to="/" replace />;
 
-  return <Layout><Suspense fallback={<LoadingBlock height={520} />}>{page}</Suspense></Layout>;
+  return <Layout><RouteErrorBoundary key={pathname}><Suspense fallback={<LoadingBlock height={520} />}>{page}</Suspense></RouteErrorBoundary></Layout>;
 }

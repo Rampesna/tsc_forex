@@ -128,6 +128,7 @@ func (s *AdminService) PreviewCampaign(ctx context.Context, managerID uuid.UUID,
 	} else {
 		out.SampleUsers = audience.Users
 	}
+	normalizeAdminCampaignPreview(&out)
 	planJSON, _ := json.Marshal(interpretation.Plan)
 	previewJSON, _ := json.Marshal(map[string]any{
 		"summary": interpretation.Summary, "matched_assets": audience.Assets,
@@ -397,6 +398,30 @@ func uniqueAllowed(values []string, allowed map[string]bool) []string {
 	return out
 }
 
+func normalizeAdminCampaignPreview(preview *AdminCampaignPreview) {
+	if preview == nil {
+		return
+	}
+	if preview.Plan.Platforms == nil {
+		preview.Plan.Platforms = []string{}
+	}
+	if preview.Plan.PlanCodes == nil {
+		preview.Plan.PlanCodes = []string{}
+	}
+	if preview.Plan.AssetCodes == nil {
+		preview.Plan.AssetCodes = []string{}
+	}
+	if preview.Plan.AssetSources == nil {
+		preview.Plan.AssetSources = []string{}
+	}
+	if preview.MatchedAssets == nil {
+		preview.MatchedAssets = []AdminCampaignAsset{}
+	}
+	if preview.SampleUsers == nil {
+		preview.SampleUsers = []AdminCampaignSampleUser{}
+	}
+}
+
 func validateCampaignContent(title, body, deepLink string) error {
 	if len([]rune(strings.TrimSpace(title))) < 2 || len([]rune(title)) > 128 ||
 		len([]rune(strings.TrimSpace(body))) < 4 || len([]rune(body)) > 512 {
@@ -409,7 +434,10 @@ func validateCampaignContent(title, body, deepLink string) error {
 }
 
 func (s *AdminService) resolveAudience(ctx context.Context, plan AdminTargetingPlan) (adminResolvedAudience, error) {
-	var out adminResolvedAudience
+	out := adminResolvedAudience{
+		Assets: []AdminCampaignAsset{},
+		Users:  []AdminCampaignSampleUser{},
+	}
 	assets := append([]string{}, plan.AssetCodes...)
 	if plan.Performance != nil {
 		performanceAssets, err := s.resolvePerformanceAssets(ctx, *plan.Performance)
@@ -707,7 +735,7 @@ func (s *AdminService) Campaigns(ctx context.Context, page, pageSize int) ([]mod
 	if err := query.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
-	var rows []models.NotificationCampaign
+	rows := make([]models.NotificationCampaign, 0)
 	err := query.Order("created_at DESC").Limit(pageSize).Offset((page - 1) * pageSize).Find(&rows).Error
 	return rows, total, err
 }
