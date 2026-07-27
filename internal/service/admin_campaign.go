@@ -93,6 +93,13 @@ type adminResolvedAudience struct {
 	TotalMatched int64
 }
 
+type storedAdminCampaignPreview struct {
+	Summary       string                    `json:"summary"`
+	MatchedAssets []AdminCampaignAsset      `json:"matched_assets"`
+	SampleUsers   []AdminCampaignSampleUser `json:"sample_users"`
+	TotalMatched  int64                     `json:"total_matched"`
+}
+
 func (s *AdminService) PreviewCampaign(ctx context.Context, managerID uuid.UUID, prompt string) (AdminCampaignPreview, error) {
 	var out AdminCampaignPreview
 	prompt = strings.TrimSpace(prompt)
@@ -144,6 +151,90 @@ func (s *AdminService) PreviewCampaign(ctx context.Context, managerID uuid.UUID,
 	}
 	if err := s.db.WithContext(ctx).Create(&campaign).Error; err != nil {
 		return AdminCampaignPreview{}, err
+	}
+	return out, nil
+}
+
+// RefreshCampaignPreview reopens an existing draft without creating a second
+// campaign. The stored allow-listed plan is resolved again so the manager sees
+// the current audience and receives a fresh approval fingerprint.
+func (s *AdminService) RefreshCampaignPreview(ctx context.Context, managerID, campaignID uuid.UUID) (AdminCampaignPreview, error) {
+	var out AdminCampaignPreview
+	var campaign models.NotificationCampaign
+	if err := s.db.WithContext(ctx).
+		Where("id = ? AND manager_id = ?", campaignID, managerID).
+		Take(&campaign).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return out, ErrCampaignNotFound
+		}
+		return out, err
+	}
+	if campaign.Status != "draft" {
+		return out, ErrCampaignState
+	}
+
+	var plan AdminTargetingPlan
+	if err := json.Unmarshal(campaign.TargetingPlan, &plan); err != nil {
+		return out, fmt.Errorf("%w: stored plan", ErrInvalidTargetingPlan)
+	}
+	if err := s.validateTargetingPlan(&plan); err != nil {
+		return out, err
+	}
+	if err := validateCampaignContent(campaign.Title, campaign.Body, campaign.DeepLink); err != nil {
+		return out, err
+	}
+
+	audience, err := s.resolveAudience(ctx, plan)
+	if err != nil {
+		return out, err
+	}
+	storedPreview := storedAdminCampaignPreview{}
+	if len(campaign.Preview) > 0 {
+		_ = json.Unmarshal(campaign.Preview, &storedPreview)
+	}
+
+	fingerprint := campaignFingerprint(campaign.ID, plan, campaign.Title, campaign.Body, len(audience.Users))
+	out = AdminCampaignPreview{
+		CampaignID:          campaign.ID,
+		Name:                campaign.Name,
+		Summary:             storedPreview.Summary,
+		Title:               campaign.Title,
+		Body:                campaign.Body,
+		DeepLink:            campaign.DeepLink,
+		Plan:                plan,
+		MatchedAssets:       audience.Assets,
+		RecipientCount:      len(audience.Users),
+		TotalMatched:        audience.TotalMatched,
+		ApprovalFingerprint: fingerprint,
+	}
+	if len(audience.Users) > 10 {
+		out.SampleUsers = audience.Users[:10]
+	} else {
+		out.SampleUsers = audience.Users
+	}
+	normalizeAdminCampaignPreview(&out)
+
+	planJSON, _ := json.Marshal(plan)
+	previewJSON, _ := json.Marshal(storedAdminCampaignPreview{
+		Summary:       storedPreview.Summary,
+		MatchedAssets: audience.Assets,
+		SampleUsers:   out.SampleUsers,
+		TotalMatched:  audience.TotalMatched,
+	})
+	result := s.db.WithContext(ctx).Model(&models.NotificationCampaign{}).
+		Where("id = ? AND manager_id = ? AND status = ?", campaign.ID, managerID, "draft").
+		Updates(map[string]any{
+			"targeting_plan":       models.JSONDocument(planJSON),
+			"preview":              models.JSONDocument(previewJSON),
+			"estimated_recipients": len(audience.Users),
+			"approval_fingerprint": fingerprint,
+			"updated_at":           time.Now().UTC(),
+		})
+	if result.Error != nil {
+		return AdminCampaignPreview{}, result.Error
+	}
+	if result.RowsAffected != 1 {
+		return AdminCampaignPreview{}, ErrCampaignState
 	}
 	return out, nil
 }

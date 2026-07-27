@@ -171,6 +171,7 @@ func NewEngine(d Deps) *gin.Engine {
 				admin.GET("/online", d.Admin.Online)
 				admin.GET("/campaigns", d.Admin.Campaigns)
 				admin.POST("/campaigns/preview", d.Admin.PreviewCampaign)
+				admin.POST("/campaigns/:id/preview", d.Admin.RefreshCampaignPreview)
 				admin.POST("/campaigns/:id/approve", d.Admin.ApproveCampaign)
 				admin.POST("/campaigns/:id/cancel", d.Admin.CancelCampaign)
 				admin.GET("/audit", d.Admin.AuditLogs)

@@ -231,6 +231,37 @@ func (h *AdminHandler) PreviewCampaign(c *gin.Context) {
 	c.JSON(http.StatusCreated, preview)
 }
 
+func (h *AdminHandler) RefreshCampaignPreview(c *gin.Context) {
+	uid, ok := currentUserID(c)
+	if !ok {
+		c.JSON(http.StatusUnauthorized, ErrorResponse{Error: "unauthorized"})
+		return
+	}
+	campaignID, err := uuid.Parse(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "geçersiz kampanya"})
+		return
+	}
+	preview, err := h.admin.RefreshCampaignPreview(c.Request.Context(), uid, campaignID)
+	if err != nil {
+		switch {
+		case errors.Is(err, service.ErrCampaignNotFound):
+			c.JSON(http.StatusNotFound, ErrorResponse{Error: "kampanya bulunamadı"})
+		case errors.Is(err, service.ErrCampaignState):
+			c.JSON(http.StatusConflict, ErrorResponse{Error: "yalnızca taslak kampanyalara devam edilebilir"})
+		case errors.Is(err, service.ErrInvalidTargetingPlan):
+			c.JSON(http.StatusUnprocessableEntity, ErrorResponse{Error: "taslağın hedefleme planı artık geçerli değil"})
+		default:
+			c.JSON(http.StatusServiceUnavailable, ErrorResponse{Error: "kampanya taslağı yenilenemedi"})
+		}
+		return
+	}
+	h.admin.Audit(c.Request.Context(), &uid, "campaign.reopened", "campaign", campaignID.String(), c.ClientIP(), c.GetHeader("User-Agent"), map[string]any{
+		"recipient_count": preview.RecipientCount, "asset_count": len(preview.MatchedAssets),
+	})
+	c.JSON(http.StatusOK, preview)
+}
+
 func (h *AdminHandler) ApproveCampaign(c *gin.Context) {
 	uid, ok := currentUserID(c)
 	if !ok {

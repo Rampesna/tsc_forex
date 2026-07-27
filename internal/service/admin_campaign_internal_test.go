@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
+	"strings"
 	"testing"
 	"time"
 
@@ -68,6 +69,69 @@ func TestAdminCampaignPreviewEncodesEmptyCollectionsAsArrays(t *testing.T) {
 		decoded.Plan.AssetCodes == nil || decoded.Plan.AssetSources == nil ||
 		decoded.MatchedAssets == nil || decoded.SampleUsers == nil {
 		t.Fatalf("empty campaign collections must encode as JSON arrays: %s", raw)
+	}
+}
+
+func TestRefreshCampaignPreviewReopensExistingDraft(t *testing.T) {
+	t.Parallel()
+	db, err := gorm.Open(sqlite.Open("file:admin-campaign-refresh-"+uuid.NewString()+"?mode=memory&cache=shared"), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := db.AutoMigrate(
+		&models.User{},
+		&models.DeviceToken{},
+		&models.RefreshToken{},
+		&models.NotificationCampaign{},
+	); err != nil {
+		t.Fatal(err)
+	}
+
+	managerID := uuid.New()
+	campaignID := uuid.New()
+	plan := AdminTargetingPlan{Audience: "all_users", MaxRecipients: 100}
+	planJSON, _ := json.Marshal(plan)
+	previewJSON, _ := json.Marshal(storedAdminCampaignPreview{Summary: "Mevcut taslak özeti"})
+	campaign := models.NotificationCampaign{
+		ID: campaignID, ManagerID: managerID, Name: "Devam edilecek taslak",
+		Prompt: "Tüm kullanıcılara piyasa özeti hazırla", Status: "draft",
+		TargetingPlan: models.JSONDocument(planJSON), Preview: models.JSONDocument(previewJSON),
+		Title: "Piyasa özeti", Body: "Güncel piyasa özetini uygulamadan inceleyebilirsiniz.",
+		ApprovalFingerprint: strings.Repeat("0", 64),
+		CreatedAt:           time.Now().UTC(), UpdatedAt: time.Now().UTC(),
+	}
+	if err := db.Create(&campaign).Error; err != nil {
+		t.Fatal(err)
+	}
+
+	svc := NewAdminService(db, nil, nil, config.AdminConfig{MaxRecipients: 1000}, config.AIConfig{}, nil)
+	refreshed, err := svc.RefreshCampaignPreview(context.Background(), managerID, campaignID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if refreshed.CampaignID != campaignID || refreshed.Summary != "Mevcut taslak özeti" {
+		t.Fatalf("unexpected preview: %+v", refreshed)
+	}
+	if refreshed.MatchedAssets == nil || refreshed.SampleUsers == nil {
+		t.Fatalf("refreshed collections must not be nil: %+v", refreshed)
+	}
+	if refreshed.ApprovalFingerprint == "" || refreshed.ApprovalFingerprint == strings.Repeat("0", 64) {
+		t.Fatal("approval fingerprint was not refreshed")
+	}
+
+	var stored models.NotificationCampaign
+	if err := db.Take(&stored, "id = ?", campaignID).Error; err != nil {
+		t.Fatal(err)
+	}
+	if stored.Status != "draft" || stored.ApprovalFingerprint != refreshed.ApprovalFingerprint {
+		t.Fatalf("draft was not refreshed in place: %+v", stored)
+	}
+	var count int64
+	if err := db.Model(&models.NotificationCampaign{}).Count(&count).Error; err != nil {
+		t.Fatal(err)
+	}
+	if count != 1 {
+		t.Fatalf("refresh created another campaign: count=%d", count)
 	}
 }
 

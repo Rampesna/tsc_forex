@@ -104,6 +104,21 @@ export function Campaigns() {
     },
     onError: (value) => setError(value instanceof ApiError ? value.message : "Önizleme oluşturulamadı"),
   });
+  const resumeMutation = useMutation({
+    mutationFn: (campaign: Pick<Campaign, "id" | "prompt">) =>
+      api<CampaignPreview>(`/admin/campaigns/${campaign.id}/preview`, { method: "POST" }),
+    onSuccess: (value, campaign) => {
+      const safeValue = normalizePreview(value);
+      setPreview(safeValue);
+      setPrompt(campaign.prompt);
+      setTitle(safeValue.title);
+      setBody(safeValue.body);
+      setError("");
+      queryClient.invalidateQueries({ queryKey: ["admin-campaigns"] });
+      requestAnimationFrame(() => document.querySelector(".preview-workspace")?.scrollIntoView({ behavior: "smooth", block: "start" }));
+    },
+    onError: (value) => setError(value instanceof ApiError ? value.message : "Kampanya taslağı açılamadı"),
+  });
   const approveMutation = useMutation({
     mutationFn: () => api<Campaign>(`/admin/campaigns/${preview!.campaign_id}/approve`, {
       method: "POST",
@@ -153,7 +168,16 @@ export function Campaigns() {
 
     {preview && <section className="preview-workspace">
       <div className="panel preview-summary">
-        <div className="panel-heading"><div><span className="kicker">GÖNDERİM ÖNİZLEMESİ</span><h2>{preview.name}</h2></div><span className="status-pill draft">Onay bekliyor</span></div>
+        <div className="panel-heading">
+          <div><span className="kicker">GÖNDERİM ÖNİZLEMESİ</span><h2>{preview.name}</h2></div>
+          <div className="preview-heading-actions">
+            <button className="draft-refresh" disabled={resumeMutation.isPending} onClick={() => resumeMutation.mutate({ id: preview.campaign_id, prompt })}>
+              {resumeMutation.isPending ? <span className="spinner" /> : <Icon name="activity" size={14} />} Hedefi yenile
+            </button>
+            <button className="preview-close" aria-label="Taslağı kapat" onClick={() => setPreview(null)}><Icon name="close" size={14} /></button>
+            <span className="status-pill draft">Onay bekliyor</span>
+          </div>
+        </div>
         <p>{preview.summary}</p>
         <div className="audience-number"><span><small>Hedef alıcı</small><strong>{preview.recipient_count.toLocaleString("tr-TR")}</strong></span><span><small>Toplam eşleşme</small><strong>{preview.total_matched.toLocaleString("tr-TR")}</strong></span><span><small>Üst sınır</small><strong>{preview.plan.max_recipients.toLocaleString("tr-TR")}</strong></span></div>
         <div className="rule-chips">
@@ -174,15 +198,45 @@ export function Campaigns() {
       </div>
       <div className="panel sample-users">
         <div className="panel-heading"><div><span className="kicker">ÖRNEKLEM</span><h2>Eşleşen kullanıcılar</h2></div></div>
-        {preview.sample_users.map((user) => <div key={user.id}><span className="table-avatar">{(user.display_name || user.email).slice(0, 2).toUpperCase()}</span><span><strong>{user.display_name || "İsimsiz kullanıcı"}</strong><small>{user.email}</small></span><StatusPill value={user.device_platform} /></div>)}
+        {preview.sample_users.length === 0
+          ? <p className="sample-empty">Mevcut kurallarla eşleşen kullanıcı yok. Hedef kitleyi yenileyebilir veya yeni bir taleple farklı kurallar oluşturabilirsin.</p>
+          : preview.sample_users.map((user) => <div key={user.id}><span className="table-avatar">{(user.display_name || user.email).slice(0, 2).toUpperCase()}</span><span><strong>{user.display_name || "İsimsiz kullanıcı"}</strong><small>{user.email}</small></span><StatusPill value={user.device_platform} /></div>)}
       </div>
     </section>}
 
     <section className="panel campaign-history">
       <div className="panel-heading"><div><span className="kicker">GEÇMİŞ</span><h2>Bildirim kampanyaları</h2></div><span className="panel-chip">{campaigns.data?.total || 0} kampanya</span></div>
       {!campaigns.data?.items.length ? <EmptyState icon="campaign" title="Henüz kampanya yok" text="İlk hedefli bildirimi yukarıdaki alandan planlayın." /> : <div className="data-table campaign-table">
-        <div className="table-head"><span>Kampanya</span><span>Durum</span><span>Alıcı</span><span>İşlendi / hata</span><span>Tarih</span><span /></div>
-        {campaigns.data.items.map((item) => <div className="table-row" key={item.id}><span><strong>{item.name}</strong><small>{item.title}</small></span><span><StatusPill value={item.status} /></span><span><strong>{(item.resolved_recipients || item.estimated_recipients).toLocaleString("tr-TR")}</strong><small>kullanıcı</small></span><span><strong>{item.processed_recipients} / {item.failed_recipients}</strong><small>gelen kutusu / hata</small></span><span><strong>{trDate(item.created_at)}</strong><small>{item.completed_at ? `Bitti: ${trDate(item.completed_at)}` : "—"}</small></span><span>{["draft", "queued", "running"].includes(item.status) && <button className="cancel-inline" onClick={() => setCancelCandidate(item)}>İptal</button>}</span></div>)}
+        <div className="table-head"><span>Kampanya</span><span>Durum</span><span>Alıcı</span><span>İşlendi / hata</span><span>Tarih</span><span>İşlemler</span></div>
+        {campaigns.data.items.map((item) => {
+          const isDraft = item.status === "draft";
+          const isOpening = resumeMutation.isPending && resumeMutation.variables?.id === item.id;
+          return <div
+            className={`table-row campaign-row${isDraft ? " resumable" : ""}`}
+            key={item.id}
+            role={isDraft ? "button" : undefined}
+            tabIndex={isDraft ? 0 : undefined}
+            onClick={() => isDraft && !resumeMutation.isPending && resumeMutation.mutate(item)}
+            onKeyDown={(event) => {
+              if (isDraft && !resumeMutation.isPending && (event.key === "Enter" || event.key === " ")) {
+                event.preventDefault();
+                resumeMutation.mutate(item);
+              }
+            }}
+          >
+            <span><strong>{item.name}</strong><small>{item.title}</small></span>
+            <span><StatusPill value={item.status} /></span>
+            <span><strong>{(item.resolved_recipients || item.estimated_recipients).toLocaleString("tr-TR")}</strong><small>kullanıcı</small></span>
+            <span><strong>{item.processed_recipients} / {item.failed_recipients}</strong><small>gelen kutusu / hata</small></span>
+            <span><strong>{trDate(item.created_at)}</strong><small>{item.completed_at ? `Bitti: ${trDate(item.completed_at)}` : isDraft ? "Devam etmeye hazır" : "—"}</small></span>
+            <span className="campaign-actions">
+              {isDraft && <button className="resume-inline" disabled={resumeMutation.isPending} onClick={(event) => { event.stopPropagation(); resumeMutation.mutate(item); }}>
+                {isOpening ? <span className="spinner" /> : <Icon name="arrow" size={12} />} Devam et
+              </button>}
+              {["draft", "queued", "running"].includes(item.status) && <button className="cancel-inline" onClick={(event) => { event.stopPropagation(); setCancelCandidate(item); }}>İptal</button>}
+            </span>
+          </div>;
+        })}
       </div>}
     </section>
 

@@ -41,6 +41,7 @@ function humanAction(value: string) {
     "admin.password_changed": "Yönetici şifresi değiştirildi",
     "admin.user_viewed": "Kullanıcı detayı görüntülendi",
     "campaign.previewed": "Kampanya önizlemesi oluşturuldu",
+    "campaign.reopened": "Kampanya taslağı yeniden açıldı",
     "campaign.approved": "Kampanya onaylandı",
     "campaign.cancelled": "Kampanya iptal edildi",
   };
