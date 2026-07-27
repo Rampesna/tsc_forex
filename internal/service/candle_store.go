@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"errors"
+	"sort"
 	"sync"
 	"time"
 
@@ -202,8 +203,9 @@ func (s *CandleStore) flushLoop(ctx context.Context) {
 
 func (s *CandleStore) flush(ctx context.Context) {
 	s.mu.Lock()
-	batch := s.pending
+	closed := s.pending
 	s.pending = nil
+	batch := append([]models.Candle(nil), closed...)
 	// Also persist current (forming) candles so history survives a restart.
 	for k, a := range s.current {
 		code, res := splitKey(k)
@@ -213,9 +215,31 @@ func (s *CandleStore) flush(ctx context.Context) {
 	if len(batch) == 0 {
 		return
 	}
+	// Every replica observes largely the same market stream and flushes the
+	// same rows. Go map iteration is random, so without a canonical order each
+	// transaction acquires PostgreSQL conflict-row locks differently and can
+	// deadlock another replica. A total key order makes lock acquisition
+	// deterministic cluster-wide.
+	sort.Slice(batch, func(i, j int) bool {
+		if batch[i].Code != batch[j].Code {
+			return batch[i].Code < batch[j].Code
+		}
+		if batch[i].Resolution != batch[j].Resolution {
+			return batch[i].Resolution < batch[j].Resolution
+		}
+		return batch[i].Bucket.Before(batch[j].Bucket)
+	})
 	cctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 	if err := s.repo.UpsertBatch(cctx, batch); err != nil {
+		// Forming candles are included again automatically on the next flush.
+		// Closed candles are not, so put only those back at the front of the
+		// pending queue to avoid a history gap after transient DB contention.
+		if len(closed) > 0 {
+			s.mu.Lock()
+			s.pending = append(closed, s.pending...)
+			s.mu.Unlock()
+		}
 		s.log.Warn("candle flush failed", zap.Error(err), zap.Int("candles", len(batch)))
 	}
 }

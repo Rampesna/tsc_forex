@@ -2,6 +2,8 @@ package service
 
 import (
 	"context"
+	"errors"
+	"sync"
 	"testing"
 	"time"
 
@@ -33,6 +35,33 @@ func (noopCandleRepository) TryLockBootstrap(context.Context) (bool, func(), err
 }
 func (noopCandleRepository) Prune(context.Context, string, time.Time) (int64, error) {
 	return 0, nil
+}
+
+type recordingCandleRepository struct {
+	noopCandleRepository
+	mu      sync.Mutex
+	batches [][]models.Candle
+	fail    bool
+}
+
+func (r *recordingCandleRepository) UpsertBatch(_ context.Context, batch []models.Candle) error {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.batches = append(r.batches, append([]models.Candle(nil), batch...))
+	if r.fail {
+		return errors.New("transient write failure")
+	}
+	return nil
+}
+
+func (r *recordingCandleRepository) snapshot() [][]models.Candle {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	out := make([][]models.Candle, len(r.batches))
+	for i := range r.batches {
+		out[i] = append([]models.Candle(nil), r.batches[i]...)
+	}
+	return out
 }
 
 func feed(bus *eventbus.Bus, code string, price float64, ts time.Time) {
@@ -174,5 +203,57 @@ func TestCandleStoreWorkersStopBeforeDatabaseClose(t *testing.T) {
 	defer waitCancel()
 	if err := s.Wait(waitCtx); err != nil {
 		t.Fatalf("wait: %v", err)
+	}
+}
+
+func TestCandleFlushUsesDeterministicLockOrder(t *testing.T) {
+	t.Parallel()
+
+	repo := &recordingCandleRepository{}
+	s := NewCandleStore(nil, repo, nil)
+	s.current["ZED|5m"] = &candleAgg{
+		bucket: time.Date(2026, 7, 27, 10, 5, 0, 0, time.UTC),
+		open:   3, high: 3, low: 3, close: 3, count: 1,
+	}
+	s.current["ALPHA|5m"] = &candleAgg{
+		bucket: time.Date(2026, 7, 27, 10, 5, 0, 0, time.UTC),
+		open:   1, high: 1, low: 1, close: 1, count: 1,
+	}
+	s.pending = []models.Candle{{
+		Code: "ALPHA", Resolution: "1m",
+		Bucket: time.Date(2026, 7, 27, 10, 4, 0, 0, time.UTC),
+	}}
+
+	s.flush(context.Background())
+	batches := repo.snapshot()
+	if len(batches) != 1 || len(batches[0]) != 3 {
+		t.Fatalf("batches = %#v", batches)
+	}
+	got := batches[0]
+	if got[0].Code != "ALPHA" || got[0].Resolution != "1m" ||
+		got[1].Code != "ALPHA" || got[1].Resolution != "5m" ||
+		got[2].Code != "ZED" {
+		t.Fatalf("non-deterministic order: %#v", got)
+	}
+}
+
+func TestCandleFlushRequeuesClosedCandlesAfterFailure(t *testing.T) {
+	t.Parallel()
+
+	repo := &recordingCandleRepository{fail: true}
+	s := NewCandleStore(nil, repo, nil)
+	closed := models.Candle{
+		Code: "USDTRY", Resolution: "1m",
+		Bucket: time.Date(2026, 7, 27, 10, 4, 0, 0, time.UTC),
+	}
+	s.pending = []models.Candle{closed}
+
+	s.flush(context.Background())
+
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if len(s.pending) != 1 || s.pending[0].Code != closed.Code ||
+		!s.pending[0].Bucket.Equal(closed.Bucket) {
+		t.Fatalf("closed candle was not requeued: %#v", s.pending)
 	}
 }
