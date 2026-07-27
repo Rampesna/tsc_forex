@@ -1,13 +1,15 @@
-export const trDate = (value?: string) =>
-  value
-    ? new Intl.DateTimeFormat("tr-TR", {
-        day: "2-digit",
-        month: "short",
-        year: "numeric",
-        hour: "2-digit",
-        minute: "2-digit",
-      }).format(new Date(value))
-    : "—";
+export const trDate = (value?: string) => {
+  if (!value) return "—";
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime()) || date.getUTCFullYear() <= 1) return "—";
+  return new Intl.DateTimeFormat("tr-TR", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date);
+};
 
 export const shortDate = (value: string) =>
   new Intl.DateTimeFormat("tr-TR", { day: "2-digit", month: "short" }).format(new Date(value));
