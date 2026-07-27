@@ -86,6 +86,68 @@ func TestCheckReadyRequiresCurrentSuccessfulMigration(t *testing.T) {
 	}
 }
 
+func TestManagerRealmMigrationDropsLegacyAdminColumns(t *testing.T) {
+	db, err := gorm.Open(
+		sqlite.Open("file:manager-realm-"+uuid.NewString()+"?mode=memory&cache=shared"),
+		&gorm.Config{Logger: logger.Default.LogMode(logger.Silent)},
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	sqlDB, err := db.DB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = sqlDB.Close() })
+
+	if err := db.AutoMigrate(
+		&models.User{},
+		&models.NotificationCampaign{},
+		&models.AdminAuditLog{},
+	); err != nil {
+		t.Fatal(err)
+	}
+	for _, statement := range []string{
+		"ALTER TABLE users ADD COLUMN must_change_password boolean",
+		"ALTER TABLE users ADD COLUMN password_changed_at datetime",
+		"ALTER TABLE notification_campaigns ADD COLUMN admin_id text",
+		"ALTER TABLE admin_audit_logs ADD COLUMN actor_id text",
+	} {
+		if err := db.Exec(statement).Error; err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if err := database.Migrate(db); err != nil {
+		t.Fatal(err)
+	}
+	legacyColumns := []struct {
+		table  string
+		column string
+	}{
+		{table: "users", column: "must_change_password"},
+		{table: "users", column: "password_changed_at"},
+		{table: "notification_campaigns", column: "admin_id"},
+		{table: "admin_audit_logs", column: "actor_id"},
+	}
+	for _, legacy := range legacyColumns {
+		if db.Migrator().HasColumn(legacy.table, legacy.column) {
+			t.Fatalf("legacy manager column %q was not removed", legacy.column)
+		}
+	}
+	for _, required := range []struct {
+		table  string
+		column string
+	}{
+		{table: "notification_campaigns", column: "manager_id"},
+		{table: "admin_audit_logs", column: "manager_id"},
+	} {
+		if !db.Migrator().HasColumn(required.table, required.column) {
+			t.Fatalf("manager ownership column %q is missing", required.column)
+		}
+	}
+}
+
 func TestPortfolioSchemaCanRollback(t *testing.T) {
 	db, err := gorm.Open(sqlite.Open("file::memory:?cache=shared"), &gorm.Config{})
 	if err != nil {

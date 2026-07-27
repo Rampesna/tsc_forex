@@ -369,6 +369,35 @@ jobs:
           '
           kubectl -n "$NS" exec deployment/tsc-forex-webadmin -- \
             wget -qO- http://127.0.0.1:8080/healthz | grep -qx ok
+          # Keep operations identities physically isolated from consumer
+          # accounts. The release fails closed if a later migration regresses
+          # the manager realm or leaves legacy admin columns behind.
+          kubectl -n "$NS" exec statefulset/postgres -- sh -ec '
+            export PGPASSWORD="$POSTGRES_PASSWORD"
+            schema_state="$(psql -v ON_ERROR_STOP=1 \
+              -U "$POSTGRES_USER" -d "$POSTGRES_DB" -Atc "
+                SELECT
+                  to_regclass('\''public.managers'\'') IS NOT NULL,
+                  to_regclass('\''public.manager_sessions'\'') IS NOT NULL,
+                  NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = '\''public'\''
+                      AND table_name = '\''users'\''
+                      AND column_name IN ('\''must_change_password'\'', '\''password_changed_at'\'')
+                  ),
+                  NOT EXISTS (
+                    SELECT 1 FROM information_schema.columns
+                    WHERE table_schema = '\''public'\''
+                      AND (
+                        (table_name = '\''notification_campaigns'\'' AND column_name = '\''admin_id'\'')
+                        OR (table_name = '\''admin_audit_logs'\'' AND column_name = '\''actor_id'\'')
+                      )
+                  ),
+                  (SELECT COUNT(*) FROM managers),
+                  (SELECT COUNT(*) FROM users WHERE role IS DISTINCT FROM '\''user'\'');
+              ")"
+            test "$schema_state" = "t|t|t|t|1|0"
+          '
 
           # Prune leftover images/build cache so nothing accumulates on the host.
           docker image prune -af >/dev/null 2>&1 || true

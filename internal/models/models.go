@@ -1022,7 +1022,7 @@ func (SubscriptionRestoreTombstone) TableName() string { return "subscription_re
 // executes model-authored SQL.
 type NotificationCampaign struct {
 	ID                  uuid.UUID    `gorm:"type:uuid;primaryKey" json:"id"`
-	ManagerID           uuid.UUID    `gorm:"type:uuid;index" json:"manager_id"`
+	ManagerID           uuid.UUID    `gorm:"type:uuid;not null;index" json:"manager_id"`
 	Name                string       `gorm:"type:varchar(120);not null" json:"name"`
 	Prompt              string       `gorm:"type:text;not null" json:"prompt"`
 	Status              string       `gorm:"type:varchar(24);not null;index" json:"status"`

@@ -15,7 +15,7 @@ import (
 	"github.com/tsc-forex/tsc_forex/internal/models"
 )
 
-const currentSchemaVersion int64 = 2026072703
+const currentSchemaVersion int64 = 2026072704
 
 type schemaState struct {
 	Component string    `gorm:"type:varchar(64);primaryKey"`
@@ -130,6 +130,9 @@ func migrateSchema(db *gorm.DB) error {
 		&models.AdminAuditLog{},
 	); err != nil {
 		return err
+	}
+	if err := contractManagerRealmColumns(db); err != nil {
+		return fmt.Errorf("manager realm cleanup: %w", err)
 	}
 
 	if db.Dialector.Name() == "postgres" {
@@ -270,13 +273,13 @@ func expandManagerOwnershipColumns(db *gorm.DB) error {
 		return nil
 	}
 	migrator := db.Migrator()
-	if migrator.HasTable(&models.NotificationCampaign{}) {
-		if !migrator.HasColumn(&models.NotificationCampaign{}, "manager_id") {
+	if migrator.HasTable("notification_campaigns") {
+		if !migrator.HasColumn("notification_campaigns", "manager_id") {
 			if err := db.Exec(`ALTER TABLE notification_campaigns ADD COLUMN manager_id UUID`).Error; err != nil {
 				return err
 			}
 		}
-		if migrator.HasColumn(&models.NotificationCampaign{}, "admin_id") {
+		if migrator.HasColumn("notification_campaigns", "admin_id") {
 			if err := db.Exec(`UPDATE notification_campaigns SET manager_id = admin_id WHERE manager_id IS NULL`).Error; err != nil {
 				return err
 			}
@@ -285,16 +288,42 @@ func expandManagerOwnershipColumns(db *gorm.DB) error {
 			}
 		}
 	}
-	if migrator.HasTable(&models.AdminAuditLog{}) {
-		if !migrator.HasColumn(&models.AdminAuditLog{}, "manager_id") {
+	if migrator.HasTable("admin_audit_logs") {
+		if !migrator.HasColumn("admin_audit_logs", "manager_id") {
 			if err := db.Exec(`ALTER TABLE admin_audit_logs ADD COLUMN manager_id UUID`).Error; err != nil {
 				return err
 			}
 		}
-		if migrator.HasColumn(&models.AdminAuditLog{}, "actor_id") {
+		if migrator.HasColumn("admin_audit_logs", "actor_id") {
 			if err := db.Exec(`UPDATE admin_audit_logs SET manager_id = actor_id WHERE manager_id IS NULL`).Error; err != nil {
 				return err
 			}
+		}
+	}
+	return nil
+}
+
+// contractManagerRealmColumns permanently removes the compatibility columns
+// used by the former user-backed admin implementation. This runs only after
+// the manager tables and replacement ownership columns have been migrated.
+func contractManagerRealmColumns(db *gorm.DB) error {
+	legacyColumns := []struct {
+		table  string
+		column string
+	}{
+		{table: "users", column: "must_change_password"},
+		{table: "users", column: "password_changed_at"},
+		{table: "notification_campaigns", column: "admin_id"},
+		{table: "admin_audit_logs", column: "actor_id"},
+	}
+	migrator := db.Migrator()
+	for _, legacy := range legacyColumns {
+		if !migrator.HasTable(legacy.table) || !migrator.HasColumn(legacy.table, legacy.column) {
+			continue
+		}
+		statement := fmt.Sprintf("ALTER TABLE %s DROP COLUMN %s", legacy.table, legacy.column)
+		if err := db.Exec(statement).Error; err != nil {
+			return fmt.Errorf("drop %s: %w", legacy.column, err)
 		}
 	}
 	return nil
