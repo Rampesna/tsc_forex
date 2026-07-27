@@ -2,6 +2,7 @@ package service
 
 import (
 	"context"
+	"database/sql"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -292,10 +293,16 @@ func (s *AdminService) platformDistribution(ctx context.Context) ([]AdminNamedVa
 	var rows []row
 	if err := s.db.WithContext(ctx).Raw(`
 		SELECT
-			MAX(CASE WHEN d.platform = 'ios' THEN 1 ELSE 0 END) AS ios,
-			MAX(CASE WHEN d.platform = 'android' THEN 1 ELSE 0 END) AS android
-		FROM users u LEFT JOIN device_tokens d ON d.user_id = u.id
-		WHERE u.role = 'user' GROUP BY u.id
+			CASE WHEN
+				EXISTS (SELECT 1 FROM device_tokens d WHERE d.user_id = u.id AND d.platform = 'ios')
+				OR EXISTS (SELECT 1 FROM refresh_tokens r WHERE r.user_id = u.id AND r.platform = 'ios')
+			THEN 1 ELSE 0 END AS ios,
+			CASE WHEN
+				EXISTS (SELECT 1 FROM device_tokens d WHERE d.user_id = u.id AND d.platform = 'android')
+				OR EXISTS (SELECT 1 FROM refresh_tokens r WHERE r.user_id = u.id AND r.platform = 'android')
+			THEN 1 ELSE 0 END AS android
+		FROM users u
+		WHERE u.role = 'user'
 	`).Scan(&rows).Error; err != nil {
 		return nil, err
 	}
@@ -460,7 +467,10 @@ func (s *AdminService) Users(ctx context.Context, query AdminUserQuery) (AdminUs
 		}
 	}
 	if query.Platform == "ios" || query.Platform == "android" {
-		base = base.Where("EXISTS (SELECT 1 FROM device_tokens d WHERE d.user_id = u.id AND d.platform = ?)", query.Platform)
+		base = base.Where(`
+			EXISTS (SELECT 1 FROM device_tokens d WHERE d.user_id = u.id AND d.platform = ?)
+			OR EXISTS (SELECT 1 FROM refresh_tokens r WHERE r.user_id = u.id AND r.platform = ?)
+		`, query.Platform, query.Platform)
 	}
 	if err := base.Count(&out.Total).Error; err != nil {
 		return out, err
@@ -481,7 +491,7 @@ func (s *AdminService) Users(ctx context.Context, query AdminUserQuery) (AdminUs
 		Badges             int
 		AIResearchUses     int
 		CreatedAt          time.Time
-		LastActiveAt       *time.Time
+		LastActiveAt       sql.NullString
 		SubscriptionExpiry *time.Time
 	}
 	var rows []row
@@ -490,8 +500,14 @@ func (s *AdminService) Users(ctx context.Context, query AdminUserQuery) (AdminUs
 		COALESCE((SELECT e.plan_code FROM subscription_entitlements e WHERE e.user_id = u.id AND e.status = 'active' AND e.expires_at > CURRENT_TIMESTAMP AND e.revoked_at IS NULL ORDER BY e.updated_at DESC LIMIT 1), 'free') AS plan_code,
 		COALESCE((SELECT e.provider FROM subscription_entitlements e WHERE e.user_id = u.id AND e.status = 'active' AND e.expires_at > CURRENT_TIMESTAMP AND e.revoked_at IS NULL ORDER BY e.updated_at DESC LIMIT 1), '') AS purchase_platform,
 		(SELECT e.expires_at FROM subscription_entitlements e WHERE e.user_id = u.id AND e.status = 'active' AND e.expires_at > CURRENT_TIMESTAMP AND e.revoked_at IS NULL ORDER BY e.updated_at DESC LIMIT 1) AS subscription_expiry,
-		COALESCE((SELECT MAX(CASE WHEN d.platform = 'ios' THEN 1 ELSE 0 END) FROM device_tokens d WHERE d.user_id = u.id), 0) AS has_ios,
-		COALESCE((SELECT MAX(CASE WHEN d.platform = 'android' THEN 1 ELSE 0 END) FROM device_tokens d WHERE d.user_id = u.id), 0) AS has_android,
+		CASE WHEN
+			EXISTS (SELECT 1 FROM device_tokens d WHERE d.user_id = u.id AND d.platform = 'ios')
+			OR EXISTS (SELECT 1 FROM refresh_tokens r WHERE r.user_id = u.id AND r.platform = 'ios')
+		THEN 1 ELSE 0 END AS has_ios,
+		CASE WHEN
+			EXISTS (SELECT 1 FROM device_tokens d WHERE d.user_id = u.id AND d.platform = 'android')
+			OR EXISTS (SELECT 1 FROM refresh_tokens r WHERE r.user_id = u.id AND r.platform = 'android')
+		THEN 1 ELSE 0 END AS has_android,
 		(SELECT COUNT(*) FROM watchlist_items w WHERE w.user_id = u.id) AS favorites,
 		(SELECT COUNT(*) FROM price_alerts a WHERE a.user_id = u.id AND a.active = true) AS active_alerts,
 		(SELECT COUNT(*) FROM user_badges b WHERE b.user_id = u.id) AS badges,
@@ -519,12 +535,36 @@ func (s *AdminService) Users(ctx context.Context, query AdminUserQuery) (AdminUs
 			Provider: row.Provider, PlanCode: row.PlanCode, PurchasePlatform: row.PurchasePlatform,
 			DevicePlatform: devicePlatform, Favorites: row.Favorites, ActiveAlerts: row.ActiveAlerts,
 			Badges: row.Badges, AIResearchUses: row.AIResearchUses, CreatedAt: row.CreatedAt,
-			LastActiveAt: row.LastActiveAt, SubscriptionExpiry: row.SubscriptionExpiry,
+			LastActiveAt: adminTimePointer(row.LastActiveAt), SubscriptionExpiry: row.SubscriptionExpiry,
 			Online: onlineIDs[row.ID.String()],
 		})
 	}
 	out.Page, out.PageSize = query.Page, query.PageSize
 	return out, nil
+}
+
+func adminTimePointer(value sql.NullString) *time.Time {
+	if !value.Valid {
+		return nil
+	}
+	return parseAdminTime(value.String)
+}
+
+func parseAdminTime(value string) *time.Time {
+	value = strings.TrimSpace(value)
+	for _, layout := range []string{
+		time.RFC3339Nano,
+		"2006-01-02 15:04:05.999999999-07:00",
+		"2006-01-02 15:04:05.999999999Z07:00",
+		"2006-01-02 15:04:05-07:00",
+		"2006-01-02 15:04:05",
+	} {
+		if parsed, err := time.Parse(layout, value); err == nil {
+			utc := parsed.UTC()
+			return &utc
+		}
+	}
+	return nil
 }
 
 type AdminActivityItem struct {

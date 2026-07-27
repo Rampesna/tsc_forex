@@ -214,12 +214,16 @@ func (n *Notification) BeforeCreate(_ *gorm.DB) error {
 
 // RefreshToken stores a hashed, rotating refresh token for a user session.
 type RefreshToken struct {
-	ID        uuid.UUID  `gorm:"type:uuid;primaryKey" json:"id"`
-	UserID    uuid.UUID  `gorm:"type:uuid;index;not null" json:"user_id"`
-	TokenHash string     `gorm:"type:varchar(128);uniqueIndex;not null" json:"-"`
-	ExpiresAt time.Time  `gorm:"not null" json:"expires_at"`
-	RevokedAt *time.Time `json:"revoked_at"`
-	CreatedAt time.Time  `json:"created_at"`
+	ID          uuid.UUID  `gorm:"type:uuid;primaryKey" json:"id"`
+	UserID      uuid.UUID  `gorm:"type:uuid;index;not null" json:"user_id"`
+	TokenHash   string     `gorm:"type:varchar(128);uniqueIndex;not null" json:"-"`
+	Platform    string     `gorm:"type:varchar(16);index" json:"-"` // ios | android; independent of push permission
+	Locale      string     `gorm:"type:varchar(16)" json:"-"`
+	AppVersion  string     `gorm:"type:varchar(32)" json:"-"`
+	DeviceModel string     `gorm:"type:varchar(96)" json:"-"`
+	ExpiresAt   time.Time  `gorm:"not null" json:"expires_at"`
+	RevokedAt   *time.Time `json:"revoked_at"`
+	CreatedAt   time.Time  `json:"created_at"`
 }
 
 func (RefreshToken) TableName() string { return "refresh_tokens" }

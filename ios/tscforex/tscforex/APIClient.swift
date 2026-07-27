@@ -105,6 +105,20 @@ struct APIClient {
         return encoder
     }
 
+    private func applyClientHeaders(to request: inout URLRequest) {
+        request.setValue("ios", forHTTPHeaderField: "X-TSC-Client-Platform")
+        request.setValue(
+            Locale.preferredLanguages.first ?? Locale.current.identifier,
+            forHTTPHeaderField: "X-TSC-Client-Locale"
+        )
+        if let version = Bundle.main.object(
+            forInfoDictionaryKey: "CFBundleShortVersionString"
+        ) as? String {
+            request.setValue(version, forHTTPHeaderField: "X-TSC-App-Version")
+        }
+        request.setValue("Apple mobile device", forHTTPHeaderField: "X-TSC-Device-Model")
+    }
+
     private func request(_ path: String, method: String = "GET", body: Encodable? = nil,
                          authed: Bool = false, overrideToken: String? = nil,
                          allowRetry: Bool = true, timeout: TimeInterval = 12) async throws -> Data {
@@ -115,6 +129,7 @@ struct APIClient {
         var req = URLRequest(url: url, timeoutInterval: timeout)
         req.httpMethod = method
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        applyClientHeaders(to: &req)
         let effToken = overrideToken ?? token
         if authed, let effToken {
             req.setValue("Bearer \(effToken)", forHTTPHeaderField: "Authorization")
@@ -263,6 +278,7 @@ struct APIClient {
         var req = URLRequest(url: url, timeoutInterval: 30)
         req.httpMethod = "POST"
         req.setValue("multipart/form-data; boundary=\(boundary)", forHTTPHeaderField: "Content-Type")
+        applyClientHeaders(to: &req)
         if let token { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
 
         var body = Data()

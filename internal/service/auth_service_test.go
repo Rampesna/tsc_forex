@@ -18,6 +18,51 @@ type memUserRepo struct {
 	byEmail map[string]models.User
 }
 
+type memRefreshRepo struct {
+	byHash map[string]models.RefreshToken
+	last   models.RefreshToken
+}
+
+func newMemRefreshRepo() *memRefreshRepo {
+	return &memRefreshRepo{byHash: map[string]models.RefreshToken{}}
+}
+
+func (m *memRefreshRepo) Store(_ context.Context, token *models.RefreshToken) error {
+	m.last = *token
+	m.byHash[token.TokenHash] = *token
+	return nil
+}
+
+func (m *memRefreshRepo) ByHash(_ context.Context, hash string) (models.RefreshToken, error) {
+	token, ok := m.byHash[hash]
+	if !ok {
+		return models.RefreshToken{}, repository.ErrNotFound
+	}
+	return token, nil
+}
+
+func (m *memRefreshRepo) Revoke(_ context.Context, id uuid.UUID) error {
+	now := time.Now().UTC()
+	for hash, token := range m.byHash {
+		if token.ID == id {
+			token.RevokedAt = &now
+			m.byHash[hash] = token
+		}
+	}
+	return nil
+}
+
+func (m *memRefreshRepo) RevokeAllForUser(_ context.Context, userID uuid.UUID) error {
+	now := time.Now().UTC()
+	for hash, token := range m.byHash {
+		if token.UserID == userID {
+			token.RevokedAt = &now
+			m.byHash[hash] = token
+		}
+	}
+	return nil
+}
+
 func newMemUserRepo() *memUserRepo { return &memUserRepo{byEmail: map[string]models.User{}} }
 
 func (m *memUserRepo) Create(_ context.Context, u *models.User) error {
@@ -101,5 +146,35 @@ func TestAuthRegisterLoginVerify(t *testing.T) {
 	}
 	if _, err := auth.Verify("garbage.token.value"); err == nil {
 		t.Fatal("expected verify error")
+	}
+}
+
+func TestAuthSessionPersistsAndCarriesClientMetadata(t *testing.T) {
+	t.Parallel()
+	users := newMemUserRepo()
+	tokens := newMemRefreshRepo()
+	auth := service.NewAuthService(users, testJWTCfg()).WithRefreshStore(tokens)
+	base := context.Background()
+	if _, err := auth.Register(base, "android@example.com", "password123", "user"); err != nil {
+		t.Fatal(err)
+	}
+	metadata := service.NormalizeClientMetadata("android", "tr-TR", "1.2.0", "Pixel 9")
+	ctx := service.WithClientMetadata(base, metadata)
+	_, refresh, err := auth.Login(ctx, "android@example.com", "password123")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if tokens.last.Platform != "android" || tokens.last.Locale != "tr-TR" ||
+		tokens.last.AppVersion != "1.2.0" || tokens.last.DeviceModel != "Pixel 9" {
+		t.Fatalf("stored metadata=%+v", tokens.last)
+	}
+
+	// A refresh from an older client without headers keeps the provenance of
+	// the session it rotates instead of regressing the user to "unknown".
+	if _, _, err := auth.Refresh(base, refresh); err != nil {
+		t.Fatal(err)
+	}
+	if tokens.last.Platform != "android" || tokens.last.AppVersion != "1.2.0" {
+		t.Fatalf("rotated metadata=%+v", tokens.last)
 	}
 }

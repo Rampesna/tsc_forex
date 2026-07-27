@@ -429,7 +429,10 @@ func (s *AdminService) resolveAudience(ctx context.Context, plan AdminTargetingP
 
 	query := s.db.WithContext(ctx).Table("users AS u").Where("u.role = ?", "user")
 	if len(plan.Platforms) > 0 {
-		query = query.Where("EXISTS (SELECT 1 FROM device_tokens d WHERE d.user_id = u.id AND d.platform IN ?)", plan.Platforms)
+		query = query.Where(`
+			EXISTS (SELECT 1 FROM device_tokens d WHERE d.user_id = u.id AND d.platform IN ?)
+			OR EXISTS (SELECT 1 FROM refresh_tokens r WHERE r.user_id = u.id AND r.platform IN ?)
+		`, plan.Platforms, plan.Platforms)
 	}
 	if len(plan.PlanCodes) > 0 {
 		hasFree := false
@@ -504,8 +507,14 @@ func (s *AdminService) resolveAudience(ctx context.Context, plan AdminTargetingP
 	var rows []row
 	if err := query.Select(`
 		u.id, u.email, u.display_name,
-		COALESCE((SELECT MAX(CASE WHEN d.platform = 'ios' THEN 1 ELSE 0 END) FROM device_tokens d WHERE d.user_id = u.id), 0) AS has_ios,
-		COALESCE((SELECT MAX(CASE WHEN d.platform = 'android' THEN 1 ELSE 0 END) FROM device_tokens d WHERE d.user_id = u.id), 0) AS has_android
+		CASE WHEN
+			EXISTS (SELECT 1 FROM device_tokens d WHERE d.user_id = u.id AND d.platform = 'ios')
+			OR EXISTS (SELECT 1 FROM refresh_tokens r WHERE r.user_id = u.id AND r.platform = 'ios')
+		THEN 1 ELSE 0 END AS has_ios,
+		CASE WHEN
+			EXISTS (SELECT 1 FROM device_tokens d WHERE d.user_id = u.id AND d.platform = 'android')
+			OR EXISTS (SELECT 1 FROM refresh_tokens r WHERE r.user_id = u.id AND r.platform = 'android')
+		THEN 1 ELSE 0 END AS has_android
 	`).Order("u.id ASC").Limit(plan.MaxRecipients).Scan(&rows).Error; err != nil {
 		return out, err
 	}

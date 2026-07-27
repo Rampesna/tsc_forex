@@ -1,6 +1,8 @@
 package com.example.tsc.forex.data
 
 import com.example.tsc.forex.AppConfig
+import com.example.tsc.forex.BuildConfig
+import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
@@ -55,8 +57,15 @@ class PriceSocket(
     }
 
     private fun open() {
-        val urlStr = token?.takeIf { it.isNotEmpty() }?.let { "${AppConfig.wsUrl}?token=$it" } ?: AppConfig.wsUrl
-        val req = Request.Builder().url(urlStr).build()
+        val url = AppConfig.wsUrl.toHttpUrl().newBuilder()
+            .addQueryParameter("platform", "android")
+            .apply { token?.takeIf(String::isNotEmpty)?.let { addQueryParameter("token", it) } }
+            .build()
+        val req = Request.Builder()
+            .url(url)
+            .header("X-TSC-Client-Platform", "android")
+            .header("X-TSC-App-Version", BuildConfig.VERSION_NAME)
+            .build()
         ws = client.newWebSocket(req, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 backoffMs = 1_000L

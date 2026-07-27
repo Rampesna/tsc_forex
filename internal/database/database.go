@@ -15,7 +15,10 @@ import (
 	"github.com/tsc-forex/tsc_forex/internal/models"
 )
 
-const currentSchemaVersion int64 = 2026072704
+const (
+	currentSchemaVersion          int64 = 2026072705
+	clientPlatformBackfillVersion int64 = 2026072705
+)
 
 type schemaState struct {
 	Component string    `gorm:"type:varchar(64);primaryKey"`
@@ -136,6 +139,15 @@ func migrateSchema(db *gorm.DB) error {
 	}
 
 	if db.Dialector.Name() == "postgres" {
+		needsClientPlatformBackfill, err := schemaVersionBefore(db, clientPlatformBackfillVersion)
+		if err != nil {
+			return fmt.Errorf("client platform backfill state: %w", err)
+		}
+		if needsClientPlatformBackfill {
+			if err := backfillLegacyAndroidSessions(db); err != nil {
+				return fmt.Errorf("client platform backfill: %w", err)
+			}
+		}
 		if err := enablePgVector(db); err != nil {
 			// The production image includes pgvector; failure means this schema
 			// migration did not complete and the readiness marker must not advance.
@@ -146,6 +158,19 @@ func migrateSchema(db *gorm.DB) error {
 		}
 	}
 	return recordSchemaReady(db)
+}
+
+func schemaVersionBefore(db *gorm.DB, version int64) (bool, error) {
+	var state schemaState
+	err := db.Where("component = ?", "core").Take(&state).Error
+	switch {
+	case errors.Is(err, gorm.ErrRecordNotFound):
+		return true, nil
+	case err != nil:
+		return false, err
+	default:
+		return state.Version < version, nil
+	}
 }
 
 func recordSchemaReady(db *gorm.DB) error {
@@ -216,6 +241,7 @@ func addProductionIndexes(db *gorm.DB) error {
 
 		// Refresh-token lookups by hash are already unique; add expiry sweep index.
 		`CREATE INDEX IF NOT EXISTS idx_refresh_tokens_expires ON refresh_tokens (expires_at)`,
+		`CREATE INDEX IF NOT EXISTS idx_refresh_tokens_user_platform ON refresh_tokens (user_id, platform) WHERE platform IN ('ios', 'android')`,
 		`CREATE INDEX IF NOT EXISTS idx_manager_sessions_manager_created ON manager_sessions (manager_id, created_at DESC)`,
 		`CREATE INDEX IF NOT EXISTS idx_manager_sessions_expires ON manager_sessions (expires_at)`,
 
@@ -262,6 +288,27 @@ func addProductionIndexes(db *gorm.DB) error {
 		}
 	}
 	return nil
+}
+
+// backfillLegacyAndroidSessions repairs the platform blind spot that existed
+// before native-client metadata was stored on refresh sessions. The current
+// production unknown cohort is the Android closed-beta cohort; users already
+// identified by an APNs/FCM token are deliberately excluded. The statement is
+// idempotent and never fabricates a push token or notification permission.
+func backfillLegacyAndroidSessions(db *gorm.DB) error {
+	return db.Exec(`
+		UPDATE refresh_tokens AS r
+		SET platform = 'android'
+		WHERE COALESCE(r.platform, '') = ''
+		  AND EXISTS (
+			SELECT 1 FROM users AS u
+			WHERE u.id = r.user_id AND u.role = 'user'
+		  )
+		  AND NOT EXISTS (
+			SELECT 1 FROM device_tokens AS d
+			WHERE d.user_id = r.user_id AND d.platform IN ('ios', 'android')
+		  )
+	`).Error
 }
 
 // expandManagerOwnershipColumns is the expand phase of a zero-downtime schema

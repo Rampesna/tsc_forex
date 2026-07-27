@@ -117,6 +117,7 @@ func NewEngine(d Deps) *gin.Engine {
 
 	v1 := r.Group("/api/v1")
 	v1.Use(middleware.NoCache())
+	v1.Use(middleware.ClientMetadata())
 	if d.Config.RateLimit.Enabled {
 		v1.Use(middleware.RateLimit(d.Config.RateLimit.Requests, d.Config.RateLimit.WindowSec))
 	}

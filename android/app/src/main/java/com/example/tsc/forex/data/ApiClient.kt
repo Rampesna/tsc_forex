@@ -1,6 +1,8 @@
 package com.example.tsc.forex.data
 
+import android.os.Build
 import com.example.tsc.forex.AppConfig
+import com.example.tsc.forex.BuildConfig
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
@@ -408,15 +410,19 @@ class ApiClient(
             .addFormDataPart("avatar", "avatar.jpg",
                 bytes.toRequestBody("image/jpeg".toMediaType(), 0, bytes.size))
             .build()
-        val b = Request.Builder().url(url("me/avatar")).post(part).header("Accept", "application/json")
+        val b = applyClientHeaders(
+            Request.Builder().url(url("me/avatar")).post(part).header("Accept", "application/json")
+        )
         tokenProvider()?.let { b.header("Authorization", "Bearer $it") }
         client.newCall(b.build()).execute().use { resp ->
             val text = resp.body?.string().orEmpty()
             if (resp.code == 401 && onRefresh != null) {
                 val nt = onRefresh.invoke()
                 if (!nt.isNullOrEmpty()) {
-                    val retry = Request.Builder().url(url("me/avatar")).post(part)
-                        .header("Accept", "application/json").header("Authorization", "Bearer $nt")
+                    val retry = applyClientHeaders(
+                        Request.Builder().url(url("me/avatar")).post(part)
+                            .header("Accept", "application/json")
+                    ).header("Authorization", "Bearer $nt")
                     return@withContext client.newCall(retry.build()).execute().use { r2 ->
                         val t2 = r2.body?.string().orEmpty()
                         if (!r2.isSuccessful) throw ApiException.from(r2.code, t2.ifBlank { r2.message })
@@ -455,7 +461,7 @@ class ApiClient(
 
     private suspend fun executeBytes(builder: Request.Builder, auth: Boolean = true, isRetry: Boolean = false): ByteArray =
         withContext(Dispatchers.IO) {
-            val b = builder.header("Accept", "*/*")
+            val b = applyClientHeaders(builder).header("Accept", "*/*")
             if (auth) tokenProvider()?.let { b.header("Authorization", "Bearer $it") }
             client.newCall(b.build()).execute().use { resp ->
                 val bytes = resp.body?.bytes() ?: ByteArray(0)
@@ -482,7 +488,7 @@ class ApiClient(
 
     private suspend fun execute(builder: Request.Builder, auth: Boolean = true, isRetry: Boolean = false): String =
         withContext(Dispatchers.IO) {
-            val b = builder.header("Accept", "application/json")
+            val b = applyClientHeaders(builder).header("Accept", "application/json")
             if (auth) tokenProvider()?.let { b.header("Authorization", "Bearer $it") }
             client.newCall(b.build()).execute().use { resp ->
                 val text = resp.body?.string().orEmpty()
@@ -503,6 +509,20 @@ class ApiClient(
                 text
             }
         }
+
+    private fun applyClientHeaders(builder: Request.Builder): Request.Builder {
+        val model = listOf(Build.MANUFACTURER, Build.MODEL)
+            .map(String::trim)
+            .filter(String::isNotEmpty)
+            .distinct()
+            .joinToString(" ")
+            .take(96)
+        return builder
+            .header("X-TSC-Client-Platform", "android")
+            .header("X-TSC-Client-Locale", Locale.getDefault().toLanguageTag().take(16))
+            .header("X-TSC-App-Version", BuildConfig.VERSION_NAME.take(32))
+            .header("X-TSC-Device-Model", model)
+    }
 
     private fun unwrap(o: JSONObject): JSONObject =
         if (o.has("data") && o.get("data") is JSONObject) o.getJSONObject("data") else o

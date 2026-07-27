@@ -277,6 +277,12 @@ func (s *AuthService) Refresh(ctx context.Context, refreshToken string) (access,
 	if err != nil {
 		return "", "", ErrInvalidCredentials
 	}
+	if _, ok := ClientMetadataFromContext(ctx); !ok && rec.Platform != "" {
+		ctx = WithClientMetadata(ctx, ClientMetadata{
+			Platform: rec.Platform, Locale: rec.Locale,
+			AppVersion: rec.AppVersion, DeviceModel: rec.DeviceModel,
+		})
+	}
 	_ = s.tokens.Revoke(ctx, rec.ID)
 	return s.issueSession(ctx, usr)
 }
@@ -315,6 +321,12 @@ func (s *AuthService) issueSession(ctx context.Context, u models.User) (access, 
 		TokenHash: hashToken(raw),
 		ExpiresAt: time.Now().Add(s.cfg.RefreshTokenTTL),
 		CreatedAt: time.Now().UTC(),
+	}
+	if metadata, ok := ClientMetadataFromContext(ctx); ok {
+		rec.Platform = metadata.Platform
+		rec.Locale = metadata.Locale
+		rec.AppVersion = metadata.AppVersion
+		rec.DeviceModel = metadata.DeviceModel
 	}
 	if err := s.tokens.Store(ctx, rec); err != nil {
 		return "", "", err

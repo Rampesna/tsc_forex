@@ -280,11 +280,16 @@ final class PriceStore: ObservableObject {
 
     private func openSocket() {
         guard shouldRun else { return }
-        var url = AppConfig.wsURL
-        if let token {
-            url = URL(string: "\(AppConfig.wsURL.absoluteString)?token=\(token)") ?? url
+        var components = URLComponents(url: AppConfig.wsURL, resolvingAgainstBaseURL: false)
+        var queryItems = [URLQueryItem(name: "platform", value: "ios")]
+        if let token, !token.isEmpty {
+            queryItems.append(URLQueryItem(name: "token", value: token))
         }
-        let t = wsSession.webSocketTask(with: url)
+        components?.queryItems = queryItems
+        guard let url = components?.url else { return }
+        var request = URLRequest(url: url)
+        request.setValue("ios", forHTTPHeaderField: "X-TSC-Client-Platform")
+        let t = wsSession.webSocketTask(with: request)
         task = t
         t.resume()
         connected = true
