@@ -1,7 +1,9 @@
 package websocket_test
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -119,6 +121,60 @@ func TestWebSocketConnectAndPricePush(t *testing.T) {
 	}
 	if hub.ClientCount() != 0 {
 		t.Fatalf("clients after close = %d", hub.ClientCount())
+	}
+}
+
+func TestHubDrainRejectsNewConnectionsAndClosesExistingWithRestartCode(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	hub := ws.NewHub(testWSConfig(), nil)
+	go hub.Run()
+
+	h := ws.NewHandler(hub, nil)
+	r := gin.New()
+	r.GET("/ws", h.ServeWS)
+	srv := httptest.NewServer(r)
+	defer srv.Close()
+
+	url := "ws" + strings.TrimPrefix(srv.URL, "http") + "/ws"
+	conn, _, err := websocket.DefaultDialer.Dial(url, nil)
+	if err != nil {
+		t.Fatalf("dial existing: %v", err)
+	}
+	defer conn.Close()
+	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	if _, _, err := conn.ReadMessage(); err != nil {
+		t.Fatalf("read welcome: %v", err)
+	}
+
+	hub.BeginDrain()
+	_, resp, err := websocket.DefaultDialer.Dial(url, nil)
+	if err == nil {
+		t.Fatal("new WebSocket unexpectedly admitted while draining")
+	}
+	if resp == nil || resp.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("draining status = %#v", resp)
+	}
+	if got := resp.Header.Get("Retry-After"); got != "5" {
+		t.Fatalf("Retry-After = %q", got)
+	}
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	if err := hub.Shutdown(shutdownCtx); err != nil {
+		t.Fatalf("hub shutdown: %v", err)
+	}
+
+	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	_, _, err = conn.ReadMessage()
+	var closeErr *websocket.CloseError
+	if !errors.As(err, &closeErr) {
+		t.Fatalf("close error = %T %v", err, err)
+	}
+	if closeErr.Code != websocket.CloseServiceRestart {
+		t.Fatalf("close code = %d, want %d", closeErr.Code, websocket.CloseServiceRestart)
+	}
+	if hub.ClientCount() != 0 {
+		t.Fatalf("clients after shutdown = %d", hub.ClientCount())
 	}
 }
 

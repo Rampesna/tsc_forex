@@ -7,7 +7,12 @@ server:
   port: 8080
   read_timeout: 10s
   write_timeout: 70s
-  shutdown_timeout: 15s
+  # After readiness flips to false, keep existing traffic alive briefly while
+  # Kubernetes EndpointSlice and external load-balancer state converges.
+  drain_delay: 5s
+  # Must cover the longest accepted API request (AI research can take ~55s).
+  # Kubernetes grants a larger pod-level budget for preStop + this timeout.
+  shutdown_timeout: 75s
   mode: debug
 
 database:

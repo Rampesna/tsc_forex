@@ -7,6 +7,15 @@ metadata:
     app: tsc-forex-app
 spec:
   replicas: 3
+  minReadySeconds: 10
+  progressDeadlineSeconds: 600
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      # Capacity never drops during a release; one replacement is proven ready
+      # before an old pod receives SIGTERM.
+      maxUnavailable: 0
+      maxSurge: 1
   selector:
     matchLabels:
       app: tsc-forex-app
@@ -19,6 +28,9 @@ spec:
         prometheus.io/port: "8080"
         prometheus.io/path: "/metrics"
     spec:
+      # Budget: preStop 5s + app traffic drain 5s + graceful HTTP/WS 75s +
+      # background persistence cleanup 10s + 15s safety reserve.
+      terminationGracePeriodSeconds: 110
       containers:
         - name: app
           image: tsc-forex:latest   # push to your registry and update
@@ -30,6 +42,13 @@ spec:
                 name: tsc-forex-config
             - secretRef:
                 name: tsc-forex-secrets
+          lifecycle:
+            preStop:
+              exec:
+                # Kubernetes marks the EndpointSlice terminating/ready=false in
+                # parallel; this gives proxies and external LBs time to converge
+                # before SIGTERM starts the application's own drain phase.
+                command: ["/bin/sh", "-c", "sleep 5"]
           volumeMounts:
             # Push credentials (APNs .p8 + Firebase service account) mounted
             # read-only from the tsc-forex-push secret, created out-of-band:
@@ -63,18 +82,23 @@ spec:
               port: 8080
             periodSeconds: 10
             failureThreshold: 30
+            timeoutSeconds: 2
           livenessProbe:
             httpGet:
               path: /livez
               port: 8080
             initialDelaySeconds: 5
             periodSeconds: 10
+            timeoutSeconds: 2
+            failureThreshold: 3
           readinessProbe:
             httpGet:
               path: /readyz
               port: 8080
             initialDelaySeconds: 5
-            periodSeconds: 5
+            periodSeconds: 2
+            timeoutSeconds: 1
+            failureThreshold: 1
           resources:
             requests:
               cpu: "200m"
@@ -96,6 +120,17 @@ spec:
             secretName: tsc-forex-google-play
             optional: true
       # Rolling updates keep the WebSocket stream broadcasting during deploys.
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: tsc-forex-app
+  namespace: tsc-forex
+spec:
+  maxUnavailable: 1
+  selector:
+    matchLabels:
+      app: tsc-forex-app
 ---
 apiVersion: v1
 kind: Service

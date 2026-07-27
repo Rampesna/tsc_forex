@@ -86,6 +86,10 @@ type CandleStore struct {
 	log  *zap.Logger
 	loc  *time.Location
 
+	startOnce     sync.Once
+	bootstrapOnce sync.Once
+	workers       sync.WaitGroup
+
 	mu      sync.RWMutex
 	current map[string]*candleAgg // key: code|res → forming candle
 	spark   map[string][]float64  // code → recent closes for mini charts
@@ -167,8 +171,17 @@ func (s *CandleStore) Start(ctx context.Context) {
 	if s.repo == nil {
 		return
 	}
-	go s.flushLoop(ctx)
-	go s.retentionLoop(ctx)
+	s.startOnce.Do(func() {
+		s.workers.Add(2)
+		go func() {
+			defer s.workers.Done()
+			s.flushLoop(ctx)
+		}()
+		go func() {
+			defer s.workers.Done()
+			s.retentionLoop(ctx)
+		}()
+	})
 }
 
 // flushLoop persists closed candles (immediately queued on rollover) and the
@@ -264,53 +277,74 @@ func (s *CandleStore) Bootstrap(ctx context.Context) {
 	if s.repo == nil {
 		return
 	}
-	go func() {
-		// Single-flight across pods: only the lock holder runs the heavy scans.
-		locked, release, err := s.repo.TryLockBootstrap(ctx)
-		if err != nil {
-			s.log.Warn("candle bootstrap lock failed", zap.Error(err))
-			return
-		}
-		if !locked {
-			s.log.Info("candle bootstrap skipped (another pod holds the lock)")
-			return
-		}
-		defer release()
+	s.bootstrapOnce.Do(func() {
+		s.workers.Add(1)
+		go func() {
+			defer s.workers.Done()
+			// Single-flight across pods: only the lock holder runs the heavy scans.
+			locked, release, err := s.repo.TryLockBootstrap(ctx)
+			if err != nil {
+				s.log.Warn("candle bootstrap lock failed", zap.Error(err))
+				return
+			}
+			if !locked {
+				s.log.Info("candle bootstrap skipped (another pod holds the lock)")
+				return
+			}
+			defer release()
 
-		now := time.Now().UTC()
-		codes := make([]string, 0, len(domain.Catalog))
-		for _, instrument := range domain.Catalog {
-			codes = append(codes, instrument.Code)
-		}
-		for _, br := range baseResolutions {
-			// Look for real history (older than 3 bar-widths ago) so the live
-			// forming candle just flushed to the DB doesn't skip the bootstrap.
-			cutoff := now.Add(-3 * time.Duration(br.Secs) * time.Second)
-			missing, err := s.repo.MissingHistoryCodes(ctx, br.Name, cutoff, codes)
-			if err != nil {
-				s.log.Warn("candle bootstrap check failed", zap.String("res", br.Name), zap.Error(err))
-				continue
+			now := time.Now().UTC()
+			codes := make([]string, 0, len(domain.Catalog))
+			for _, instrument := range domain.Catalog {
+				codes = append(codes, instrument.Code)
 			}
-			if len(missing) == 0 {
-				continue
-			}
-			from := now.Add(-bootstrapLookback[br.Name])
-			cctx, cancel := context.WithTimeout(ctx, 15*time.Minute)
-			n, err := s.repo.SeedFromTicks(cctx, br.Name, br.Secs, from, now, missing)
-			cancel()
-			if err != nil {
-				s.log.Warn("candle bootstrap failed",
+			for _, br := range baseResolutions {
+				// Look for real history (older than 3 bar-widths ago) so the live
+				// forming candle just flushed to the DB doesn't skip the bootstrap.
+				cutoff := now.Add(-3 * time.Duration(br.Secs) * time.Second)
+				missing, err := s.repo.MissingHistoryCodes(ctx, br.Name, cutoff, codes)
+				if err != nil {
+					s.log.Warn("candle bootstrap check failed", zap.String("res", br.Name), zap.Error(err))
+					continue
+				}
+				if len(missing) == 0 {
+					continue
+				}
+				from := now.Add(-bootstrapLookback[br.Name])
+				cctx, cancel := context.WithTimeout(ctx, 15*time.Minute)
+				n, err := s.repo.SeedFromTicks(cctx, br.Name, br.Secs, from, now, missing)
+				cancel()
+				if err != nil {
+					s.log.Warn("candle bootstrap failed",
+						zap.String("res", br.Name),
+						zap.Int("missing_codes", len(missing)),
+						zap.Error(err))
+					continue
+				}
+				s.log.Info("candle bootstrap done",
 					zap.String("res", br.Name),
 					zap.Int("missing_codes", len(missing)),
-					zap.Error(err))
-				continue
+					zap.Int64("rows", n))
 			}
-			s.log.Info("candle bootstrap done",
-				zap.String("res", br.Name),
-				zap.Int("missing_codes", len(missing)),
-				zap.Int64("rows", n))
-		}
+		}()
+	})
+}
+
+// Wait blocks until bootstrap, flush and retention workers have exited. Call it
+// after canceling the context passed to Start/Bootstrap and before closing the
+// database, so no shutdown flush races a closed connection pool.
+func (s *CandleStore) Wait(ctx context.Context) error {
+	done := make(chan struct{})
+	go func() {
+		s.workers.Wait()
+		close(done)
 	}()
+	select {
+	case <-done:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 // liveCandle returns a snapshot copy of the forming candle for (code,res).

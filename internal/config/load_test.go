@@ -38,6 +38,12 @@ func TestLoadDefaults(t *testing.T) {
 	if cfg.Server.ReadTimeout != 10*time.Second {
 		t.Fatalf("ReadTimeout = %v", cfg.Server.ReadTimeout)
 	}
+	if cfg.Server.DrainDelay != 5*time.Second {
+		t.Fatalf("DrainDelay = %v", cfg.Server.DrainDelay)
+	}
+	if cfg.Server.ShutdownTimeout != 75*time.Second {
+		t.Fatalf("ShutdownTimeout = %v", cfg.Server.ShutdownTimeout)
+	}
 }
 
 func TestLoadAndroidAssetLinkFingerprintsFromEnv(t *testing.T) {
@@ -211,6 +217,16 @@ func TestEnvOverride(t *testing.T) {
 	}
 	if m.Get().Server.Port != 18080 {
 		t.Fatalf("port = %d, want 18080 from env", m.Get().Server.Port)
+	}
+}
+
+func TestLoadRejectsShutdownBudgetShorterThanRequestBudget(t *testing.T) {
+	clearAppEnv(t)
+	t.Setenv("APP_SERVER_WRITE_TIMEOUT", "80s")
+	t.Setenv("APP_SERVER_SHUTDOWN_TIMEOUT", "75s")
+
+	if _, err := Load(""); err == nil {
+		t.Fatal("expected validation error for undersized shutdown budget")
 	}
 }
 

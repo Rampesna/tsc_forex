@@ -21,9 +21,19 @@ type Client struct {
 	hub         *Hub
 	conn        *websocket.Conn
 	send        chan []byte
+	shutdown    chan closeRequest
+	done        chan struct{}
 	log         *zap.Logger
 
 	sendOnce sync.Once
+	doneOnce sync.Once
+}
+
+const websocketCloseServiceRestart = websocket.CloseServiceRestart
+
+type closeRequest struct {
+	code   int
+	reason string
 }
 
 func newClient(hub *Hub, conn *websocket.Conn, log *zap.Logger) *Client {
@@ -36,6 +46,8 @@ func newClient(hub *Hub, conn *websocket.Conn, log *zap.Logger) *Client {
 		hub:         hub,
 		conn:        conn,
 		send:        make(chan []byte, hub.cfg.SendBufferSize),
+		shutdown:    make(chan closeRequest, 1),
+		done:        make(chan struct{}),
 		log:         log,
 	}
 }
@@ -44,11 +56,34 @@ func (c *Client) closeSend() {
 	c.sendOnce.Do(func() { close(c.send) })
 }
 
+func (c *Client) markDone() {
+	c.doneOnce.Do(func() { close(c.done) })
+}
+
+func (c *Client) requestShutdown(code int, reason string) {
+	select {
+	case c.shutdown <- closeRequest{code: code, reason: reason}:
+	default:
+	}
+}
+
+func (c *Client) rejectForRestart() {
+	deadline := time.Now().Add(c.hub.cfg.WriteWait)
+	_ = c.conn.WriteControl(
+		websocket.CloseMessage,
+		websocket.FormatCloseMessage(websocketCloseServiceRestart, "service restart"),
+		deadline,
+	)
+	_ = c.conn.Close()
+	c.markDone()
+}
+
 // readPump consumes inbound frames (pong, optional hello). On exit, unregisters.
 func (c *Client) readPump() {
 	defer func() {
 		c.hub.Unregister(c)
 		_ = c.conn.Close()
+		c.markDone()
 	}()
 
 	cfg := c.hub.cfg
@@ -62,7 +97,12 @@ func (c *Client) readPump() {
 	for {
 		_, data, err := c.conn.ReadMessage()
 		if err != nil {
-			if websocket.IsUnexpectedCloseError(err, websocket.CloseGoingAway, websocket.CloseNormalClosure) {
+			if websocket.IsUnexpectedCloseError(
+				err,
+				websocket.CloseGoingAway,
+				websocket.CloseNormalClosure,
+				websocketCloseServiceRestart,
+			) {
 				c.log.Debug("ws read error", zap.String("client_id", c.ID), zap.Error(err))
 			}
 			return
@@ -89,14 +129,26 @@ func (c *Client) writePump() {
 	defer func() {
 		ticker.Stop()
 		_ = c.conn.Close()
+		c.markDone()
 	}()
 
 	for {
+		// Prefer a service-restart close over queued market updates once drain
+		// begins, so clients reconnect to a healthy replacement pod promptly.
 		select {
+		case req := <-c.shutdown:
+			c.writeClose(req)
+			return
+		default:
+		}
+		select {
+		case req := <-c.shutdown:
+			c.writeClose(req)
+			return
 		case msg, ok := <-c.send:
 			_ = c.conn.SetWriteDeadline(time.Now().Add(cfg.WriteWait))
 			if !ok {
-				_ = c.conn.WriteMessage(websocket.CloseMessage, []byte{})
+				c.writeClose(closeRequest{code: websocket.CloseNormalClosure})
 				return
 			}
 			// One JSON envelope per WebSocket text frame (mobile clients parse simply).
@@ -110,4 +162,12 @@ func (c *Client) writePump() {
 			}
 		}
 	}
+}
+
+func (c *Client) writeClose(req closeRequest) {
+	_ = c.conn.SetWriteDeadline(time.Now().Add(c.hub.cfg.WriteWait))
+	_ = c.conn.WriteMessage(
+		websocket.CloseMessage,
+		websocket.FormatCloseMessage(req.code, req.reason),
+	)
 }

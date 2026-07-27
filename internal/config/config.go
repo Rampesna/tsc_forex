@@ -157,6 +157,7 @@ type ServerConfig struct {
 	Port            int           `mapstructure:"port" validate:"required,min=1,max=65535"`
 	ReadTimeout     time.Duration `mapstructure:"read_timeout" validate:"required"`
 	WriteTimeout    time.Duration `mapstructure:"write_timeout" validate:"required"`
+	DrainDelay      time.Duration `mapstructure:"drain_delay" validate:"gte=0"`
 	ShutdownTimeout time.Duration `mapstructure:"shutdown_timeout" validate:"required"`
 	Mode            string        `mapstructure:"mode" validate:"oneof=debug release test"`
 }

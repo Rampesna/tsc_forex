@@ -142,6 +142,13 @@ func (m *Manager) unmarshalAndValidate() (*Config, error) {
 	if err := m.validate.Struct(&cfg); err != nil {
 		return nil, fmt.Errorf("validate config: %w", err)
 	}
+	if cfg.Server.ShutdownTimeout < cfg.Server.WriteTimeout {
+		return nil, fmt.Errorf(
+			"validate config: server.shutdown_timeout (%s) must be >= server.write_timeout (%s)",
+			cfg.Server.ShutdownTimeout,
+			cfg.Server.WriteTimeout,
+		)
+	}
 	return &cfg, nil
 }
 
@@ -153,7 +160,8 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("server.port", 8080)
 	v.SetDefault("server.read_timeout", "10s")
 	v.SetDefault("server.write_timeout", "70s")
-	v.SetDefault("server.shutdown_timeout", "15s")
+	v.SetDefault("server.drain_delay", "5s")
+	v.SetDefault("server.shutdown_timeout", "75s")
 	v.SetDefault("server.mode", "debug")
 
 	v.SetDefault("database.host", "localhost")

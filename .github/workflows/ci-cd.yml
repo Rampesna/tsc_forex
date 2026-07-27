@@ -359,6 +359,24 @@ jobs:
           rollout_or_diagnose tsc-forex-app 420s app=tsc-forex-app "$IMAGE_REF"
           rollout_or_diagnose tsc-forex-web 180s app=tsc-forex-web "$WEB_IMAGE_REF"
           rollout_or_diagnose tsc-forex-webadmin 180s app=tsc-forex-webadmin "$ADMIN_IMAGE_REF"
+
+          # Fail the release if a later manifest/render change silently drops
+          # any part of the orchestrator-aware shutdown contract.
+          test "$(kubectl -n "$NS" get deployment tsc-forex-app \
+            -o jsonpath='{.spec.template.spec.terminationGracePeriodSeconds}')" = "110"
+          test "$(kubectl -n "$NS" get deployment tsc-forex-app \
+            -o jsonpath='{.spec.strategy.rollingUpdate.maxUnavailable}')" = "0"
+          test "$(kubectl -n "$NS" get deployment tsc-forex-app \
+            -o jsonpath='{.spec.strategy.rollingUpdate.maxSurge}')" = "1"
+          test "$(kubectl -n "$NS" get deployment tsc-forex-app \
+            -o jsonpath='{.spec.template.spec.containers[?(@.name=="app")].lifecycle.preStop.exec.command[2]}')" = "sleep 5"
+          test "$(kubectl -n "$NS" get configmap tsc-forex-config \
+            -o jsonpath='{.data.APP_SERVER_DRAIN_DELAY}')" = "5s"
+          test "$(kubectl -n "$NS" get configmap tsc-forex-config \
+            -o jsonpath='{.data.APP_SERVER_SHUTDOWN_TIMEOUT}')" = "75s"
+          test "$(kubectl -n "$NS" get poddisruptionbudget tsc-forex-app \
+            -o jsonpath='{.spec.maxUnavailable}')" = "1"
+
           # Validate mounted credential files and non-empty KIDs without printing
           # secret material. Real DeviceCheck remains a physical-device smoke.
           kubectl -n "$NS" exec deployment/tsc-forex-app -- sh -ec '

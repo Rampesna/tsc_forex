@@ -7,8 +7,33 @@ import (
 
 	"github.com/tsc-forex/tsc_forex/internal/domain"
 	"github.com/tsc-forex/tsc_forex/internal/models"
+	"github.com/tsc-forex/tsc_forex/internal/repository"
 	"github.com/tsc-forex/tsc_forex/pkg/eventbus"
 )
+
+type noopCandleRepository struct{}
+
+var _ repository.CandleRepository = noopCandleRepository{}
+
+func (noopCandleRepository) UpsertBatch(context.Context, []models.Candle) error { return nil }
+func (noopCandleRepository) Range(context.Context, string, string, time.Time, time.Time, int) ([]models.OHLC, error) {
+	return nil, nil
+}
+func (noopCandleRepository) FirstOpenSince(context.Context, string, time.Time) (map[string]float64, error) {
+	return nil, nil
+}
+func (noopCandleRepository) SeedFromTicks(context.Context, string, int, time.Time, time.Time, []string) (int64, error) {
+	return 0, nil
+}
+func (noopCandleRepository) MissingHistoryCodes(context.Context, string, time.Time, []string) ([]string, error) {
+	return nil, nil
+}
+func (noopCandleRepository) TryLockBootstrap(context.Context) (bool, func(), error) {
+	return false, func() {}, nil
+}
+func (noopCandleRepository) Prune(context.Context, string, time.Time) (int64, error) {
+	return 0, nil
+}
 
 func feed(bus *eventbus.Bus, code string, price float64, ts time.Time) {
 	bus.Publish(eventbus.TopicInstrumentUpdated, domain.InstrumentPrice{
@@ -133,5 +158,21 @@ func TestSparklineFromMemory(t *testing.T) {
 	}
 	if sp[2] != 44 {
 		t.Fatalf("last spark = %v want 44", sp[2])
+	}
+}
+
+func TestCandleStoreWorkersStopBeforeDatabaseClose(t *testing.T) {
+	t.Parallel()
+
+	s := NewCandleStore(nil, noopCandleRepository{}, nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	s.Bootstrap(ctx)
+	s.Start(ctx)
+	cancel()
+
+	waitCtx, waitCancel := context.WithTimeout(context.Background(), time.Second)
+	defer waitCancel()
+	if err := s.Wait(waitCtx); err != nil {
+		t.Fatalf("wait: %v", err)
 	}
 }

@@ -21,6 +21,7 @@ import (
 	"github.com/tsc-forex/tsc_forex/internal/config"
 	"github.com/tsc-forex/tsc_forex/internal/database"
 	"github.com/tsc-forex/tsc_forex/internal/domain"
+	"github.com/tsc-forex/tsc_forex/internal/lifecycle"
 	"github.com/tsc-forex/tsc_forex/internal/logger"
 	"github.com/tsc-forex/tsc_forex/internal/metrics"
 	"github.com/tsc-forex/tsc_forex/internal/presence"
@@ -69,8 +70,9 @@ func run() error {
 		zap.Float64("troy_oz_to_gram", cfg.Gold.TroyOunceToGram),
 	)
 
-	ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer cancel()
+	ctx, stopSignals := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stopSignals()
+	drainer := lifecycle.NewDrainer()
 
 	instanceID := uuid.NewString()
 	log.Info("instance id", zap.String("instance", instanceID))
@@ -180,11 +182,11 @@ func run() error {
 		// Attach the candle DB and bootstrap chart history from existing ticks.
 		candleRepo := repository.NewCandleRepository(db, m)
 		candleStore.SetRepo(candleRepo)
-		candleStore.Bootstrap(context.Background())
+		candleStore.Bootstrap(ctx)
 		// Seed day-open baselines from the compact candles table (fast: one
 		// indexed row per instrument) so change % is correct right after a
 		// restart, without a multi-second scan of a day of raw ticks.
-		if opens := candleStore.SeedDayOpens(context.Background(), engine.DayStart()); len(opens) > 0 {
+		if opens := candleStore.SeedDayOpens(ctx, engine.DayStart()); len(opens) > 0 {
 			engine.SeedDayOpen(opens, engine.DayKey())
 			log.Info("seeded day-open baselines", zap.Int("instruments", len(opens)))
 		}
@@ -349,6 +351,9 @@ func run() error {
 
 	// --- HTTP ---
 	readinessCheck := func(ctx context.Context) error {
+		if err := drainer.ReadinessError(); err != nil {
+			return err
+		}
 		if dbStartupErr != nil {
 			return dbStartupErr
 		}
@@ -424,19 +429,60 @@ func run() error {
 		close(errCh)
 	}()
 
+	var serverErr error
 	select {
 	case <-ctx.Done():
-		log.Info("shutdown signal received")
-	case err := <-errCh:
-		if err != nil {
-			return fmt.Errorf("http server: %w", err)
+		log.Info("shutdown signal received", zap.Error(ctx.Err()))
+	case err, ok := <-errCh:
+		if !ok || err == nil {
+			err = errors.New("listener stopped without shutdown request")
+		}
+		log.Error("http server stopped unexpectedly", zap.Error(err))
+		stopSignals()
+		serverErr = fmt.Errorf("http server: %w", err)
+	}
+
+	// Kubernetes-aware phase 1: fail readiness and reject new long-lived
+	// sessions before closing listeners. Existing requests/connections remain
+	// available during the short propagation window.
+	drainer.BeginDrain()
+	hub.BeginDrain()
+	srv.SetKeepAlivesEnabled(false)
+	log.Info("shutdown drain started",
+		zap.Duration("drain_delay", cfg.Server.DrainDelay),
+		zap.Duration("shutdown_timeout", cfg.Server.ShutdownTimeout),
+		zap.Int64("ws_clients", hub.ClientCount()),
+	)
+
+	// Restore the default signal behavior after the first signal: a second
+	// SIGTERM/SIGINT is an explicit request to force termination.
+	stopSignals()
+
+	if serverErr == nil {
+		if err := lifecycle.WaitDrainDelay(context.Background(), cfg.Server.DrainDelay); err != nil {
+			log.Warn("traffic drain delay interrupted", zap.Error(err))
 		}
 	}
 
 	shutdownCtx, shutdownCancel := context.WithTimeout(context.Background(), cfg.Server.ShutdownTimeout)
 	defer shutdownCancel()
-	if err := srv.Shutdown(shutdownCtx); err != nil {
-		return fmt.Errorf("http shutdown: %w", err)
+
+	httpShutdown := make(chan error, 1)
+	wsShutdown := make(chan error, 1)
+	go func() { httpShutdown <- srv.Shutdown(shutdownCtx) }()
+	go func() { wsShutdown <- hub.Shutdown(shutdownCtx) }()
+
+	var shutdownErr error
+	if err := <-httpShutdown; err != nil {
+		log.Error("http graceful shutdown exceeded budget; forcing close", zap.Error(err))
+		if closeErr := srv.Close(); closeErr != nil {
+			err = errors.Join(err, closeErr)
+		}
+		shutdownErr = errors.Join(shutdownErr, fmt.Errorf("http shutdown: %w", err))
+	}
+	if err := <-wsShutdown; err != nil {
+		log.Error("websocket graceful shutdown exceeded budget", zap.Error(err))
+		shutdownErr = errors.Join(shutdownErr, fmt.Errorf("websocket shutdown: %w", err))
 	}
 	if histWriter != nil {
 		histWriter.Stop()
@@ -447,8 +493,16 @@ func run() error {
 	if alertEngine != nil {
 		alertEngine.Stop()
 	}
+	cleanupCtx, cleanupCancel := context.WithTimeout(context.Background(), 10*time.Second)
+	if err := candleStore.Wait(cleanupCtx); err != nil {
+		log.Error("candle workers did not stop before cleanup deadline", zap.Error(err))
+		shutdownErr = errors.Join(shutdownErr, fmt.Errorf("candle shutdown: %w", err))
+	}
+	cleanupCancel()
 	if db != nil {
-		_ = database.Close(db)
+		if err := database.Close(db); err != nil {
+			shutdownErr = errors.Join(shutdownErr, fmt.Errorf("database close: %w", err))
+		}
 	}
 
 	log.Info("shutdown complete",
@@ -456,7 +510,7 @@ func run() error {
 		zap.Int64("calculations", calc.CalculationCount()),
 		zap.Int64("gold_publishes", calc.PublishCount()),
 	)
-	return nil
+	return errors.Join(serverErr, shutdownErr)
 }
 
 // fanInRedis applies price updates published by OTHER instances to this hub.

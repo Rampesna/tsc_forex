@@ -25,7 +25,7 @@ type Hub struct {
 	cfg config.WebSocketConfig
 	log *zap.Logger
 
-	register   chan *Client
+	register   chan registration
 	unregister chan *Client
 	broadcast  chan []byte
 	direct     chan userMessage
@@ -37,10 +37,18 @@ type Hub struct {
 	clientCount atomic.Int64
 	droppedMsgs atomic.Int64
 	broadcasts  atomic.Int64
+	accepting   atomic.Bool
 
-	done     chan struct{}
-	once     sync.Once
-	presence PresenceRecorder
+	done        chan struct{}
+	drained     chan struct{}
+	closeOnce   sync.Once
+	drainedOnce sync.Once
+	presence    PresenceRecorder
+}
+
+type registration struct {
+	client   *Client
+	accepted chan bool
 }
 
 // userMessage targets a single authenticated user's connections.
@@ -57,17 +65,20 @@ func NewHub(cfg config.WebSocketConfig, log *zap.Logger) *Hub {
 	if cfg.SendBufferSize <= 0 {
 		cfg.SendBufferSize = 256
 	}
-	return &Hub{
+	h := &Hub{
 		cfg:        cfg,
 		log:        log,
-		register:   make(chan *Client),
+		register:   make(chan registration),
 		unregister: make(chan *Client),
 		broadcast:  make(chan []byte, 1024),
 		direct:     make(chan userMessage, 1024),
 		clients:    make(map[*Client]struct{}),
 		userIndex:  make(map[string]map[*Client]struct{}),
 		done:       make(chan struct{}),
+		drained:    make(chan struct{}),
 	}
+	h.accepting.Store(true)
+	return h
 }
 
 // Run processes register / unregister / broadcast until Close.
@@ -75,12 +86,24 @@ func (h *Hub) Run() {
 	for {
 		select {
 		case <-h.done:
+			h.accepting.Store(false)
+			clients := make([]*Client, 0, len(h.clients))
 			for c := range h.clients {
-				h.closeClient(c)
+				clients = append(clients, c)
+				h.removeClient(c, false)
+				c.requestShutdown(websocketCloseServiceRestart, "service restart")
 			}
 			h.clients = nil
+			h.userIndex = nil
+			h.clientCount.Store(0)
+			go h.waitForClients(clients)
 			return
-		case c := <-h.register:
+		case reg := <-h.register:
+			c := reg.client
+			if c == nil || !h.accepting.Load() {
+				reg.accepted <- false
+				continue
+			}
 			h.clients[c] = struct{}{}
 			if c.UserID != "" {
 				set := h.userIndex[c.UserID]
@@ -96,6 +119,7 @@ func (h *Hub) Run() {
 				zap.String("client_id", c.ID),
 				zap.Int64("clients", h.clientCount.Load()),
 			)
+			reg.accepted <- true
 		case c := <-h.unregister:
 			if _, ok := h.clients[c]; ok {
 				h.closeClient(c)
@@ -132,6 +156,10 @@ func (h *Hub) Run() {
 }
 
 func (h *Hub) closeClient(c *Client) {
+	h.removeClient(c, true)
+}
+
+func (h *Hub) removeClient(c *Client, closeSend bool) {
 	delete(h.clients, c)
 	if c.UserID != "" {
 		if set := h.userIndex[c.UserID]; set != nil {
@@ -141,7 +169,9 @@ func (h *Hub) closeClient(c *Client) {
 			}
 		}
 	}
-	c.closeSend()
+	if closeSend {
+		c.closeSend()
+	}
 	if h.presence != nil && c.UserID != "" {
 		go func(id string) {
 			ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
@@ -149,6 +179,13 @@ func (h *Hub) closeClient(c *Client) {
 			_ = h.presence.Disconnected(ctx, id)
 		}(c.ID)
 	}
+}
+
+func (h *Hub) waitForClients(clients []*Client) {
+	for _, c := range clients {
+		<-c.done
+	}
+	h.drainedOnce.Do(func() { close(h.drained) })
 }
 
 func (h *Hub) recordPresence(c *Client) {
@@ -209,12 +246,23 @@ func (h *Hub) Broadcast(msg []byte) {
 	}
 }
 
-// Register admits a client into the hub.
-func (h *Hub) Register(c *Client) {
+// Register admits a client into the hub. It returns false after draining starts,
+// including the narrow race between the HTTP pre-check and WebSocket upgrade.
+func (h *Hub) Register(c *Client) bool {
+	if c == nil || !h.accepting.Load() {
+		return false
+	}
+	accepted := make(chan bool, 1)
 	select {
-	case h.register <- c:
+	case h.register <- registration{client: c, accepted: accepted}:
 	case <-h.done:
-		c.closeSend()
+		return false
+	}
+	select {
+	case ok := <-accepted:
+		return ok
+	case <-h.done:
+		return false
 	}
 }
 
@@ -235,9 +283,32 @@ func (h *Hub) DroppedMessages() int64 { return h.droppedMsgs.Load() }
 // BroadcastCount returns how many fan-outs completed.
 func (h *Hub) BroadcastCount() int64 { return h.broadcasts.Load() }
 
+// Accepting reports whether new WebSocket sessions may be admitted.
+func (h *Hub) Accepting() bool { return h.accepting.Load() }
+
+// BeginDrain rejects new WebSocket sessions before active sessions are closed.
+// It is safe to call more than once.
+func (h *Hub) BeginDrain() bool {
+	return h.accepting.CompareAndSwap(true, false)
+}
+
 // Close stops the hub and disconnects all clients. Idempotent.
 func (h *Hub) Close() {
-	h.once.Do(func() { close(h.done) })
+	h.BeginDrain()
+	h.closeOnce.Do(func() { close(h.done) })
+}
+
+// Shutdown sends active clients RFC 6455 close code 1012 (service restart) and
+// waits for their pumps to release the hijacked connections. net/http.Shutdown
+// intentionally does not manage WebSockets, so the application must do this.
+func (h *Hub) Shutdown(ctx context.Context) error {
+	h.Close()
+	select {
+	case <-h.drained:
+		return nil
+	case <-ctx.Done():
+		return ctx.Err()
+	}
 }
 
 // Config exposes websocket knobs for the upgrader / client pumps.

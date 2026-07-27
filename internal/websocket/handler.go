@@ -59,6 +59,11 @@ func NewHandler(hub *Hub, log *zap.Logger, opts ...HandlerOption) *Handler {
 
 // ServeWS is the Gin handler for GET /ws (or configured path).
 func (h *Handler) ServeWS(c *gin.Context) {
+	if !h.hub.Accepting() {
+		c.Header("Retry-After", "5")
+		c.JSON(http.StatusServiceUnavailable, gin.H{"status": "draining"})
+		return
+	}
 	conn, err := h.upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
 		h.log.Warn("ws upgrade failed", zap.Error(err))
@@ -79,8 +84,6 @@ func (h *Handler) ServeWS(c *gin.Context) {
 			}
 		}
 	}
-	h.hub.Register(client)
-
 	// Welcome frame so clients know the session is live (reconnect-friendly).
 	welcome, _ := json.Marshal(Envelope{
 		Type:      TypeSubscribed,
@@ -92,6 +95,11 @@ func (h *Handler) ServeWS(c *gin.Context) {
 	case client.send <- welcome:
 	default:
 		h.hub.droppedMsgs.Add(1)
+	}
+
+	if !h.hub.Register(client) {
+		client.rejectForRestart()
+		return
 	}
 
 	go client.writePump()
