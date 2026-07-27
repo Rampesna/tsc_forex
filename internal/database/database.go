@@ -178,7 +178,18 @@ func recordSchemaReady(db *gorm.DB) error {
 	if err := db.Clauses(clause.OnConflict{
 		Columns: []clause.Column{{Name: "component"}},
 		DoUpdates: clause.Assignments(map[string]any{
-			"version": currentSchemaVersion, "updated_at": state.UpdatedAt,
+			// A rolling deployment can briefly start an old replica after a new
+			// replica (for example when the HPA scales during rollout). Schema
+			// readiness is monotonic: an old binary must never lower a marker
+			// already advanced by a newer binary.
+			"version": gorm.Expr(`
+				CASE WHEN app_schema_state.version > EXCLUDED.version
+				THEN app_schema_state.version ELSE EXCLUDED.version END
+			`),
+			"updated_at": gorm.Expr(`
+				CASE WHEN app_schema_state.version > EXCLUDED.version
+					THEN app_schema_state.updated_at ELSE EXCLUDED.updated_at END
+			`),
 		}),
 	}).Create(&state).Error; err != nil {
 		return fmt.Errorf("schema readiness marker: %w", err)
