@@ -332,6 +332,7 @@ jobs:
             local deployment="$1"
             local timeout="$2"
             local selector="$3"
+            local expected_image="$4"
             if kubectl -n "$NS" rollout status "deployment/$deployment" --timeout="$timeout"; then
               return 0
             fi
@@ -343,18 +344,21 @@ jobs:
             kubectl -n "$NS" get deployment "$deployment" -o wide || true
             kubectl -n "$NS" get pods -l "$selector" \
               -o custom-columns='NAME:.metadata.name,PHASE:.status.phase,READY:.status.containerStatuses[*].ready,RESTARTS:.status.containerStatuses[*].restartCount,IMAGE:.spec.containers[*].image,NODE:.spec.nodeName' || true
-            kubectl -n "$NS" describe pods -l "$selector" || true
-            kubectl -n "$NS" logs -l "$selector" --all-containers \
-              --tail=160 --prefix --max-log-requests=20 || true
-            kubectl -n "$NS" logs -l "$selector" --all-containers \
-              --previous --tail=160 --prefix --max-log-requests=20 || true
+            kubectl -n "$NS" get pods -l "$selector" \
+              -o jsonpath='{range .items[*]}{.metadata.name}{"\t"}{.spec.containers[0].image}{"\n"}{end}' |
+              while IFS=$'\t' read -r pod image; do
+                [ "$image" = "$expected_image" ] || continue
+                kubectl -n "$NS" describe pod "$pod" || true
+                kubectl -n "$NS" logs "$pod" --all-containers --tail=160 --prefix || true
+                kubectl -n "$NS" logs "$pod" --all-containers --previous --tail=160 --prefix || true
+              done
             echo "::endgroup::"
             return 1
           }
 
-          rollout_or_diagnose tsc-forex-app 420s app=tsc-forex-app
-          rollout_or_diagnose tsc-forex-web 180s app=tsc-forex-web
-          rollout_or_diagnose tsc-forex-webadmin 180s app=tsc-forex-webadmin
+          rollout_or_diagnose tsc-forex-app 420s app=tsc-forex-app "$IMAGE_REF"
+          rollout_or_diagnose tsc-forex-web 180s app=tsc-forex-web "$WEB_IMAGE_REF"
+          rollout_or_diagnose tsc-forex-webadmin 180s app=tsc-forex-webadmin "$ADMIN_IMAGE_REF"
           # Validate mounted credential files and non-empty KIDs without printing
           # secret material. Real DeviceCheck remains a physical-device smoke.
           kubectl -n "$NS" exec deployment/tsc-forex-app -- sh -ec '

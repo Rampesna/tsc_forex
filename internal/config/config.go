@@ -33,18 +33,20 @@ type Config struct {
 }
 
 // AdminConfig controls the private operations console. BootstrapPassword is a
-// one-time production secret: it is used only if the configured account does
-// not exist and is never written to source or logs.
+// one-time production secret: it creates the configured account or, only when
+// explicitly authorized, promotes that exact existing account. It is never
+// written to source or logs and never resets an established admin password.
 type AdminConfig struct {
-	Enabled           bool          `mapstructure:"enabled"`
-	BootstrapEmail    string        `mapstructure:"bootstrap_email"`
-	BootstrapPassword string        `mapstructure:"bootstrap_password"`
-	AllowedOrigin     string        `mapstructure:"allowed_origin"`
-	CookieSecure      bool          `mapstructure:"cookie_secure"`
-	MaxRecipients     int           `mapstructure:"max_recipients"`
-	CampaignBatchSize int           `mapstructure:"campaign_batch_size"`
-	SendPerSecond     int           `mapstructure:"send_per_second"`
-	PresenceTTL       time.Duration `mapstructure:"presence_ttl"`
+	Enabled                bool          `mapstructure:"enabled"`
+	BootstrapEmail         string        `mapstructure:"bootstrap_email"`
+	BootstrapPassword      string        `mapstructure:"bootstrap_password"`
+	PromoteExistingAccount bool          `mapstructure:"promote_existing_account"`
+	AllowedOrigin          string        `mapstructure:"allowed_origin"`
+	CookieSecure           bool          `mapstructure:"cookie_secure"`
+	MaxRecipients          int           `mapstructure:"max_recipients"`
+	CampaignBatchSize      int           `mapstructure:"campaign_batch_size"`
+	SendPerSecond          int           `mapstructure:"send_per_second"`
+	PresenceTTL            time.Duration `mapstructure:"presence_ttl"`
 }
 
 // BillingConfig controls App Store + Google Play entitlement verification.

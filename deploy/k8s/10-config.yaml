@@ -114,6 +114,10 @@ data:
   # exist. It is never stored in this ConfigMap or a container image.
   APP_ADMIN_ENABLED: "true"
   APP_ADMIN_BOOTSTRAP_EMAIL: "talha@talhacan.com"
+  # Explicitly authorizes the configured pre-existing consumer account to be
+  # promoted once. After its role becomes admin, bootstrap never resets the
+  # password selected in the console.
+  APP_ADMIN_PROMOTE_EXISTING_ACCOUNT: "true"
   APP_ADMIN_ALLOWED_ORIGIN: "https://tscfm.talhacan.com"
   APP_ADMIN_COOKIE_SECURE: "true"
   APP_ADMIN_MAX_RECIPIENTS: "100000"

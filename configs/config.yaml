@@ -248,6 +248,7 @@ admin:
   enabled: false
   bootstrap_email: ""
   bootstrap_password: ""
+  promote_existing_account: false
   allowed_origin: http://localhost:5174
   cookie_secure: false
   max_recipients: 100000

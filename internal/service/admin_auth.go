@@ -63,10 +63,21 @@ func EnsureBootstrapAdmin(ctx context.Context, db *gorm.DB, cfg config.AdminConf
 	if user.Role != "admin" {
 		// Never turn an arbitrary pre-existing consumer account into an
 		// administrator merely because its email matches configuration. The
-		// bootstrap secret must also prove control of that local account.
+		// bootstrap secret must also prove control of that local account unless
+		// an operator has explicitly enabled the one-time promotion path.
 		if strings.TrimSpace(user.PasswordHash) != "" {
 			if err := VerifyPassword(user.PasswordHash, cfg.BootstrapPassword); err != nil {
-				return fmt.Errorf("%w: existing account requires an explicit administrative promotion", ErrAdminNotConfigured)
+				if !cfg.PromoteExistingAccount {
+					return fmt.Errorf("%w: existing account requires an explicit administrative promotion", ErrAdminNotConfigured)
+				}
+				if err := validateAdminPassword(cfg.BootstrapPassword); err != nil {
+					return fmt.Errorf("%w: bootstrap password is missing or weak", ErrAdminNotConfigured)
+				}
+				hash, hashErr := HashPassword(cfg.BootstrapPassword)
+				if hashErr != nil {
+					return hashErr
+				}
+				updates["password_hash"] = hash
 			}
 		}
 		updates["role"] = "admin"

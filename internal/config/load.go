@@ -317,6 +317,7 @@ func setDefaults(v *viper.Viper) {
 	v.SetDefault("admin.enabled", false)
 	v.SetDefault("admin.bootstrap_email", "")
 	v.SetDefault("admin.bootstrap_password", "")
+	v.SetDefault("admin.promote_existing_account", false)
 	v.SetDefault("admin.allowed_origin", "http://localhost:5174")
 	v.SetDefault("admin.cookie_secure", false)
 	v.SetDefault("admin.max_recipients", 100000)
