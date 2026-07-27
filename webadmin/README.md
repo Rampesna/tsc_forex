@@ -7,11 +7,15 @@ Kubernetes deployment on NodePort `4775` and calls the production API at
 ## Security model
 
 - No public registration route exists.
+- Console identities live only in `managers`; they are never rows in `users`.
+- Manager refresh sessions live only in `manager_sessions`, and manager JWTs
+  carry a dedicated audience/type that consumer middleware rejects.
 - The initial administrator email comes from non-secret configuration.
 - The initial password must be supplied through the
   `APP_ADMIN_BOOTSTRAP_PASSWORD` Kubernetes/GitHub Actions secret. It is never
   embedded in this application, Git, a container image, or a log.
 - Access JWTs are short lived and kept only in browser memory.
+- The login form ships with no prefilled email address.
 - Refresh credentials are opaque, rotating, revocable, `HttpOnly`, `Secure`,
   `SameSite=Strict` cookies scoped to the admin auth endpoints.
 - Every privileged read or mutation is recorded in the admin audit log.

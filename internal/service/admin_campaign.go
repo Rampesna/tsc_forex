@@ -93,7 +93,7 @@ type adminResolvedAudience struct {
 	TotalMatched int64
 }
 
-func (s *AdminService) PreviewCampaign(ctx context.Context, adminID uuid.UUID, prompt string) (AdminCampaignPreview, error) {
+func (s *AdminService) PreviewCampaign(ctx context.Context, managerID uuid.UUID, prompt string) (AdminCampaignPreview, error) {
 	var out AdminCampaignPreview
 	prompt = strings.TrimSpace(prompt)
 	if len([]rune(prompt)) < 8 || len([]rune(prompt)) > 2000 {
@@ -134,7 +134,7 @@ func (s *AdminService) PreviewCampaign(ctx context.Context, adminID uuid.UUID, p
 		"sample_users": out.SampleUsers, "total_matched": audience.TotalMatched,
 	})
 	campaign := models.NotificationCampaign{
-		ID: campaignID, AdminID: adminID, Name: truncate(interpretation.CampaignName, 120),
+		ID: campaignID, ManagerID: managerID, Name: truncate(interpretation.CampaignName, 120),
 		Prompt: prompt, Status: "draft", TargetingPlan: models.JSONDocument(planJSON),
 		Preview: models.JSONDocument(previewJSON), Title: interpretation.Title,
 		Body: interpretation.Body, DeepLink: interpretation.DeepLink,
@@ -612,9 +612,9 @@ type AdminCampaignApproval struct {
 	DeepLink           string `json:"deep_link"`
 }
 
-func (s *AdminService) ApproveCampaign(ctx context.Context, adminID, campaignID uuid.UUID, approval AdminCampaignApproval) (models.NotificationCampaign, error) {
+func (s *AdminService) ApproveCampaign(ctx context.Context, managerID, campaignID uuid.UUID, approval AdminCampaignApproval) (models.NotificationCampaign, error) {
 	var campaign models.NotificationCampaign
-	if err := s.db.WithContext(ctx).Where("id = ? AND admin_id = ?", campaignID, adminID).Take(&campaign).Error; err != nil {
+	if err := s.db.WithContext(ctx).Where("id = ? AND manager_id = ?", campaignID, managerID).Take(&campaign).Error; err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return campaign, ErrCampaignNotFound
 		}
@@ -703,11 +703,11 @@ func (s *AdminService) Campaigns(ctx context.Context, page, pageSize int) ([]mod
 	return rows, total, err
 }
 
-func (s *AdminService) CancelCampaign(ctx context.Context, adminID, campaignID uuid.UUID) error {
+func (s *AdminService) CancelCampaign(ctx context.Context, managerID, campaignID uuid.UUID) error {
 	return s.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var campaign models.NotificationCampaign
 		if err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
-			Where("id = ? AND admin_id = ?", campaignID, adminID).Take(&campaign).Error; err != nil {
+			Where("id = ? AND manager_id = ?", campaignID, managerID).Take(&campaign).Error; err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return ErrCampaignNotFound
 			}

@@ -5,14 +5,14 @@ import { useAuth } from "../auth";
 import { Icon } from "../Icon";
 
 export function Login() {
-  const { user, signIn } = useAuth();
+  const { manager, signIn } = useAuth();
   const navigate = useNavigate();
-  const [email, setEmail] = useState("talha@talhacan.com");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  if (user) return <Navigate to="/" replace />;
+  if (manager) return <Navigate to="/" replace />;
 
   async function submit(event: FormEvent) {
     event.preventDefault();
@@ -46,11 +46,11 @@ export function Login() {
         <small className="login-foot">Yalnızca yetkili TSC Forex yöneticileri içindir.</small>
       </section>
       <section className="login-form-shell">
-        <form onSubmit={submit} className="login-card">
+        <form onSubmit={submit} className="login-card" autoComplete="off">
           <div className="login-icon"><Icon name="shield" size={24} /></div>
           <h2>Yönetim paneline giriş</h2>
           <p>Devam etmek için yönetici bilgilerini kullan.</p>
-          <label>E-posta<input value={email} onChange={(e) => setEmail(e.target.value)} type="email" autoComplete="username" required /></label>
+          <label>E-posta<input value={email} onChange={(e) => setEmail(e.target.value)} type="email" name="manager-email" autoComplete="off" spellCheck={false} required /></label>
           <label>Şifre<input value={password} onChange={(e) => setPassword(e.target.value)} type="password" autoComplete="current-password" required /></label>
           {error && <div className="form-error">{error}</div>}
           <button className="primary-button" disabled={loading}>{loading ? <span className="spinner" /> : "Güvenli giriş yap"}<Icon name="arrow" size={16} /></button>

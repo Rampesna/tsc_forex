@@ -6,7 +6,7 @@ import { Icon } from "../Icon";
 import type { SessionResponse } from "../types";
 
 export function Settings() {
-  const { user, replaceUser } = useAuth();
+  const { manager, replaceManager } = useAuth();
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [repeat, setRepeat] = useState("");
@@ -18,7 +18,7 @@ export function Settings() {
     }),
     onSuccess: (session) => {
       setAccessToken(session.access_token);
-      replaceUser(session.user); setCurrent(""); setNext(""); setRepeat("");
+      replaceManager(session.manager); setCurrent(""); setNext(""); setRepeat("");
       setMessage("Şifre güncellendi; diğer tüm yönetici oturumları kapatıldı.");
     },
     onError: (error) => setMessage(error instanceof ApiError ? error.message : "Şifre değiştirilemedi"),
@@ -35,9 +35,9 @@ export function Settings() {
   const strength = [next.length >= 12, /[A-Z]/.test(next), /[a-z]/.test(next), /\d/.test(next), /[^A-Za-z0-9]/.test(next)].filter(Boolean).length;
   return <div className="settings-page">
     <section className="panel settings-profile">
-      <div className="settings-avatar">{(user?.display_name || user?.email || "TC").slice(0, 2).toUpperCase()}</div>
-      <div><span className="kicker">YÖNETİCİ HESABI</span><h2>{user?.display_name || "Talha Can"}</h2><p>{user?.email}</p></div>
-      <span className="status-pill active">Admin</span>
+      <div className="settings-avatar">{(manager?.display_name || manager?.email || "YÖ").slice(0, 2).toUpperCase()}</div>
+      <div><span className="kicker">YÖNETİCİ HESABI</span><h2>{manager?.display_name || "Yönetici"}</h2><p>{manager?.email}</p></div>
+      <span className="status-pill active">Manager</span>
     </section>
     <section className="panel password-panel">
       <div className="panel-heading"><div><span className="kicker">KİMLİK DOĞRULAMA</span><h2>Şifre değiştir</h2><p>Değişiklikten sonra bu tarayıcı hariç tüm yenileme oturumları iptal edilir.</p></div><span className="list-icon"><Icon name="shield" /></span></div>

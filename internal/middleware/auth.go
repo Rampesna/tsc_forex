@@ -37,9 +37,27 @@ func JWTAuth(auth *service.AuthService) gin.HandlerFunc {
 	}
 }
 
-// AdminOnly rejects ordinary user JWTs even when they are otherwise valid.
-// It must run after JWTAuth.
-func AdminOnly() gin.HandlerFunc {
+// ManagerJWTAuth verifies only operations-console JWTs. It intentionally does
+// not accept query-string credentials.
+func ManagerJWTAuth(auth *service.ManagerAuthService) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		header := c.GetHeader("Authorization")
+		if !strings.HasPrefix(header, "Bearer ") {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "missing token"})
+			return
+		}
+		claims, err := auth.Verify(strings.TrimPrefix(header, "Bearer "))
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+			return
+		}
+		c.Set(ClaimsKey, claims)
+		c.Next()
+	}
+}
+
+// ManagerOnly adds a second fail-closed check after ManagerJWTAuth.
+func ManagerOnly() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		raw, ok := c.Get(ClaimsKey)
 		if !ok {
@@ -47,8 +65,8 @@ func AdminOnly() gin.HandlerFunc {
 			return
 		}
 		claims, ok := raw.(*service.Claims)
-		if !ok || claims.Role != "admin" {
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "admin access required"})
+		if !ok || claims.Role != "manager" || claims.Kind != "manager" {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "manager access required"})
 			return
 		}
 		c.Next()

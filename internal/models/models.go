@@ -37,13 +37,11 @@ func (g *GoldPrice) BeforeCreate(_ *gorm.DB) error {
 
 // User is an authenticated API consumer (JWT + bcrypt).
 type User struct {
-	ID                 uuid.UUID  `gorm:"type:uuid;primaryKey" json:"id"`
-	Email              string     `gorm:"type:varchar(255);uniqueIndex;not null" json:"email"`
-	PasswordHash       string     `gorm:"type:varchar(255)" json:"-"` // empty for social-login users
-	Role               string     `gorm:"type:varchar(32);not null;default:'user'" json:"role"`
-	MustChangePassword bool       `gorm:"not null;default:false" json:"-"`
-	PasswordChangedAt  *time.Time `json:"-"`
-	LastLoginAt        *time.Time `json:"last_login_at,omitempty"`
+	ID           uuid.UUID  `gorm:"type:uuid;primaryKey" json:"id"`
+	Email        string     `gorm:"type:varchar(255);uniqueIndex;not null" json:"email"`
+	PasswordHash string     `gorm:"type:varchar(255)" json:"-"` // empty for social-login users
+	Role         string     `gorm:"type:varchar(32);not null;default:'user'" json:"role"`
+	LastLoginAt  *time.Time `json:"last_login_at,omitempty"`
 	// Provider identifies how the account was created: "local", "google", "apple".
 	Provider    string    `gorm:"type:varchar(32);not null;default:'local'" json:"provider"`
 	DisplayName string    `gorm:"type:varchar(255)" json:"display_name"`
@@ -59,6 +57,30 @@ func (User) TableName() string { return "users" }
 func (u *User) BeforeCreate(_ *gorm.DB) error {
 	if u.ID == uuid.Nil {
 		u.ID = uuid.New()
+	}
+	return nil
+}
+
+// Manager is an operations-console identity. It is intentionally isolated
+// from User: managers cannot own portfolios, subscriptions, devices, social
+// identities, or any other consumer data.
+type Manager struct {
+	ID                 uuid.UUID  `gorm:"type:uuid;primaryKey" json:"id"`
+	Email              string     `gorm:"type:varchar(255);uniqueIndex;not null" json:"email"`
+	PasswordHash       string     `gorm:"type:varchar(255);not null" json:"-"`
+	DisplayName        string     `gorm:"type:varchar(255);not null" json:"display_name"`
+	MustChangePassword bool       `gorm:"not null;default:true" json:"-"`
+	PasswordChangedAt  *time.Time `json:"-"`
+	LastLoginAt        *time.Time `json:"last_login_at,omitempty"`
+	CreatedAt          time.Time  `gorm:"not null" json:"created_at"`
+	UpdatedAt          time.Time  `gorm:"not null" json:"updated_at"`
+}
+
+func (Manager) TableName() string { return "managers" }
+
+func (m *Manager) BeforeCreate(_ *gorm.DB) error {
+	if m.ID == uuid.Nil {
+		m.ID = uuid.New()
 	}
 	return nil
 }
@@ -205,6 +227,27 @@ func (RefreshToken) TableName() string { return "refresh_tokens" }
 func (r *RefreshToken) BeforeCreate(_ *gorm.DB) error {
 	if r.ID == uuid.Nil {
 		r.ID = uuid.New()
+	}
+	return nil
+}
+
+// ManagerSession stores only operations-console refresh sessions. Keeping this
+// separate prevents a consumer refresh token from ever being interpreted as a
+// manager session, even if identifiers collide.
+type ManagerSession struct {
+	ID        uuid.UUID  `gorm:"type:uuid;primaryKey" json:"id"`
+	ManagerID uuid.UUID  `gorm:"type:uuid;index;not null" json:"manager_id"`
+	TokenHash string     `gorm:"type:varchar(128);uniqueIndex;not null" json:"-"`
+	ExpiresAt time.Time  `gorm:"not null;index" json:"expires_at"`
+	RevokedAt *time.Time `json:"revoked_at,omitempty"`
+	CreatedAt time.Time  `gorm:"not null" json:"created_at"`
+}
+
+func (ManagerSession) TableName() string { return "manager_sessions" }
+
+func (s *ManagerSession) BeforeCreate(_ *gorm.DB) error {
+	if s.ID == uuid.Nil {
+		s.ID = uuid.New()
 	}
 	return nil
 }
@@ -979,7 +1022,7 @@ func (SubscriptionRestoreTombstone) TableName() string { return "subscription_re
 // executes model-authored SQL.
 type NotificationCampaign struct {
 	ID                  uuid.UUID    `gorm:"type:uuid;primaryKey" json:"id"`
-	AdminID             uuid.UUID    `gorm:"type:uuid;not null;index" json:"admin_id"`
+	ManagerID           uuid.UUID    `gorm:"type:uuid;index" json:"manager_id"`
 	Name                string       `gorm:"type:varchar(120);not null" json:"name"`
 	Prompt              string       `gorm:"type:text;not null" json:"prompt"`
 	Status              string       `gorm:"type:varchar(24);not null;index" json:"status"`
@@ -1039,7 +1082,7 @@ func (r *NotificationCampaignRecipient) BeforeCreate(_ *gorm.DB) error {
 // Metadata deliberately stores structured IDs/counts rather than credentials.
 type AdminAuditLog struct {
 	ID           uuid.UUID    `gorm:"type:uuid;primaryKey" json:"id"`
-	ActorID      *uuid.UUID   `gorm:"type:uuid;index" json:"actor_id,omitempty"`
+	ManagerID    *uuid.UUID   `gorm:"type:uuid;index" json:"manager_id,omitempty"`
 	Action       string       `gorm:"type:varchar(80);not null;index" json:"action"`
 	ResourceType string       `gorm:"type:varchar(64);not null;index" json:"resource_type"`
 	ResourceID   string       `gorm:"type:varchar(128);index" json:"resource_id,omitempty"`

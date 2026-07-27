@@ -1,4 +1,4 @@
-export type AdminUser = {
+export type Manager = {
   id: string;
   email: string;
   display_name: string;
@@ -8,7 +8,7 @@ export type AdminUser = {
 export type SessionResponse = {
   access_token: string;
   token_type: string;
-  user: AdminUser;
+  manager: Manager;
 };
 
 export type NamedValue = { name: string; value: number };

@@ -15,11 +15,11 @@ const Audit = lazy(() => import("./pages/Audit").then((module) => ({ default: mo
 const Settings = lazy(() => import("./pages/Settings").then((module) => ({ default: module.Settings })));
 
 export default function App() {
-  const { ready, user } = useAuth();
+  const { ready, manager } = useAuth();
   const { pathname } = useLocation();
   if (!ready) return <div className="boot"><div className="brand-mark"><span>T</span><span>F</span></div><span className="spinner" /></div>;
-  if (pathname === "/login") return user ? <Navigate to="/" replace /> : <Login />;
-  if (!user) return <Navigate to="/login" replace />;
+  if (pathname === "/login") return manager ? <Navigate to="/" replace /> : <Login />;
+  if (!manager) return <Navigate to="/login" replace />;
 
   let page: ReactNode;
   if (pathname === "/") page = <Dashboard />;

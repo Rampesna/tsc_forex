@@ -59,6 +59,16 @@ func TestCheckReadyRequiresCurrentSuccessfulMigration(t *testing.T) {
 	if err := database.Migrate(db); err != nil {
 		t.Fatal(err)
 	}
+	for _, table := range []any{&models.Manager{}, &models.ManagerSession{}} {
+		if !db.Migrator().HasTable(table) {
+			t.Fatalf("manager realm migration did not create %T", table)
+		}
+	}
+	for _, column := range []string{"must_change_password", "password_changed_at"} {
+		if db.Migrator().HasColumn(&models.User{}, column) {
+			t.Fatalf("consumer users table contains manager-only column %q", column)
+		}
+	}
 	if err := database.CheckReady(ctx, db); err != nil {
 		t.Fatalf("migrated database not ready: %v", err)
 	}

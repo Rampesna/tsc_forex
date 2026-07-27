@@ -37,7 +37,8 @@ type Deps struct {
 	Admin        *api.AdminHandler        // private operations console; may be nil
 	Ready        func(context.Context) error
 
-	AuthService *service.AuthService // for protected-route middleware; may be nil
+	AuthService        *service.AuthService        // consumer protected routes; may be nil
+	ManagerAuthService *service.ManagerAuthService // operations console only; may be nil
 }
 
 // NewEngine builds the Gin engine with all middleware and routes.
@@ -151,7 +152,7 @@ func NewEngine(d Deps) *gin.Engine {
 			v1.POST("/auth/logout", d.Auth.Logout)
 		}
 
-		if d.Admin != nil && d.AuthService != nil {
+		if d.Admin != nil && d.ManagerAuthService != nil {
 			adminAuth := v1.Group("/admin/auth")
 			{
 				adminAuth.POST("/login", middleware.RateLimit(8, 300), d.Admin.Login)
@@ -159,7 +160,7 @@ func NewEngine(d Deps) *gin.Engine {
 				adminAuth.POST("/logout", d.Admin.Logout)
 			}
 			admin := v1.Group("/admin")
-			admin.Use(middleware.JWTAuth(d.AuthService), middleware.AdminOnly())
+			admin.Use(middleware.ManagerJWTAuth(d.ManagerAuthService), middleware.ManagerOnly())
 			{
 				admin.GET("/me", d.Admin.Me)
 				admin.POST("/auth/password", d.Admin.ChangePassword)

@@ -24,7 +24,7 @@ const titles: Record<string, { title: string; subtitle: string }> = {
 };
 
 export function Layout({ children }: { children: ReactNode }) {
-  const { user, signOut } = useAuth();
+  const { manager, signOut } = useAuth();
   const [open, setOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
@@ -75,8 +75,8 @@ export function Layout({ children }: { children: ReactNode }) {
           <div><strong>Güvenli yönetim</strong><small>Rol tabanlı erişim · denetimli işlemler</small></div>
         </div>
         <button className="account-card" onClick={logout}>
-          <span className="avatar">{(user?.display_name || user?.email || "T").slice(0, 2).toUpperCase()}</span>
-          <span><strong>{user?.display_name || "Talha Can"}</strong><small>{user?.email}</small></span>
+          <span className="avatar">{(manager?.display_name || manager?.email || "T").slice(0, 2).toUpperCase()}</span>
+          <span><strong>{manager?.display_name || "Yönetici"}</strong><small>{manager?.email}</small></span>
           <Icon name="logout" size={16} />
         </button>
       </aside>
@@ -88,10 +88,10 @@ export function Layout({ children }: { children: ReactNode }) {
           <div className="top-actions">
             <span className="system-state"><i /> Sistem çalışıyor</span>
             <button aria-label="Bildirim kampanyaları" onClick={() => navigate("/campaigns")}><Icon name="bell" size={17} /></button>
-            <button className="top-avatar" aria-label="Yönetici ayarları" onClick={() => navigate("/settings")}>{(user?.display_name || "TC").slice(0, 2).toUpperCase()}</button>
+            <button className="top-avatar" aria-label="Yönetici ayarları" onClick={() => navigate("/settings")}>{(manager?.display_name || "YÖ").slice(0, 2).toUpperCase()}</button>
           </div>
         </header>
-        {user?.must_change_password && location.pathname !== "/settings" && (
+        {manager?.must_change_password && location.pathname !== "/settings" && (
           <button className="password-banner" onClick={() => navigate("/settings")}>
             <Icon name="shield" size={16} />
             Başlangıç şifresini değiştirerek yönetici hesabını güvene al.

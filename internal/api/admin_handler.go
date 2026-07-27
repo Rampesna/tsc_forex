@@ -19,12 +19,12 @@ import (
 const adminRefreshCookie = "tsc_admin_refresh"
 
 type AdminHandler struct {
-	auth  *service.AuthService
+	auth  *service.ManagerAuthService
 	admin *service.AdminService
 	cfg   config.AdminConfig
 }
 
-func NewAdminHandler(auth *service.AuthService, admin *service.AdminService, cfg config.AdminConfig) *AdminHandler {
+func NewAdminHandler(auth *service.ManagerAuthService, admin *service.AdminService, cfg config.AdminConfig) *AdminHandler {
 	return &AdminHandler{auth: auth, admin: admin, cfg: cfg}
 }
 
@@ -36,20 +36,20 @@ type adminLoginRequest struct {
 type adminSessionResponse struct {
 	AccessToken string `json:"access_token"`
 	TokenType   string `json:"token_type"`
-	User        struct {
+	Manager     struct {
 		ID                 uuid.UUID `json:"id"`
 		Email              string    `json:"email"`
 		DisplayName        string    `json:"display_name"`
 		MustChangePassword bool      `json:"must_change_password"`
-	} `json:"user"`
+	} `json:"manager"`
 }
 
-func newAdminSessionResponse(user models.User, access string) adminSessionResponse {
+func newAdminSessionResponse(manager models.Manager, access string) adminSessionResponse {
 	out := adminSessionResponse{AccessToken: access, TokenType: "Bearer"}
-	out.User.ID = user.ID
-	out.User.Email = user.Email
-	out.User.DisplayName = user.DisplayName
-	out.User.MustChangePassword = user.MustChangePassword
+	out.Manager.ID = manager.ID
+	out.Manager.Email = manager.Email
+	out.Manager.DisplayName = manager.DisplayName
+	out.Manager.MustChangePassword = manager.MustChangePassword
 	return out
 }
 
@@ -59,15 +59,15 @@ func (h *AdminHandler) Login(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "geçerli e-posta ve şifre gerekli"})
 		return
 	}
-	user, access, refresh, err := h.auth.LoginAdmin(c.Request.Context(), req.Email, req.Password)
+	manager, access, refresh, err := h.auth.Login(c.Request.Context(), req.Email, req.Password)
 	if err != nil {
 		h.admin.Audit(c.Request.Context(), nil, "admin.login_failed", "session", "", c.ClientIP(), c.GetHeader("User-Agent"), map[string]any{"email": strings.ToLower(strings.TrimSpace(req.Email))})
 		c.JSON(http.StatusUnauthorized, ErrorResponse{Error: "e-posta veya şifre hatalı"})
 		return
 	}
 	h.setRefreshCookie(c, refresh)
-	h.admin.Audit(c.Request.Context(), &user.ID, "admin.login", "session", "", c.ClientIP(), c.GetHeader("User-Agent"), map[string]any{"status": "success"})
-	c.JSON(http.StatusOK, newAdminSessionResponse(user, access))
+	h.admin.Audit(c.Request.Context(), &manager.ID, "admin.login", "session", "", c.ClientIP(), c.GetHeader("User-Agent"), map[string]any{"status": "success"})
+	c.JSON(http.StatusOK, newAdminSessionResponse(manager, access))
 }
 
 func (h *AdminHandler) Refresh(c *gin.Context) {
@@ -76,14 +76,14 @@ func (h *AdminHandler) Refresh(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, ErrorResponse{Error: "oturum süresi doldu"})
 		return
 	}
-	user, access, refresh, err := h.auth.RefreshAdmin(c.Request.Context(), raw)
+	manager, access, refresh, err := h.auth.Refresh(c.Request.Context(), raw)
 	if err != nil {
 		h.clearRefreshCookie(c)
 		c.JSON(http.StatusUnauthorized, ErrorResponse{Error: "oturum süresi doldu"})
 		return
 	}
 	h.setRefreshCookie(c, refresh)
-	c.JSON(http.StatusOK, newAdminSessionResponse(user, access))
+	c.JSON(http.StatusOK, newAdminSessionResponse(manager, access))
 }
 
 func (h *AdminHandler) Logout(c *gin.Context) {
@@ -100,12 +100,12 @@ func (h *AdminHandler) Me(c *gin.Context) {
 		c.JSON(http.StatusUnauthorized, ErrorResponse{Error: "unauthorized"})
 		return
 	}
-	user, err := h.auth.AdminUser(c.Request.Context(), uid)
+	manager, err := h.auth.Manager(c.Request.Context(), uid)
 	if err != nil {
 		c.JSON(http.StatusForbidden, ErrorResponse{Error: "admin access required"})
 		return
 	}
-	c.JSON(http.StatusOK, newAdminSessionResponse(user, ""))
+	c.JSON(http.StatusOK, newAdminSessionResponse(manager, ""))
 }
 
 type adminPasswordRequest struct {
@@ -124,12 +124,12 @@ func (h *AdminHandler) ChangePassword(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, ErrorResponse{Error: "yeni şifre en az 12 karakter olmalı"})
 		return
 	}
-	user, err := h.auth.ChangeAdminPassword(c.Request.Context(), uid, req.CurrentPassword, req.NewPassword)
+	manager, err := h.auth.ChangePassword(c.Request.Context(), uid, req.CurrentPassword, req.NewPassword)
 	if err != nil {
 		switch {
 		case errors.Is(err, service.ErrInvalidCredentials):
 			c.JSON(http.StatusUnauthorized, ErrorResponse{Error: "mevcut şifre hatalı"})
-		case errors.Is(err, service.ErrWeakAdminPassword):
+		case errors.Is(err, service.ErrWeakManagerPassword):
 			c.JSON(http.StatusBadRequest, ErrorResponse{Error: "şifre büyük/küçük harf, rakam ve özel karakter içermeli"})
 		case errors.Is(err, service.ErrPasswordUnchanged):
 			c.JSON(http.StatusBadRequest, ErrorResponse{Error: "yeni şifre eskisinden farklı olmalı"})
@@ -138,14 +138,14 @@ func (h *AdminHandler) ChangePassword(c *gin.Context) {
 		}
 		return
 	}
-	access, refresh, err := h.auth.IssueSession(c.Request.Context(), user)
+	access, refresh, err := h.auth.IssueSession(c.Request.Context(), manager)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, ErrorResponse{Error: "yeni oturum oluşturulamadı"})
 		return
 	}
 	h.setRefreshCookie(c, refresh)
-	h.admin.Audit(c.Request.Context(), &uid, "admin.password_changed", "admin", uid.String(), c.ClientIP(), c.GetHeader("User-Agent"), map[string]any{"revoked_other_sessions": true})
-	c.JSON(http.StatusOK, newAdminSessionResponse(user, access))
+	h.admin.Audit(c.Request.Context(), &uid, "admin.password_changed", "manager", uid.String(), c.ClientIP(), c.GetHeader("User-Agent"), map[string]any{"revoked_other_sessions": true})
+	c.JSON(http.StatusOK, newAdminSessionResponse(manager, access))
 }
 
 func (h *AdminHandler) Dashboard(c *gin.Context) {

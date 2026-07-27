@@ -1,32 +1,32 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { login as loginRequest, logout as logoutRequest, refreshSession, setSessionExpiredHandler } from "./api";
-import type { AdminUser } from "./types";
+import type { Manager } from "./types";
 
 type AuthValue = {
-  user: AdminUser | null;
+  manager: Manager | null;
   ready: boolean;
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
-  replaceUser: (user: AdminUser) => void;
+  replaceManager: (manager: Manager) => void;
 };
 
 const AuthContext = createContext<AuthValue | null>(null);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<AdminUser | null>(null);
+  const [manager, setManager] = useState<Manager | null>(null);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
     let active = true;
     setSessionExpiredHandler(() => {
-      if (active) setUser(null);
+      if (active) setManager(null);
     });
     refreshSession()
       .then((session) => {
-        if (active) setUser(session.user);
+        if (active) setManager(session.manager);
       })
       .catch(() => {
-        if (active) setUser(null);
+        if (active) setManager(null);
       })
       .finally(() => {
         if (active) setReady(true);
@@ -39,19 +39,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const value = useMemo<AuthValue>(
     () => ({
-      user,
+      manager,
       ready,
       signIn: async (email, password) => {
         const session = await loginRequest(email, password);
-        setUser(session.user);
+        setManager(session.manager);
       },
       signOut: async () => {
         await logoutRequest();
-        setUser(null);
+        setManager(null);
       },
-      replaceUser: setUser,
+      replaceManager: setManager,
     }),
-    [ready, user],
+    [ready, manager],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;

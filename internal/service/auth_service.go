@@ -30,6 +30,7 @@ type Claims struct {
 	UserID string `json:"uid"`
 	Email  string `json:"email"`
 	Role   string `json:"role"`
+	Kind   string `json:"kind,omitempty"`
 	jwt.RegisteredClaims
 }
 
@@ -227,10 +228,7 @@ func (s *AuthService) IssueSession(ctx context.Context, u models.User) (access, 
 func (s *AuthService) Users() repository.UserRepository { return s.users }
 
 // Register creates a new user with an argon2id-hashed password.
-func (s *AuthService) Register(ctx context.Context, email, password, role string) (models.User, error) {
-	if role == "" {
-		role = "user"
-	}
+func (s *AuthService) Register(ctx context.Context, email, password, _ string) (models.User, error) {
 	if _, err := s.users.ByEmail(ctx, email); err == nil {
 		return models.User{}, ErrEmailTaken
 	}
@@ -242,7 +240,7 @@ func (s *AuthService) Register(ctx context.Context, email, password, role string
 		ID:           uuid.New(),
 		Email:        email,
 		PasswordHash: hash,
-		Role:         role,
+		Role:         "user",
 	}
 	if err := s.users.Create(ctx, u); err != nil {
 		return models.User{}, err
@@ -347,7 +345,8 @@ func (s *AuthService) issue(u models.User, ttl time.Duration) (string, error) {
 	claims := Claims{
 		UserID: u.ID.String(),
 		Email:  u.Email,
-		Role:   u.Role,
+		Role:   "user",
+		Kind:   "user",
 		RegisteredClaims: jwt.RegisteredClaims{
 			Issuer:    s.cfg.Issuer,
 			Subject:   u.ID.String(),
@@ -369,6 +368,12 @@ func (s *AuthService) Verify(tokenString string) (*Claims, error) {
 		return []byte(s.cfg.Secret), nil
 	}, jwt.WithIssuer(s.cfg.Issuer))
 	if err != nil || !token.Valid {
+		return nil, ErrInvalidCredentials
+	}
+	// Manager credentials are a different security realm. Even though both
+	// token types currently use the deployment JWT secret, a manager token can
+	// never authenticate against a consumer endpoint.
+	if claims.Kind != "" && claims.Kind != "user" {
 		return nil, ErrInvalidCredentials
 	}
 	return claims, nil

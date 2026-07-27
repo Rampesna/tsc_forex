@@ -726,7 +726,7 @@ func (s *AdminService) onlineIDSet(ctx context.Context) map[string]bool {
 	return out
 }
 
-func (s *AdminService) Audit(ctx context.Context, actorID *uuid.UUID, action, resourceType, resourceID, ip, userAgent string, metadata any) {
+func (s *AdminService) Audit(ctx context.Context, managerID *uuid.UUID, action, resourceType, resourceID, ip, userAgent string, metadata any) {
 	if s == nil || s.db == nil {
 		return
 	}
@@ -735,7 +735,7 @@ func (s *AdminService) Audit(ctx context.Context, actorID *uuid.UUID, action, re
 		raw = []byte(`{"serialization_error":true}`)
 	}
 	entry := models.AdminAuditLog{
-		ID: uuid.New(), ActorID: actorID, Action: action, ResourceType: resourceType,
+		ID: uuid.New(), ManagerID: managerID, Action: action, ResourceType: resourceType,
 		ResourceID: resourceID, Metadata: models.JSONDocument(raw),
 		IPAddress: ip, UserAgent: truncate(userAgent, 320), CreatedAt: time.Now().UTC(),
 	}

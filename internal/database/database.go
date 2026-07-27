@@ -15,7 +15,7 @@ import (
 	"github.com/tsc-forex/tsc_forex/internal/models"
 )
 
-const currentSchemaVersion int64 = 2026072702
+const currentSchemaVersion int64 = 2026072703
 
 type schemaState struct {
 	Component string    `gorm:"type:varchar(64);primaryKey"`
@@ -78,10 +78,15 @@ func Migrate(db *gorm.DB) error {
 }
 
 func migrateSchema(db *gorm.DB) error {
+	if err := expandManagerOwnershipColumns(db); err != nil {
+		return fmt.Errorf("manager realm migration: %w", err)
+	}
 	if err := db.AutoMigrate(
 		&schemaState{},
 		&models.GoldPrice{},
 		&models.User{},
+		&models.Manager{},
+		&models.ManagerSession{},
 		&models.PriceTick{},
 		&models.Candle{},
 		&models.WatchlistItem{},
@@ -208,6 +213,8 @@ func addProductionIndexes(db *gorm.DB) error {
 
 		// Refresh-token lookups by hash are already unique; add expiry sweep index.
 		`CREATE INDEX IF NOT EXISTS idx_refresh_tokens_expires ON refresh_tokens (expires_at)`,
+		`CREATE INDEX IF NOT EXISTS idx_manager_sessions_manager_created ON manager_sessions (manager_id, created_at DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_manager_sessions_expires ON manager_sessions (expires_at)`,
 
 		// Device fan-out for push: list a user's devices quickly.
 		`CREATE INDEX IF NOT EXISTS idx_device_tokens_user ON device_tokens (user_id)`,
@@ -249,6 +256,45 @@ func addProductionIndexes(db *gorm.DB) error {
 	for _, s := range stmts {
 		if err := db.Exec(s).Error; err != nil {
 			return err
+		}
+	}
+	return nil
+}
+
+// expandManagerOwnershipColumns is the expand phase of a zero-downtime schema
+// migration. Old pods keep using admin_id/actor_id while new pods use
+// manager_id. Legacy columns can be removed in a later release after every old
+// pod is guaranteed gone.
+func expandManagerOwnershipColumns(db *gorm.DB) error {
+	if db.Dialector.Name() != "postgres" {
+		return nil
+	}
+	migrator := db.Migrator()
+	if migrator.HasTable(&models.NotificationCampaign{}) {
+		if !migrator.HasColumn(&models.NotificationCampaign{}, "manager_id") {
+			if err := db.Exec(`ALTER TABLE notification_campaigns ADD COLUMN manager_id UUID`).Error; err != nil {
+				return err
+			}
+		}
+		if migrator.HasColumn(&models.NotificationCampaign{}, "admin_id") {
+			if err := db.Exec(`UPDATE notification_campaigns SET manager_id = admin_id WHERE manager_id IS NULL`).Error; err != nil {
+				return err
+			}
+			if err := db.Exec(`ALTER TABLE notification_campaigns ALTER COLUMN admin_id DROP NOT NULL`).Error; err != nil {
+				return err
+			}
+		}
+	}
+	if migrator.HasTable(&models.AdminAuditLog{}) {
+		if !migrator.HasColumn(&models.AdminAuditLog{}, "manager_id") {
+			if err := db.Exec(`ALTER TABLE admin_audit_logs ADD COLUMN manager_id UUID`).Error; err != nil {
+				return err
+			}
+		}
+		if migrator.HasColumn(&models.AdminAuditLog{}, "actor_id") {
+			if err := db.Exec(`UPDATE admin_audit_logs SET manager_id = actor_id WHERE manager_id IS NULL`).Error; err != nil {
+				return err
+			}
 		}
 	}
 	return nil

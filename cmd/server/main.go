@@ -150,6 +150,7 @@ func run() error {
 		goldRepo        repository.GoldRepository
 		priceRepo       repository.PriceRepository
 		authSvc         *service.AuthService
+		managerAuthSvc  *service.ManagerAuthService
 		authH           *api.AuthHandler
 		userH           *api.UserHandler
 		passkeyH        *api.PasskeyHandler
@@ -230,8 +231,13 @@ func run() error {
 			WithOAuth(cfg.OAuth).
 			WithIdentities(identityRepo)
 		authH = api.NewAuthHandler(authSvc)
-		if err := service.EnsureBootstrapAdmin(ctx, db, cfg.Admin); err != nil {
-			return fmt.Errorf("admin bootstrap: %w", err)
+		if cfg.Admin.Enabled {
+			managerRepo := repository.NewManagerRepository(db, m)
+			managerSessionRepo := repository.NewManagerSessionRepository(db, m)
+			if err := service.EnsureBootstrapManager(ctx, db, managerRepo, cfg.Admin); err != nil {
+				return fmt.Errorf("manager bootstrap: %w", err)
+			}
+			managerAuthSvc = service.NewManagerAuthService(managerRepo, managerSessionRepo, cfg.JWT)
 		}
 
 		// Object storage (avatars): shared MinIO/S3 so every pod sees uploads.
@@ -304,7 +310,7 @@ func run() error {
 		if cfg.Admin.Enabled {
 			adminSvc := service.NewAdminService(db, presenceStore, notifier, cfg.Admin, cfg.AI, log)
 			adminSvc.StartCampaignWorker(ctx)
-			adminH = api.NewAdminHandler(authSvc, adminSvc, cfg.Admin)
+			adminH = api.NewAdminHandler(managerAuthSvc, adminSvc, cfg.Admin)
 			log.Info("admin console enabled", zap.String("email", cfg.Admin.BootstrapEmail))
 		}
 
@@ -389,16 +395,17 @@ func run() error {
 			DBPing:    readinessCheck,
 			ClientsFn: hub.ClientCount,
 		}),
-		Auth:         authH,
-		User:         userH,
-		Passkey:      passkeyH,
-		Gamification: gamH,
-		Portfolio:    portfolioH,
-		AI:           aiHandler,
-		Billing:      billingH,
-		Admin:        adminH,
-		AuthService:  authSvc,
-		Ready:        readinessCheck,
+		Auth:               authH,
+		User:               userH,
+		Passkey:            passkeyH,
+		Gamification:       gamH,
+		Portfolio:          portfolioH,
+		AI:                 aiHandler,
+		Billing:            billingH,
+		Admin:              adminH,
+		AuthService:        authSvc,
+		ManagerAuthService: managerAuthSvc,
+		Ready:              readinessCheck,
 	})
 
 	srv := &http.Server{

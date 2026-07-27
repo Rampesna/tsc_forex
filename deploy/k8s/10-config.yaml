@@ -110,14 +110,10 @@ data:
   APP_NOTIFY_FCM_PROJECT_ID: "tscforex-16f7e"
   APP_NOTIFY_FCM_CREDENTIAL_PATH: "/etc/push/fcm.json"
   # Private operations console. The bootstrap password is injected from the
-  # tsc-forex-secrets Secret and is only consumed if this account does not yet
-  # exist. It is never stored in this ConfigMap or a container image.
+  # tsc-forex-secrets Secret and only creates the isolated managers row once.
+  # It never reads, promotes, or mutates a consumer account.
   APP_ADMIN_ENABLED: "true"
   APP_ADMIN_BOOTSTRAP_EMAIL: "talha@talhacan.com"
-  # Explicitly authorizes the configured pre-existing consumer account to be
-  # promoted once. After its role becomes admin, bootstrap never resets the
-  # password selected in the console.
-  APP_ADMIN_PROMOTE_EXISTING_ACCOUNT: "true"
   APP_ADMIN_ALLOWED_ORIGIN: "https://tscfm.talhacan.com"
   APP_ADMIN_COOKIE_SECURE: "true"
   APP_ADMIN_MAX_RECIPIENTS: "100000"
