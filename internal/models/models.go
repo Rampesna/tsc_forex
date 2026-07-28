@@ -143,6 +143,53 @@ func (p *PriceTick) BeforeCreate(_ *gorm.DB) error {
 	return nil
 }
 
+// SupportedLocale is the normalized language registry used by all translatable
+// reference data. Languages are rows, not schema columns, so adding another
+// locale never requires widening every translated table.
+type SupportedLocale struct {
+	Code         string    `gorm:"type:varchar(8);primaryKey" json:"code"`
+	NativeName   string    `gorm:"type:varchar(64);not null" json:"native_name"`
+	EnglishName  string    `gorm:"type:varchar(64);not null" json:"english_name"`
+	FallbackCode string    `gorm:"type:varchar(8);not null;default:'tr'" json:"fallback_code"`
+	IsRTL        bool      `gorm:"not null;default:false" json:"is_rtl"`
+	Enabled      bool      `gorm:"not null;default:true;index" json:"enabled"`
+	SortOrder    int       `gorm:"not null;default:0" json:"sort_order"`
+	CreatedAt    time.Time `gorm:"not null" json:"created_at"`
+	UpdatedAt    time.Time `gorm:"not null" json:"updated_at"`
+}
+
+func (SupportedLocale) TableName() string { return "supported_locales" }
+
+// InstrumentDefinition is the durable database registry for the calculation
+// catalog. Pricing metadata remains code-defined for deterministic calculations;
+// this row provides referential integrity and lifecycle state for translations.
+type InstrumentDefinition struct {
+	Code              string    `gorm:"type:varchar(32);primaryKey" json:"code"`
+	Kind              string    `gorm:"type:varchar(16);not null;index" json:"kind"`
+	Unit              string    `gorm:"type:varchar(8);not null" json:"unit"`
+	DefaultLocaleCode string    `gorm:"type:varchar(8);not null;default:'tr'" json:"default_locale"`
+	Active            bool      `gorm:"not null;default:true;index" json:"active"`
+	CreatedAt         time.Time `gorm:"not null" json:"created_at"`
+	UpdatedAt         time.Time `gorm:"not null" json:"updated_at"`
+}
+
+func (InstrumentDefinition) TableName() string { return "instruments" }
+
+// InstrumentTranslation stores one localized label per instrument and locale.
+// The composite primary key guarantees exactly one value without language-
+// specific columns; the locale-first index serves complete catalog reads.
+type InstrumentTranslation struct {
+	InstrumentCode string               `gorm:"type:varchar(32);primaryKey;index:idx_instrument_translations_locale,priority:2" json:"instrument_code"`
+	LocaleCode     string               `gorm:"type:varchar(8);primaryKey;index:idx_instrument_translations_locale,priority:1" json:"locale"`
+	DisplayName    string               `gorm:"type:varchar(160);not null" json:"display_name"`
+	CreatedAt      time.Time            `gorm:"not null" json:"created_at"`
+	UpdatedAt      time.Time            `gorm:"not null" json:"updated_at"`
+	Instrument     InstrumentDefinition `gorm:"foreignKey:InstrumentCode;references:Code;constraint:OnUpdate:CASCADE,OnDelete:CASCADE" json:"-"`
+	Locale         SupportedLocale      `gorm:"foreignKey:LocaleCode;references:Code;constraint:OnUpdate:CASCADE,OnDelete:RESTRICT" json:"-"`
+}
+
+func (InstrumentTranslation) TableName() string { return "instrument_translations" }
+
 // WatchlistItem is an instrument a user follows.
 type WatchlistItem struct {
 	ID        uuid.UUID `gorm:"type:uuid;primaryKey" json:"id"`

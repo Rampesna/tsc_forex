@@ -1,0 +1,1202 @@
+{
+  "USDTRY": {
+    "tr": "Amerikan Doları",
+    "en": "US Dollar",
+    "ar": "دولار أمريكي",
+    "de": "US-Dollar",
+    "it": "dollaro statunitense",
+    "es": "dólar estadounidense"
+  },
+  "EURTRY": {
+    "tr": "Euro",
+    "en": "Euro",
+    "ar": "يورو",
+    "de": "Euro",
+    "it": "euro",
+    "es": "euro"
+  },
+  "GBPTRY": {
+    "tr": "İngiliz Sterlini",
+    "en": "British Pound",
+    "ar": "جنيه إسترليني",
+    "de": "Britisches Pfund",
+    "it": "sterlina britannica",
+    "es": "libra esterlina"
+  },
+  "JPYTRY": {
+    "tr": "Japon Yeni",
+    "en": "Japanese Yen",
+    "ar": "ين ياباني",
+    "de": "Japanischer Yen",
+    "it": "yen giapponese",
+    "es": "yen japonés"
+  },
+  "CHFTRY": {
+    "tr": "İsviçre Frangı",
+    "en": "Swiss Franc",
+    "ar": "فرنك سويسري",
+    "de": "Schweizer Franken",
+    "it": "franco svizzero",
+    "es": "franco suizo"
+  },
+  "CADTRY": {
+    "tr": "Kanada Doları",
+    "en": "Canadian Dollar",
+    "ar": "دولار كندي",
+    "de": "Kanadischer Dollar",
+    "it": "dollaro canadese",
+    "es": "dólar canadiense"
+  },
+  "AUDTRY": {
+    "tr": "Avustralya Doları",
+    "en": "Australian Dollar",
+    "ar": "دولار أسترالي",
+    "de": "Australischer Dollar",
+    "it": "dollaro australiano",
+    "es": "dólar australiano"
+  },
+  "NZDTRY": {
+    "tr": "Yeni Zelanda Doları",
+    "en": "New Zealand Dollar",
+    "ar": "دولار نيوزيلندي",
+    "de": "Neuseeland-Dollar",
+    "it": "dollaro neozelandese",
+    "es": "dólar neozelandés"
+  },
+  "CNYTRY": {
+    "tr": "Çin Yuanı",
+    "en": "Chinese Yuan",
+    "ar": "يوان صيني",
+    "de": "Renminbi Yuan",
+    "it": "yuan cinese",
+    "es": "yuan renminbi"
+  },
+  "RUBTRY": {
+    "tr": "Rus Rublesi",
+    "en": "Russian Ruble",
+    "ar": "روبل روسي",
+    "de": "Russischer Rubel",
+    "it": "rublo russo",
+    "es": "rublo ruso"
+  },
+  "SARTRY": {
+    "tr": "Suudi Arabistan Riyali",
+    "en": "Saudi Riyal",
+    "ar": "ريال سعودي",
+    "de": "Saudi-Rial",
+    "it": "riyal saudita",
+    "es": "rial saudí"
+  },
+  "AEDTRY": {
+    "tr": "BAE Dirhemi",
+    "en": "United Arab Emirates Dirham",
+    "ar": "درهم إماراتي",
+    "de": "VAE-Dirham",
+    "it": "dirham degli Emirati Arabi Uniti",
+    "es": "dírham de los Emiratos Árabes Unidos"
+  },
+  "KWDTRY": {
+    "tr": "Kuveyt Dinarı",
+    "en": "Kuwaiti Dinar",
+    "ar": "دينار كويتي",
+    "de": "Kuwait-Dinar",
+    "it": "dinaro kuwaitiano",
+    "es": "dinar kuwaití"
+  },
+  "QARTRY": {
+    "tr": "Katar Riyali",
+    "en": "Qatari Riyal",
+    "ar": "ريال قطري",
+    "de": "Katar-Riyal",
+    "it": "rial qatariano",
+    "es": "rial catarí"
+  },
+  "BHDTRY": {
+    "tr": "Bahreyn Dinarı",
+    "en": "Bahraini Dinar",
+    "ar": "دينار بحريني",
+    "de": "Bahrain-Dinar",
+    "it": "dinaro del Bahrein",
+    "es": "dinar bareiní"
+  },
+  "OMRTRY": {
+    "tr": "Umman Riyali",
+    "en": "Omani Rial",
+    "ar": "ريال عماني",
+    "de": "Omanischer Rial",
+    "it": "rial omanita",
+    "es": "rial omaní"
+  },
+  "JODTRY": {
+    "tr": "Ürdün Dinarı",
+    "en": "Jordanian Dinar",
+    "ar": "دينار أردني",
+    "de": "Jordanischer Dinar",
+    "it": "dinaro giordano",
+    "es": "dinar jordano"
+  },
+  "ILSTRY": {
+    "tr": "İsrail Şekeli",
+    "en": "Israeli New Shekel",
+    "ar": "شيكل إسرائيلي جديد",
+    "de": "Israelischer Neuer Schekel",
+    "it": "nuovo siclo israeliano",
+    "es": "nuevo séquel israelí"
+  },
+  "INRTRY": {
+    "tr": "Hindistan Rupisi",
+    "en": "Indian Rupee",
+    "ar": "روبية هندي",
+    "de": "Indische Rupie",
+    "it": "rupia indiana",
+    "es": "rupia india"
+  },
+  "PKRTRY": {
+    "tr": "Pakistan Rupisi",
+    "en": "Pakistani Rupee",
+    "ar": "روبية باكستاني",
+    "de": "Pakistanische Rupie",
+    "it": "rupia pakistana",
+    "es": "rupia pakistaní"
+  },
+  "IQDTRY": {
+    "tr": "Irak Dinarı",
+    "en": "Iraqi Dinar",
+    "ar": "دينار عراقي",
+    "de": "Irakischer Dinar",
+    "it": "dinaro iracheno",
+    "es": "dinar iraquí"
+  },
+  "EGPTRY": {
+    "tr": "Mısır Lirası",
+    "en": "Egyptian Pound",
+    "ar": "جنيه مصري",
+    "de": "Ägyptisches Pfund",
+    "it": "sterlina egiziana",
+    "es": "libra egipcia"
+  },
+  "ZARTRY": {
+    "tr": "Güney Afrika Randı",
+    "en": "South African Rand",
+    "ar": "راند جنوب أفريقيا",
+    "de": "Südafrikanischer Rand",
+    "it": "rand sudafricano",
+    "es": "rand sudafricano"
+  },
+  "SEKTRY": {
+    "tr": "İsveç Kronu",
+    "en": "Swedish Krona",
+    "ar": "كرونة سويدية",
+    "de": "Schwedische Krone",
+    "it": "corona svedese",
+    "es": "corona sueca"
+  },
+  "NOKTRY": {
+    "tr": "Norveç Kronu",
+    "en": "Norwegian Krone",
+    "ar": "كرونة نرويجية",
+    "de": "Norwegische Krone",
+    "it": "corona norvegese",
+    "es": "corona noruega"
+  },
+  "DKKTRY": {
+    "tr": "Danimarka Kronu",
+    "en": "Danish Krone",
+    "ar": "كرونة دنماركية",
+    "de": "Dänische Krone",
+    "it": "corona danese",
+    "es": "corona danesa"
+  },
+  "PLNTRY": {
+    "tr": "Polonya Zlotisi",
+    "en": "Polish Zloty",
+    "ar": "زلوتي بولندي",
+    "de": "Polnischer Złoty",
+    "it": "zloty polacco",
+    "es": "esloti polaco"
+  },
+  "CZKTRY": {
+    "tr": "Çek Korunası",
+    "en": "Czech Koruna",
+    "ar": "كرونة تشيكية",
+    "de": "Tschechische Krone",
+    "it": "corona ceca",
+    "es": "corona checa"
+  },
+  "HUFTRY": {
+    "tr": "Macar Forinti",
+    "en": "Hungarian Forint",
+    "ar": "فورينت هنغاري",
+    "de": "Ungarischer Forint",
+    "it": "fiorino ungherese",
+    "es": "forinto húngaro"
+  },
+  "RONTRY": {
+    "tr": "Rumen Leyi",
+    "en": "Romanian Leu",
+    "ar": "ليو روماني",
+    "de": "Rumänischer Leu",
+    "it": "leu rumeno",
+    "es": "leu rumano"
+  },
+  "BGNTRY": {
+    "tr": "Bulgar Levası",
+    "en": "Bulgarian Lev",
+    "ar": "ليف بلغاري",
+    "de": "Bulgarischer Lew",
+    "it": "lev bulgaro",
+    "es": "leva búlgara"
+  },
+  "UAHTRY": {
+    "tr": "Ukrayna Grivnası",
+    "en": "Ukrainian Hryvnia",
+    "ar": "هريفنيا أوكراني",
+    "de": "Ukrainische Hrywnja",
+    "it": "grivnia ucraina",
+    "es": "grivna ucraniana"
+  },
+  "KRWTRY": {
+    "tr": "Güney Kore Wonu",
+    "en": "South Korean Won",
+    "ar": "وون كوريا الجنوبية",
+    "de": "Südkoreanischer Won",
+    "it": "won sudcoreano",
+    "es": "won surcoreano"
+  },
+  "SGDTRY": {
+    "tr": "Singapur Doları",
+    "en": "Singapore Dollar",
+    "ar": "دولار سنغافوري",
+    "de": "Singapur-Dollar",
+    "it": "dollaro di Singapore",
+    "es": "dólar singapurense"
+  },
+  "HKDTRY": {
+    "tr": "Hong Kong Doları",
+    "en": "Hong Kong Dollar",
+    "ar": "دولار هونغ كونغ",
+    "de": "Hongkong-Dollar",
+    "it": "dollaro di Hong Kong",
+    "es": "dólar hongkonés"
+  },
+  "TWDTRY": {
+    "tr": "Tayvan Doları",
+    "en": "New Taiwan Dollar",
+    "ar": "دولار تايواني",
+    "de": "Neuer Taiwan-Dollar",
+    "it": "nuovo dollaro taiwanese",
+    "es": "nuevo dólar taiwanés"
+  },
+  "THBTRY": {
+    "tr": "Tayland Bahtı",
+    "en": "Thai Baht",
+    "ar": "باخت تايلاندي",
+    "de": "Thailändischer Baht",
+    "it": "baht thailandese",
+    "es": "bat tailandés"
+  },
+  "MYRTRY": {
+    "tr": "Malezya Ringiti",
+    "en": "Malaysian Ringgit",
+    "ar": "رينغيت ماليزي",
+    "de": "Malaysischer Ringgit",
+    "it": "ringgit malese",
+    "es": "ringit malasio"
+  },
+  "IDRTRY": {
+    "tr": "Endonezya Rupiahı",
+    "en": "Indonesian Rupiah",
+    "ar": "روبية إندونيسية",
+    "de": "Indonesische Rupiah",
+    "it": "rupia indonesiana",
+    "es": "rupia indonesia"
+  },
+  "PHPTRY": {
+    "tr": "Filipin Pesosu",
+    "en": "Philippine Peso",
+    "ar": "بيزو فلبيني",
+    "de": "Philippinischer Peso",
+    "it": "peso filippino",
+    "es": "peso filipino"
+  },
+  "VNDTRY": {
+    "tr": "Vietnam Dongu",
+    "en": "Vietnamese Dong",
+    "ar": "دونج فيتنامي",
+    "de": "Vietnamesischer Dong",
+    "it": "dong vietnamita",
+    "es": "dong vietnamita"
+  },
+  "MXNTRY": {
+    "tr": "Meksika Pesosu",
+    "en": "Mexican Peso",
+    "ar": "بيزو مكسيكي",
+    "de": "Mexikanischer Peso",
+    "it": "peso messicano",
+    "es": "peso mexicano"
+  },
+  "BRLTRY": {
+    "tr": "Brezilya Reali",
+    "en": "Brazilian Real",
+    "ar": "ريال برازيلي",
+    "de": "Brasilianischer Real",
+    "it": "real brasiliano",
+    "es": "real brasileño"
+  },
+  "ARSTRY": {
+    "tr": "Arjantin Pesosu",
+    "en": "Argentine Peso",
+    "ar": "بيزو أرجنتيني",
+    "de": "Argentinischer Peso",
+    "it": "peso argentino",
+    "es": "peso argentino"
+  },
+  "CLPTRY": {
+    "tr": "Şili Pesosu",
+    "en": "Chilean Peso",
+    "ar": "بيزو تشيلي",
+    "de": "Chilenischer Peso",
+    "it": "peso cileno",
+    "es": "peso chileno"
+  },
+  "COPTRY": {
+    "tr": "Kolombiya Pesosu",
+    "en": "Colombian Peso",
+    "ar": "بيزو كولومبي",
+    "de": "Kolumbianischer Peso",
+    "it": "peso colombiano",
+    "es": "peso colombiano"
+  },
+  "AZNTRY": {
+    "tr": "Azerbaycan Manatı",
+    "en": "Azerbaijani Manat",
+    "ar": "مانات أذربيجان",
+    "de": "Aserbaidschan-Manat",
+    "it": "manat azero",
+    "es": "manat azerbaiyano"
+  },
+  "KZTTRY": {
+    "tr": "Kazakistan Tengesi",
+    "en": "Kazakhstani Tenge",
+    "ar": "تينغ كازاخستاني",
+    "de": "Kasachischer Tenge",
+    "it": "tenge kazako",
+    "es": "tengue kazajo"
+  },
+  "GELTRY": {
+    "tr": "Gürcü Larisi",
+    "en": "Georgian Lari",
+    "ar": "لارى جورجي",
+    "de": "Georgischer Lari",
+    "it": "lari georgiano",
+    "es": "lari georgiano"
+  },
+  "MADTRY": {
+    "tr": "Fas Dirhemi",
+    "en": "Moroccan Dirham",
+    "ar": "درهم مغربي",
+    "de": "Marokkanischer Dirham",
+    "it": "dirham marocchino",
+    "es": "dírham marroquí"
+  },
+  "DZDTRY": {
+    "tr": "Cezayir Dinarı",
+    "en": "Algerian Dinar",
+    "ar": "دينار جزائري",
+    "de": "Algerischer Dinar",
+    "it": "dinaro algerino",
+    "es": "dinar argelino"
+  },
+  "TNDTRY": {
+    "tr": "Tunus Dinarı",
+    "en": "Tunisian Dinar",
+    "ar": "دينار تونسي",
+    "de": "Tunesischer Dinar",
+    "it": "dinaro tunisino",
+    "es": "dinar tunecino"
+  },
+  "NGNTRY": {
+    "tr": "Nijerya Nairası",
+    "en": "Nigerian Naira",
+    "ar": "نايرا نيجيري",
+    "de": "Nigerianischer Naira",
+    "it": "naira nigeriana",
+    "es": "naira nigeriano"
+  },
+  "KESTRY": {
+    "tr": "Kenya Şilini",
+    "en": "Kenyan Shilling",
+    "ar": "شلن كينيي",
+    "de": "Kenia-Schilling",
+    "it": "scellino keniota",
+    "es": "chelín keniano"
+  },
+  "UZSTRY": {
+    "tr": "Özbekistan Somu",
+    "en": "Uzbekistani Som",
+    "ar": "سوم أوزبكستاني",
+    "de": "Usbekistan-Sum",
+    "it": "sum uzbeco",
+    "es": "sum uzbeko"
+  },
+  "ISKTRY": {
+    "tr": "İzlanda Kronu",
+    "en": "Icelandic Króna",
+    "ar": "كرونة أيسلندية",
+    "de": "Isländische Krone",
+    "it": "corona islandese",
+    "es": "corona islandesa"
+  },
+  "AFNTRY": {
+    "tr": "Afgan Afganisi",
+    "en": "Afghan Afghani",
+    "ar": "أفغاني",
+    "de": "Afghanischer Afghani",
+    "it": "afghani",
+    "es": "afgani afgano"
+  },
+  "ALLTRY": {
+    "tr": "Arnavut Leki",
+    "en": "Albanian Lek",
+    "ar": "ليك ألباني",
+    "de": "Albanischer Lek",
+    "it": "lek albanese",
+    "es": "lek albanés"
+  },
+  "AMDTRY": {
+    "tr": "Ermeni Dramı",
+    "en": "Armenian Dram",
+    "ar": "درام أرميني",
+    "de": "Armenischer Dram",
+    "it": "dram armeno",
+    "es": "dram armenio"
+  },
+  "AOATRY": {
+    "tr": "Angola Kvanzası",
+    "en": "Angolan Kwanza",
+    "ar": "كوانزا أنغولي",
+    "de": "Angolanischer Kwanza",
+    "it": "kwanza angolano",
+    "es": "kuanza angoleño"
+  },
+  "BAMTRY": {
+    "tr": "Bosna Markı",
+    "en": "Bosnia-Herzegovina Convertible Mark",
+    "ar": "مارك البوسنة والهرسك قابل للتحويل",
+    "de": "Konvertible Mark Bosnien und Herzegowina",
+    "it": "marco convertibile della Bosnia-Herzegovina",
+    "es": "marco convertible de Bosnia y Herzegovina"
+  },
+  "BDTTRY": {
+    "tr": "Bangladeş Takası",
+    "en": "Bangladeshi Taka",
+    "ar": "تاكا بنغلاديشي",
+    "de": "Bangladesch-Taka",
+    "it": "taka bangladese",
+    "es": "taka bangladesí"
+  },
+  "BOBTRY": {
+    "tr": "Bolivya Bolivyanosu",
+    "en": "Bolivian Boliviano",
+    "ar": "بوليفيانو بوليفي",
+    "de": "Bolivianischer Boliviano",
+    "it": "boliviano",
+    "es": "boliviano"
+  },
+  "BYNTRY": {
+    "tr": "Belarus Rublesi",
+    "en": "Belarusian Ruble",
+    "ar": "روبل بيلاروسي",
+    "de": "Weißrussischer Rubel",
+    "it": "rublo bielorusso",
+    "es": "rublo bielorruso"
+  },
+  "BZDTRY": {
+    "tr": "Belize Doları",
+    "en": "Belize Dollar",
+    "ar": "دولار بليزي",
+    "de": "Belize-Dollar",
+    "it": "dollaro del Belize",
+    "es": "dólar beliceño"
+  },
+  "CRCTRY": {
+    "tr": "Kosta Rika Kolonu",
+    "en": "Costa Rican Colón",
+    "ar": "كولن كوستاريكي",
+    "de": "Costa-Rica-Colón",
+    "it": "colón costaricano",
+    "es": "colón costarricense"
+  },
+  "CUPTRY": {
+    "tr": "Küba Pesosu",
+    "en": "Cuban Peso",
+    "ar": "بيزو كوبي",
+    "de": "Kubanischer Peso",
+    "it": "peso cubano",
+    "es": "peso cubano"
+  },
+  "CVETRY": {
+    "tr": "Yeşil Burun Eskudosu",
+    "en": "Cape Verdean Escudo",
+    "ar": "اسكودو الرأس الأخضر",
+    "de": "Cabo-Verde-Escudo",
+    "it": "escudo capoverdiano",
+    "es": "escudo de Cabo Verde"
+  },
+  "DJFTRY": {
+    "tr": "Cibuti Frangı",
+    "en": "Djiboutian Franc",
+    "ar": "فرنك جيبوتي",
+    "de": "Dschibuti-Franc",
+    "it": "franco di Gibuti",
+    "es": "franco yibutiano"
+  },
+  "DOPTRY": {
+    "tr": "Dominik Pesosu",
+    "en": "Dominican Peso",
+    "ar": "بيزو الدومنيكان",
+    "de": "Dominikanischer Peso",
+    "it": "peso dominicano",
+    "es": "peso dominicano"
+  },
+  "ETBTRY": {
+    "tr": "Etiyopya Birri",
+    "en": "Ethiopian Birr",
+    "ar": "بير أثيوبي",
+    "de": "Äthiopischer Birr",
+    "it": "birr etiope",
+    "es": "bir etíope"
+  },
+  "FJDTRY": {
+    "tr": "Fiji Doları",
+    "en": "Fijian Dollar",
+    "ar": "دولار فيجي",
+    "de": "Fidschi-Dollar",
+    "it": "dollaro delle Figi",
+    "es": "dólar fiyiano"
+  },
+  "GHSTRY": {
+    "tr": "Gana Sedisi",
+    "en": "Ghanaian Cedi",
+    "ar": "سيدي غانا",
+    "de": "Ghanaischer Cedi",
+    "it": "cedi ghanese",
+    "es": "cedi ghanés"
+  },
+  "GMDTRY": {
+    "tr": "Gambiya Dalasisi",
+    "en": "Gambian Dalasi",
+    "ar": "دلاسي غامبي",
+    "de": "Gambia-Dalasi",
+    "it": "dalasi gambiano",
+    "es": "dalasi gambiano"
+  },
+  "GNFTRY": {
+    "tr": "Gine Frangı",
+    "en": "Guinean Franc",
+    "ar": "فرنك غينيا",
+    "de": "Guinea-Franc",
+    "it": "franco della Guinea",
+    "es": "franco guineano"
+  },
+  "GTQTRY": {
+    "tr": "Guatemala Ketsali",
+    "en": "Guatemalan Quetzal",
+    "ar": "كوتزال غواتيمالا",
+    "de": "Guatemaltekischer Quetzal",
+    "it": "quetzal guatemalteco",
+    "es": "quetzal guatemalteco"
+  },
+  "GYDTRY": {
+    "tr": "Guyana Doları",
+    "en": "Guyanaese Dollar",
+    "ar": "دولار غيانا",
+    "de": "Guyana-Dollar",
+    "it": "dollaro della Guyana",
+    "es": "dólar guyanés"
+  },
+  "HNLTRY": {
+    "tr": "Honduras Lempirası",
+    "en": "Honduran Lempira",
+    "ar": "ليمبيرا هنداروس",
+    "de": "Honduras-Lempira",
+    "it": "lempira honduregna",
+    "es": "lempira hondureño"
+  },
+  "HTGTRY": {
+    "tr": "Haiti Gurdu",
+    "en": "Haitian Gourde",
+    "ar": "جوردى هايتي",
+    "de": "Haitianische Gourde",
+    "it": "gourde haitiano",
+    "es": "gurde haitiano"
+  },
+  "IRRTRY": {
+    "tr": "İran Riyali",
+    "en": "Iranian Rial",
+    "ar": "ريال إيراني",
+    "de": "Iranischer Rial",
+    "it": "rial iraniano",
+    "es": "rial iraní"
+  },
+  "JMDTRY": {
+    "tr": "Jamaika Doları",
+    "en": "Jamaican Dollar",
+    "ar": "دولار جامايكي",
+    "de": "Jamaika-Dollar",
+    "it": "dollaro giamaicano",
+    "es": "dólar jamaicano"
+  },
+  "KGSTRY": {
+    "tr": "Kırgız Somu",
+    "en": "Kyrgystani Som",
+    "ar": "سوم قيرغستاني",
+    "de": "Kirgisischer Som",
+    "it": "som kirghiso",
+    "es": "som kirguís"
+  },
+  "KHRTRY": {
+    "tr": "Kamboçya Rieli",
+    "en": "Cambodian Riel",
+    "ar": "رييال كمبودي",
+    "de": "Kambodschanischer Riel",
+    "it": "riel cambogiano",
+    "es": "riel camboyano"
+  },
+  "KMFTRY": {
+    "tr": "Komor Frangı",
+    "en": "Comorian Franc",
+    "ar": "فرنك جزر القمر",
+    "de": "Komoren-Franc",
+    "it": "franco comoriano",
+    "es": "franco comorense"
+  },
+  "LAKTRY": {
+    "tr": "Laos Kipi",
+    "en": "Laotian Kip",
+    "ar": "كيب لاوسي",
+    "de": "Laotischer Kip",
+    "it": "kip laotiano",
+    "es": "kip laosiano"
+  },
+  "LBPTRY": {
+    "tr": "Lübnan Lirası",
+    "en": "Lebanese Pound",
+    "ar": "جنيه لبناني",
+    "de": "Libanesisches Pfund",
+    "it": "lira libanese",
+    "es": "libra libanesa"
+  },
+  "LKRTRY": {
+    "tr": "Sri Lanka Rupisi",
+    "en": "Sri Lankan Rupee",
+    "ar": "روبية سريلانكية",
+    "de": "Sri-Lanka-Rupie",
+    "it": "rupia di Sri Lanka",
+    "es": "rupia esrilanquesa"
+  },
+  "LRDTRY": {
+    "tr": "Liberya Doları",
+    "en": "Liberian Dollar",
+    "ar": "دولار ليبيري",
+    "de": "Liberianischer Dollar",
+    "it": "dollaro liberiano",
+    "es": "dólar liberiano"
+  },
+  "LYDTRY": {
+    "tr": "Libya Dinarı",
+    "en": "Libyan Dinar",
+    "ar": "دينار ليبي",
+    "de": "Libyscher Dinar",
+    "it": "dinaro libico",
+    "es": "dinar libio"
+  },
+  "MDLTRY": {
+    "tr": "Moldova Leyi",
+    "en": "Moldovan Leu",
+    "ar": "ليو مولدوفي",
+    "de": "Moldau-Leu",
+    "it": "leu moldavo",
+    "es": "leu moldavo"
+  },
+  "MGATRY": {
+    "tr": "Madagaskar Ariarisi",
+    "en": "Malagasy Ariary",
+    "ar": "أرياري مدغشقر",
+    "de": "Madagaskar-Ariary",
+    "it": "ariary malgascio",
+    "es": "ariari malgache"
+  },
+  "MKDTRY": {
+    "tr": "Makedonya Dinarı",
+    "en": "Macedonian Denar",
+    "ar": "دينار مقدوني",
+    "de": "Mazedonischer Denar",
+    "it": "dinaro macedone",
+    "es": "dinar macedonio"
+  },
+  "MMKTRY": {
+    "tr": "Myanmar Kyatı",
+    "en": "Myanmar Kyat",
+    "ar": "كيات ميانمار",
+    "de": "Myanmarischer Kyat",
+    "it": "kyat di Myanmar",
+    "es": "kiat de Myanmar"
+  },
+  "MNTTRY": {
+    "tr": "Moğol Tugriki",
+    "en": "Mongolian Tugrik",
+    "ar": "توغروغ منغولي",
+    "de": "Mongolischer Tögrög",
+    "it": "tugrik mongolo",
+    "es": "tugrik mongol"
+  },
+  "MOPTRY": {
+    "tr": "Makao Patakası",
+    "en": "Macanese Pataca",
+    "ar": "باتاكا ماكاوي",
+    "de": "Macao-Pataca",
+    "it": "pataca di Macao",
+    "es": "pataca macaense"
+  },
+  "MURTRY": {
+    "tr": "Mauritius Rupisi",
+    "en": "Mauritian Rupee",
+    "ar": "روبية موريشيوسية",
+    "de": "Mauritius-Rupie",
+    "it": "rupia mauriziana",
+    "es": "rupia mauriciana"
+  },
+  "MVRTRY": {
+    "tr": "Maldiv Rufiyası",
+    "en": "Maldivian Rufiyaa",
+    "ar": "روفيه جزر المالديف",
+    "de": "Malediven-Rufiyaa",
+    "it": "rufiyaa delle Maldive",
+    "es": "rufiya maldiva"
+  },
+  "MWKTRY": {
+    "tr": "Malavi Kvaçası",
+    "en": "Malawian Kwacha",
+    "ar": "كواشا مالاوي",
+    "de": "Malawi-Kwacha",
+    "it": "kwacha malawiano",
+    "es": "kuacha malauí"
+  },
+  "MZNTRY": {
+    "tr": "Mozambik Metikali",
+    "en": "Mozambican Metical",
+    "ar": "متكال موزمبيقي",
+    "de": "Mosambikanischer Metical",
+    "it": "metical mozambicano",
+    "es": "metical mozambiqueño"
+  },
+  "NADTRY": {
+    "tr": "Namibya Doları",
+    "en": "Namibian Dollar",
+    "ar": "دولار ناميبي",
+    "de": "Namibia-Dollar",
+    "it": "dollaro namibiano",
+    "es": "dólar namibio"
+  },
+  "NIOTRY": {
+    "tr": "Nikaragua Kordobası",
+    "en": "Nicaraguan Córdoba",
+    "ar": "قرطبة نيكاراغوا",
+    "de": "Nicaragua-Córdoba",
+    "it": "córdoba nicaraguense",
+    "es": "córdoba oro"
+  },
+  "NPRTRY": {
+    "tr": "Nepal Rupisi",
+    "en": "Nepalese Rupee",
+    "ar": "روبية نيبالي",
+    "de": "Nepalesische Rupie",
+    "it": "rupia nepalese",
+    "es": "rupia nepalí"
+  },
+  "PENTRY": {
+    "tr": "Peru Solu",
+    "en": "Peruvian Sol",
+    "ar": "سول بيروفي",
+    "de": "Peruanischer Sol",
+    "it": "sol peruviano",
+    "es": "sol peruano"
+  },
+  "PGKTRY": {
+    "tr": "Papua Yeni Gine Kinası",
+    "en": "Papua New Guinean Kina",
+    "ar": "كينا بابوا غينيا الجديدة",
+    "de": "Papua-neuguineischer Kina",
+    "it": "kina papuana",
+    "es": "kina papú"
+  },
+  "PYGTRY": {
+    "tr": "Paraguay Guaranisi",
+    "en": "Paraguayan Guarani",
+    "ar": "غواراني باراغواي",
+    "de": "Paraguayischer Guaraní",
+    "it": "guaraní paraguayano",
+    "es": "guaraní paraguayo"
+  },
+  "RSDTRY": {
+    "tr": "Sırp Dinarı",
+    "en": "Serbian Dinar",
+    "ar": "دينار صربي",
+    "de": "Serbischer Dinar",
+    "it": "dinaro serbo",
+    "es": "dinar serbio"
+  },
+  "RWFTRY": {
+    "tr": "Ruanda Frangı",
+    "en": "Rwandan Franc",
+    "ar": "فرنك رواندي",
+    "de": "Ruanda-Franc",
+    "it": "franco ruandese",
+    "es": "franco ruandés"
+  },
+  "SCRTRY": {
+    "tr": "Seyşeller Rupisi",
+    "en": "Seychellois Rupee",
+    "ar": "روبية سيشيلية",
+    "de": "Seychellen-Rupie",
+    "it": "rupia delle Seychelles",
+    "es": "rupia seychellense"
+  },
+  "SDGTRY": {
+    "tr": "Sudan Sterlini",
+    "en": "Sudanese Pound",
+    "ar": "جنيه سوداني",
+    "de": "Sudanesisches Pfund",
+    "it": "sterlina sudanese",
+    "es": "libra sudanesa"
+  },
+  "SOSTRY": {
+    "tr": "Somali Şilini",
+    "en": "Somali Shilling",
+    "ar": "شلن صومالي",
+    "de": "Somalia-Schilling",
+    "it": "scellino somalo",
+    "es": "chelín somalí"
+  },
+  "SRDTRY": {
+    "tr": "Surinam Doları",
+    "en": "Surinamese Dollar",
+    "ar": "دولار سورينامي",
+    "de": "Suriname-Dollar",
+    "it": "dollaro del Suriname",
+    "es": "dólar surinamés"
+  },
+  "SYPTRY": {
+    "tr": "Suriye Lirası",
+    "en": "Syrian Pound",
+    "ar": "ليرة سورية",
+    "de": "Syrisches Pfund",
+    "it": "lira siriana",
+    "es": "libra siria"
+  },
+  "TJSTRY": {
+    "tr": "Tacikistan Somonisi",
+    "en": "Tajikistani Somoni",
+    "ar": "سوموني طاجيكستاني",
+    "de": "Tadschikistan-Somoni",
+    "it": "somoni tagiko",
+    "es": "somoni tayiko"
+  },
+  "TMTTRY": {
+    "tr": "Türkmenistan Manatı",
+    "en": "Turkmenistani Manat",
+    "ar": "مانات تركمانستان",
+    "de": "Turkmenistan-Manat",
+    "it": "manat turkmeno",
+    "es": "manat turcomano"
+  },
+  "TTDTRY": {
+    "tr": "Trinidad Tobago Doları",
+    "en": "Trinidad & Tobago Dollar",
+    "ar": "دولار ترينداد وتوباغو",
+    "de": "Trinidad-und-Tobago-Dollar",
+    "it": "dollaro di Trinidad e Tobago",
+    "es": "dólar de Trinidad y Tobago"
+  },
+  "TZSTRY": {
+    "tr": "Tanzanya Şilini",
+    "en": "Tanzanian Shilling",
+    "ar": "شلن تنزاني",
+    "de": "Tansania-Schilling",
+    "it": "scellino della Tanzania",
+    "es": "chelín tanzano"
+  },
+  "UGXTRY": {
+    "tr": "Uganda Şilini",
+    "en": "Ugandan Shilling",
+    "ar": "شلن أوغندي",
+    "de": "Uganda-Schilling",
+    "it": "scellino ugandese",
+    "es": "chelín ugandés"
+  },
+  "UYUTRY": {
+    "tr": "Uruguay Pesosu",
+    "en": "Uruguayan Peso",
+    "ar": "بيزو اوروغواي",
+    "de": "Uruguayischer Peso",
+    "it": "peso uruguayano",
+    "es": "peso uruguayo"
+  },
+  "VESTRY": {
+    "tr": "Venezuela Bolivarı",
+    "en": "Venezuelan Bolívar",
+    "ar": "بوليفار فنزويلي",
+    "de": "Venezolanischer Bolívar",
+    "it": "bolívar venezuelano",
+    "es": "bolívar venezolano"
+  },
+  "XAFTRY": {
+    "tr": "Orta Afrika CFA Frangı",
+    "en": "Central African CFA Franc",
+    "ar": "فرنك وسط أفريقي",
+    "de": "CFA-Franc (BEAC)",
+    "it": "franco CFA BEAC",
+    "es": "franco CFA de África Central"
+  },
+  "XCDTRY": {
+    "tr": "Doğu Karayip Doları",
+    "en": "East Caribbean Dollar",
+    "ar": "دولار شرق الكاريبي",
+    "de": "Ostkaribischer Dollar",
+    "it": "dollaro dei Caraibi orientali",
+    "es": "dólar del Caribe Oriental"
+  },
+  "XOFTRY": {
+    "tr": "Batı Afrika CFA Frangı",
+    "en": "West African CFA Franc",
+    "ar": "فرنك غرب أفريقي",
+    "de": "CFA-Franc (BCEAO)",
+    "it": "franco CFA BCEAO",
+    "es": "franco CFA de África Occidental"
+  },
+  "XPFTRY": {
+    "tr": "CFP Frangı",
+    "en": "CFP Franc",
+    "ar": "فرنك سي إف بي",
+    "de": "CFP-Franc",
+    "it": "franco CFP",
+    "es": "franco CFP"
+  },
+  "YERTRY": {
+    "tr": "Yemen Riyali",
+    "en": "Yemeni Rial",
+    "ar": "ريال يمني",
+    "de": "Jemen-Rial",
+    "it": "riyal yemenita",
+    "es": "rial yemení"
+  },
+  "ZMWTRY": {
+    "tr": "Zambiya Kvaçası",
+    "en": "Zambian Kwacha",
+    "ar": "كواشا زامبي",
+    "de": "Kwacha",
+    "it": "kwacha zambiano",
+    "es": "kuacha zambiano"
+  },
+  "ANGTRY": {
+    "tr": "Hollanda Antilleri Guldeni",
+    "en": "Netherlands Antillean Guilder",
+    "ar": "غيلدر أنتيلي هولندي",
+    "de": "Niederländische-Antillen-Gulden",
+    "it": "fiorino delle Antille olandesi",
+    "es": "florín antillano"
+  },
+  "AWGTRY": {
+    "tr": "Aruba Florini",
+    "en": "Aruban Florin",
+    "ar": "فلورن أروبي",
+    "de": "Aruba-Florin",
+    "it": "fiorino di Aruba",
+    "es": "florín arubeño"
+  },
+  "BBDTRY": {
+    "tr": "Barbados Doları",
+    "en": "Barbadian Dollar",
+    "ar": "دولار بربادوسي",
+    "de": "Barbados-Dollar",
+    "it": "dollaro di Barbados",
+    "es": "dólar barbadense"
+  },
+  "BMDTRY": {
+    "tr": "Bermuda Doları",
+    "en": "Bermudan Dollar",
+    "ar": "دولار برمودي",
+    "de": "Bermuda-Dollar",
+    "it": "dollaro delle Bermuda",
+    "es": "dólar bermudeño"
+  },
+  "BNDTRY": {
+    "tr": "Brunei Doları",
+    "en": "Brunei Dollar",
+    "ar": "دولار بروناي",
+    "de": "Brunei-Dollar",
+    "it": "dollaro del Brunei",
+    "es": "dólar bruneano"
+  },
+  "BSDTRY": {
+    "tr": "Bahama Doları",
+    "en": "Bahamian Dollar",
+    "ar": "دولار باهامي",
+    "de": "Bahamas-Dollar",
+    "it": "dollaro delle Bahamas",
+    "es": "dólar bahameño"
+  },
+  "BTNTRY": {
+    "tr": "Bhutan Ngultrumu",
+    "en": "Bhutanese Ngultrum",
+    "ar": "نولتوم بوتاني",
+    "de": "Bhutan-Ngultrum",
+    "it": "ngultrum bhutanese",
+    "es": "gultrum butanés"
+  },
+  "BWPTRY": {
+    "tr": "Botsvana Pulası",
+    "en": "Botswanan Pula",
+    "ar": "بولا بتسواني",
+    "de": "Botswanischer Pula",
+    "it": "pula del Botswana",
+    "es": "pula botsuano"
+  },
+  "CDFTRY": {
+    "tr": "Kongo Frangı",
+    "en": "Congolese Franc",
+    "ar": "فرنك كونغولي",
+    "de": "Kongo-Franc",
+    "it": "franco congolese",
+    "es": "franco congoleño"
+  },
+  "ERNTRY": {
+    "tr": "Eritre Nakfası",
+    "en": "Eritrean Nakfa",
+    "ar": "ناكفا أريتري",
+    "de": "Eritreischer Nakfa",
+    "it": "nakfa eritreo",
+    "es": "nakfa eritreo"
+  },
+  "LSLTRY": {
+    "tr": "Lesotho Lotisi",
+    "en": "Lesotho Loti",
+    "ar": "لوتي ليسوتو",
+    "de": "Loti",
+    "it": "loti del Lesotho",
+    "es": "loti lesotense"
+  },
+  "MRUTRY": {
+    "tr": "Moritanya Ugiyası",
+    "en": "Mauritanian Ouguiya",
+    "ar": "أوقية موريتانية",
+    "de": "Mauretanischer Ouguiya",
+    "it": "ouguiya della Mauritania",
+    "es": "uguiya mauritano"
+  },
+  "PABTRY": {
+    "tr": "Panama Balboası",
+    "en": "Panamanian Balboa",
+    "ar": "بالبوا بنمي",
+    "de": "Panamaischer Balboa",
+    "it": "balboa panamense",
+    "es": "balboa panameño"
+  },
+  "SBDTRY": {
+    "tr": "Solomon Adaları Doları",
+    "en": "Solomon Islands Dollar",
+    "ar": "دولار جزر سليمان",
+    "de": "Salomonen-Dollar",
+    "it": "dollaro delle Isole Salomone",
+    "es": "dólar salomonense"
+  },
+  "SZLTRY": {
+    "tr": "Esvatini Lilangenisi",
+    "en": "Swazi Lilangeni",
+    "ar": "ليلانجيني سوازيلندي",
+    "de": "Swasiländischer Lilangeni",
+    "it": "lilangeni",
+    "es": "lilangeni esuatiní"
+  },
+  "TOPTRY": {
+    "tr": "Tonga Paʻangası",
+    "en": "Tongan Paʻanga",
+    "ar": "بانغا تونغا",
+    "de": "Tongaischer Paʻanga",
+    "it": "paʻanga tongano",
+    "es": "paanga tongano"
+  },
+  "VUVTRY": {
+    "tr": "Vanuatu Vatusu",
+    "en": "Vanuatu Vatu",
+    "ar": "فاتو فانواتو",
+    "de": "Vanuatu-Vatu",
+    "it": "vatu di Vanuatu",
+    "es": "vatu vanuatense"
+  },
+  "WSTTRY": {
+    "tr": "Samoa Talası",
+    "en": "Samoan Tala",
+    "ar": "تالا ساموا",
+    "de": "Samoanischer Tala",
+    "it": "tala samoano",
+    "es": "tala samoano"
+  },
+  "SLETRY": {
+    "tr": "Sierra Leone Leonesi",
+    "en": "Sierra Leonean Leone",
+    "ar": "ليون سيراليوني",
+    "de": "Sierra-leonischer Leone",
+    "it": "leone della Sierra Leone",
+    "es": "leona sierraleonesa"
+  },
+  "STNTRY": {
+    "tr": "São Tomé Dobrası",
+    "en": "São Tomé & Príncipe Dobra",
+    "ar": "دوبرا ساو تومي وبرينسيبي",
+    "de": "São-toméischer Dobra",
+    "it": "dobra di Sao Tomé e Príncipe",
+    "es": "dobra santotomense"
+  },
+  "SSPTRY": {
+    "tr": "Güney Sudan Sterlini",
+    "en": "South Sudanese Pound",
+    "ar": "جنيه جنوب السودان",
+    "de": "Südsudanesisches Pfund",
+    "it": "sterlina sud-sudanese",
+    "es": "libra sursudanesa"
+  },
+  "GIPTRY": {
+    "tr": "Cebelitarık Sterlini",
+    "en": "Gibraltar Pound",
+    "ar": "جنيه جبل طارق",
+    "de": "Gibraltar-Pfund",
+    "it": "sterlina di Gibilterra",
+    "es": "libra gibraltareña"
+  },
+  "FKPTRY": {
+    "tr": "Falkland Adaları Sterlini",
+    "en": "Falkland Islands Pound",
+    "ar": "جنيه جزر فوكلاند",
+    "de": "Falkland-Pfund",
+    "it": "sterlina delle Falkland",
+    "es": "libra malvinense"
+  },
+  "SHPTRY": {
+    "tr": "Saint Helena Sterlini",
+    "en": "St. Helena Pound",
+    "ar": "جنيه سانت هيلين",
+    "de": "St.-Helena-Pfund",
+    "it": "sterlina di Sant’Elena",
+    "es": "libra de Santa Elena"
+  },
+  "KYDTRY": {
+    "tr": "Cayman Adaları Doları",
+    "en": "Cayman Islands Dollar",
+    "ar": "دولار جزر كيمن",
+    "de": "Kaiman-Dollar",
+    "it": "dollaro delle Isole Cayman",
+    "es": "dólar de las Islas Caimán"
+  }
+}

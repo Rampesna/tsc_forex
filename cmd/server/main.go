@@ -22,6 +22,7 @@ import (
 	"github.com/tsc-forex/tsc_forex/internal/database"
 	"github.com/tsc-forex/tsc_forex/internal/domain"
 	"github.com/tsc-forex/tsc_forex/internal/lifecycle"
+	"github.com/tsc-forex/tsc_forex/internal/localization"
 	"github.com/tsc-forex/tsc_forex/internal/logger"
 	"github.com/tsc-forex/tsc_forex/internal/metrics"
 	"github.com/tsc-forex/tsc_forex/internal/presence"
@@ -127,7 +128,6 @@ func run() error {
 
 	// --- Broadcast (single calculation → many clients) ---
 	_ = service.NewGoldBroadcaster(bus, hub, log)
-	_ = service.NewInstrumentBroadcaster(bus, hub, log)
 
 	// --- Redis (optional; degrade gracefully) ---
 	var redisCache *cache.RedisCache
@@ -166,6 +166,7 @@ func run() error {
 		histWriter      *service.HistoryWriter
 		instrWriter     *service.InstrumentWriter
 		alertEngine     *service.AlertEngine
+		instrumentNames *localization.InstrumentLocalizer
 	)
 	if gdb, err := database.New(ctx, cfg.Database); err != nil {
 		dbStartupErr = fmt.Errorf("postgres startup: %w", err)
@@ -176,6 +177,10 @@ func run() error {
 		_ = database.Close(gdb)
 	} else {
 		db = gdb
+		instrumentNames, err = localization.NewInstrumentLocalizer(db)
+		if err != nil {
+			return fmt.Errorf("instrument localization: %w", err)
+		}
 		goldRepo = repository.NewGoldRepository(db, m)
 		priceRepo = repository.NewPriceRepository(db, m)
 		instrRepo = priceRepo
@@ -277,7 +282,7 @@ func run() error {
 		if cfg.Billing.Enabled {
 			portfolioSvc.WithSubscriptions(subscriptionSvc)
 		}
-		portfolioH = api.NewPortfolioHandler(portfolioSvc)
+		portfolioH = api.NewPortfolioHandler(portfolioSvc).WithLocalizer(instrumentNames)
 		userH.WithAuthService(authSvc)
 		if cfg.Billing.Enabled {
 			userH.WithSubscriptions(subscriptionSvc)
@@ -341,6 +346,7 @@ func run() error {
 		// and the serialized migration are actually available.
 		return dbStartupErr
 	}
+	_ = service.NewInstrumentBroadcaster(bus, hub, log, instrumentNames)
 
 	// Candle flush + retention loops (no-op without a DB, but the in-memory
 	// aggregation for live charts/sparklines/stats runs regardless).
@@ -387,12 +393,14 @@ func run() error {
 		aiHandler.WithSubscriptions(subscriptionSvc)
 	}
 	engine2 := routes.NewEngine(routes.Deps{
-		Config:     cfg,
-		Hub:        hub,
-		WS:         ws.NewHandler(hub, log, wsOpts...),
-		Metrics:    m,
-		Gold:       api.NewGoldHandler(calc, redisCache, goldRepo, log),
-		Instrument: api.NewInstrumentHandler(engine, instrRepo, candleStore, cfg.Provider.REST.CryptoBaseURL, log),
+		Config:  cfg,
+		Hub:     hub,
+		WS:      ws.NewHandler(hub, log, wsOpts...),
+		Metrics: m,
+		Gold:    api.NewGoldHandler(calc, redisCache, goldRepo, log),
+		Instrument: api.NewInstrumentHandler(
+			engine, instrRepo, candleStore, cfg.Provider.REST.CryptoBaseURL, log,
+		).WithLocalizer(instrumentNames),
 		System: api.NewSystemHandler(api.SystemDeps{
 			Provider:  pm,
 			Calc:      calc,

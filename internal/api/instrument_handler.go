@@ -11,6 +11,7 @@ import (
 
 	"github.com/tsc-forex/tsc_forex/internal/calculator"
 	"github.com/tsc-forex/tsc_forex/internal/domain"
+	"github.com/tsc-forex/tsc_forex/internal/localization"
 	"github.com/tsc-forex/tsc_forex/internal/models"
 	"github.com/tsc-forex/tsc_forex/internal/repository"
 	"github.com/tsc-forex/tsc_forex/internal/service"
@@ -23,6 +24,7 @@ type InstrumentHandler struct {
 	repo    repository.PriceRepository // may be nil in minimal mode
 	candles *service.CandleStore       // hot path for charts/sparklines/stats
 	meta    *marketMeta                // per-kind rich detail (external data)
+	names   *localization.InstrumentLocalizer
 	log     *zap.Logger
 }
 
@@ -41,16 +43,24 @@ func NewInstrumentHandler(engine *calculator.Engine, repo repository.PriceReposi
 	}
 }
 
+// WithLocalizer enables database-backed display names without changing the
+// pricing engine's deterministic calculation catalog.
+func (h *InstrumentHandler) WithLocalizer(names *localization.InstrumentLocalizer) *InstrumentHandler {
+	h.names = names
+	return h
+}
+
 // Catalog returns the static instrument catalog metadata.
 // @Summary List all supported instruments
 // @Tags    instruments
 // @Router  /instruments [get]
 func (h *InstrumentHandler) Catalog(c *gin.Context) {
+	locale := localization.RequestLocale(c.Request)
 	out := make([]gin.H, 0, len(domain.Catalog))
 	for _, in := range domain.Catalog {
 		out = append(out, gin.H{
 			"code":         in.Code,
-			"display_name": in.DisplayName,
+			"display_name": h.displayName(in.Code, locale, in.DisplayName),
 			"kind":         string(in.Kind),
 			"unit":         in.Unit,
 		})
@@ -69,8 +79,9 @@ func (h *InstrumentHandler) Prices(c *gin.Context) {
 	}
 	snap := h.engine.Snapshot()
 	out := make([]InstrumentResponse, 0, len(snap))
+	locale := localization.RequestLocale(c.Request)
 	for _, ip := range snap {
-		out = append(out, toInstrumentResponse(ip))
+		out = append(out, h.toInstrumentResponse(ip, locale))
 	}
 	if len(out) == 0 {
 		c.JSON(http.StatusServiceUnavailable, ErrorResponse{Error: "prices not available yet"})
@@ -91,20 +102,22 @@ func (h *InstrumentHandler) Get(c *gin.Context) {
 	}
 	if h.engine != nil {
 		if ip, ok := h.engine.Get(code); ok {
-			c.JSON(http.StatusOK, toInstrumentResponse(ip))
+			c.JSON(http.StatusOK, h.toInstrumentResponse(ip, localization.RequestLocale(c.Request)))
 			return
 		}
 	}
 	if h.repo != nil {
 		if rec, err := h.repo.Latest(c.Request.Context(), code); err == nil {
+			instrument := domain.CatalogByCode[code]
 			c.JSON(http.StatusOK, InstrumentResponse{
-				Code:      rec.Code,
-				Kind:      rec.Kind,
-				Price:     rec.Price,
-				Bid:       rec.Bid,
-				Ask:       rec.Ask,
-				Provider:  rec.Provider,
-				Timestamp: rec.CreatedAt,
+				Code:        rec.Code,
+				DisplayName: h.displayName(code, localization.RequestLocale(c.Request), instrument.DisplayName),
+				Kind:        rec.Kind,
+				Price:       rec.Price,
+				Bid:         rec.Bid,
+				Ask:         rec.Ask,
+				Provider:    rec.Provider,
+				Timestamp:   rec.CreatedAt,
 			})
 			return
 		}
@@ -434,4 +447,23 @@ func toInstrumentResponse(ip domain.InstrumentPrice) InstrumentResponse {
 		Provider:    ip.Provider,
 		Timestamp:   ip.Timestamp,
 	}
+}
+
+func (h *InstrumentHandler) toInstrumentResponse(ip domain.InstrumentPrice, locale string) InstrumentResponse {
+	response := toInstrumentResponse(ip)
+	response.DisplayName = h.displayName(ip.Code, locale, ip.DisplayName)
+	return response
+}
+
+func (h *InstrumentHandler) displayName(code, locale, fallback string) string {
+	if h != nil && h.names != nil {
+		return h.names.DisplayName(code, locale)
+	}
+	if fallback != "" {
+		return fallback
+	}
+	if instrument, ok := domain.CatalogByCode[code]; ok {
+		return instrument.DisplayName
+	}
+	return code
 }

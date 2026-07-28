@@ -29,6 +29,9 @@ struct tscforexApp: App {
                 .onAppear {
                     prices.connect(token: auth.accessToken)
                 }
+                .onChange(of: language.current) { _, _ in
+                    prices.reloadLocale()
+                }
         }
     }
 }

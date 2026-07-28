@@ -28,6 +28,7 @@ type Hub struct {
 	register   chan registration
 	unregister chan *Client
 	broadcast  chan []byte
+	instrument chan localizedInstrumentMessage
 	direct     chan userMessage
 
 	// clients / userIndex are only touched from Run().
@@ -57,6 +58,11 @@ type userMessage struct {
 	msg    []byte
 }
 
+type localizedInstrumentMessage struct {
+	payload      InstrumentPayload
+	displayNames map[string]string
+}
+
 // NewHub creates a hub. Call Run in a dedicated goroutine.
 func NewHub(cfg config.WebSocketConfig, log *zap.Logger) *Hub {
 	if log == nil {
@@ -71,6 +77,7 @@ func NewHub(cfg config.WebSocketConfig, log *zap.Logger) *Hub {
 		register:   make(chan registration),
 		unregister: make(chan *Client),
 		broadcast:  make(chan []byte, 1024),
+		instrument: make(chan localizedInstrumentMessage, 1024),
 		direct:     make(chan userMessage, 1024),
 		clients:    make(map[*Client]struct{}),
 		userIndex:  make(map[string]map[*Client]struct{}),
@@ -144,6 +151,41 @@ func (h *Hub) Run() {
 				case c.send <- msg:
 				default:
 					// Slow consumer: drop this message; do not block the hub.
+					h.droppedMsgs.Add(1)
+					h.log.Warn("ws message dropped",
+						zap.String("client_id", c.ID),
+						zap.Int64("dropped_total", h.droppedMsgs.Load()),
+					)
+				}
+			}
+		case update := <-h.instrument:
+			h.broadcasts.Add(1)
+			encoded := make(map[string][]byte, 6)
+			for c := range h.clients {
+				locale := c.Locale
+				name := update.displayNames[locale]
+				if name == "" {
+					name = update.displayNames["tr"]
+				}
+				if name == "" {
+					name = update.payload.DisplayName
+				}
+				cacheKey := locale + "\x00" + name
+				msg := encoded[cacheKey]
+				if msg == nil {
+					payload := update.payload
+					payload.DisplayName = name
+					var err error
+					msg, err = EncodeInstrument(payload)
+					if err != nil {
+						h.log.Warn("localized ws instrument encode failed", zap.Error(err))
+						continue
+					}
+					encoded[cacheKey] = msg
+				}
+				select {
+				case c.send <- msg:
+				default:
 					h.droppedMsgs.Add(1)
 					h.log.Warn("ws message dropped",
 						zap.String("client_id", c.ID),
@@ -242,6 +284,18 @@ func (h *Hub) Broadcast(msg []byte) {
 	case <-h.done:
 	default:
 		// Hub broadcast queue full — count as dropped at hub level.
+		h.droppedMsgs.Add(1)
+	}
+}
+
+// BroadcastInstrument queues one live price update and resolves its display
+// name once per connected locale inside the hub. Numeric payloads stay shared;
+// six-language labels do not multiply database reads or per-client encoding.
+func (h *Hub) BroadcastInstrument(payload InstrumentPayload, displayNames map[string]string) {
+	select {
+	case h.instrument <- localizedInstrumentMessage{payload: payload, displayNames: displayNames}:
+	case <-h.done:
+	default:
 		h.droppedMsgs.Add(1)
 	}
 }

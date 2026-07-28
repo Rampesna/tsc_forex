@@ -15,6 +15,7 @@ type Client struct {
 	ID          string
 	UserID      string // set when the connection is authenticated (JWT); "" = anonymous
 	Platform    string
+	Locale      string
 	UserAgent   string
 	RemoteAddr  string
 	ConnectedAt time.Time

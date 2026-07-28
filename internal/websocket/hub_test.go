@@ -124,6 +124,55 @@ func TestWebSocketConnectAndPricePush(t *testing.T) {
 	}
 }
 
+func TestWebSocketInstrumentPushUsesConnectionLocale(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	hub := ws.NewHub(testWSConfig(), nil)
+	go hub.Run()
+	defer hub.Close()
+
+	handler := ws.NewHandler(hub, nil)
+	router := gin.New()
+	router.GET("/ws", handler.ServeWS)
+	server := httptest.NewServer(router)
+	defer server.Close()
+
+	url := "ws" + strings.TrimPrefix(server.URL, "http") + "/ws?locale=de-DE"
+	conn, _, err := websocket.DefaultDialer.Dial(url, nil)
+	if err != nil {
+		t.Fatalf("dial: %v", err)
+	}
+	defer conn.Close()
+	_ = conn.SetReadDeadline(time.Now().Add(2 * time.Second))
+	if _, _, err := conn.ReadMessage(); err != nil {
+		t.Fatalf("read welcome: %v", err)
+	}
+
+	hub.BroadcastInstrument(ws.InstrumentPayload{
+		Code: "GRAM_GOLD", DisplayName: "Gram Altın (Has)", Kind: "gold", Price: 6000,
+	}, map[string]string{
+		"tr": "Gram Altın (Has)",
+		"de": "Feingold (1 Gramm)",
+	})
+
+	_, message, err := conn.ReadMessage()
+	if err != nil {
+		t.Fatalf("read localized instrument: %v", err)
+	}
+	var envelope struct {
+		Type    ws.MessageType       `json:"type"`
+		Payload ws.InstrumentPayload `json:"payload"`
+	}
+	if err := json.Unmarshal(message, &envelope); err != nil {
+		t.Fatal(err)
+	}
+	if envelope.Type != ws.TypeInstrumentUpdate {
+		t.Fatalf("type = %s, want %s", envelope.Type, ws.TypeInstrumentUpdate)
+	}
+	if envelope.Payload.DisplayName != "Feingold (1 Gramm)" {
+		t.Fatalf("display name = %q", envelope.Payload.DisplayName)
+	}
+}
+
 func TestHubDrainRejectsNewConnectionsAndClosesExistingWithRestartCode(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 	hub := ws.NewHub(testWSConfig(), nil)

@@ -329,6 +329,8 @@ fun SettingsScreen(
             onSelect = { language ->
                 AppLocale.select(context, language)
                 showLanguage = false
+                store.refresh()
+                store.reconnect()
                 context.findActivity()?.recreate()
             },
         )

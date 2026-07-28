@@ -108,7 +108,7 @@ struct APIClient {
     private func applyClientHeaders(to request: inout URLRequest) {
         request.setValue("ios", forHTTPHeaderField: "X-TSC-Client-Platform")
         request.setValue(
-            Locale.preferredLanguages.first ?? Locale.current.identifier,
+            L10n.language.rawValue,
             forHTTPHeaderField: "X-TSC-Client-Locale"
         )
         if let version = Bundle.main.object(

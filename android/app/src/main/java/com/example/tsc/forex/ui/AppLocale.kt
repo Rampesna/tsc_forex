@@ -51,6 +51,7 @@ object AppLocale {
             .edit()
             .putString(KEY, language.tag)
             .apply()
+        Locale.setDefault(Locale.forLanguageTag(language.tag))
     }
 
     fun wrap(base: Context): Context {

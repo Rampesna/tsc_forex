@@ -9,6 +9,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/gorilla/websocket"
 	"go.uber.org/zap"
+
+	"github.com/tsc-forex/tsc_forex/internal/localization"
 )
 
 // TokenVerifier validates a JWT and returns the user id (subject) when valid.
@@ -75,6 +77,7 @@ func (h *Handler) ServeWS(c *gin.Context) {
 
 	client := newClient(h.hub, conn, h.log)
 	client.Platform = inferClientPlatform(c.Query("platform"), c.GetHeader("User-Agent"))
+	client.Locale = localization.RequestLocale(c.Request)
 	client.UserAgent = c.GetHeader("User-Agent")
 	client.RemoteAddr = c.ClientIP()
 	if h.verify != nil {

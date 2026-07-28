@@ -22,6 +22,7 @@ final class PriceStore: ObservableObject {
     @Published var favoriteMessage: String?
 
     private var task: URLSessionWebSocketTask?
+    private var socketGeneration = 0
     private var reconnectAttempts = 0
     private var token: String?
     private var shouldRun = false
@@ -229,6 +230,7 @@ final class PriceStore: ObservableObject {
 
     func disconnect() {
         shouldRun = false
+        socketGeneration += 1
         task?.cancel(with: .goingAway, reason: nil)
         task = nil
         connected = false
@@ -265,6 +267,15 @@ final class PriceStore: ObservableObject {
         await bootstrapREST()
     }
 
+    // Selected app language is independent from the device language. Refresh
+    // REST names and reconnect WS so both streams negotiate the same locale.
+    func reloadLocale() {
+        Task { await bootstrapREST() }
+        task?.cancel(with: .goingAway, reason: nil)
+        reconnectAttempts = 0
+        openSocket()
+    }
+
     private func syncFavorites() async {
         guard token != nil else { return }
         if let remote = try? await APIClient(token: token).watchlist() {
@@ -280,8 +291,15 @@ final class PriceStore: ObservableObject {
 
     private func openSocket() {
         guard shouldRun else { return }
+        socketGeneration += 1
+        let generation = socketGeneration
+        task?.cancel(with: .goingAway, reason: nil)
         var components = URLComponents(url: AppConfig.wsURL, resolvingAgainstBaseURL: false)
-        var queryItems = [URLQueryItem(name: "platform", value: "ios")]
+        let locale = L10n.language.rawValue
+        var queryItems = [
+            URLQueryItem(name: "platform", value: "ios"),
+            URLQueryItem(name: "locale", value: locale),
+        ]
         if let token, !token.isEmpty {
             queryItems.append(URLQueryItem(name: "token", value: token))
         }
@@ -289,26 +307,27 @@ final class PriceStore: ObservableObject {
         guard let url = components?.url else { return }
         var request = URLRequest(url: url)
         request.setValue("ios", forHTTPHeaderField: "X-TSC-Client-Platform")
+        request.setValue(locale, forHTTPHeaderField: "X-TSC-Client-Locale")
         let t = wsSession.webSocketTask(with: request)
         task = t
         t.resume()
         connected = true
         reconnectAttempts = 0
-        receive()
+        receive(task: t, generation: generation)
     }
 
-    private func receive() {
-        task?.receive { [weak self] result in
+    private func receive(task socketTask: URLSessionWebSocketTask, generation: Int) {
+        socketTask.receive { [weak self] result in
             Task { @MainActor [weak self] in
-                guard let self else { return }
+                guard let self, generation == self.socketGeneration else { return }
                 switch result {
                 case .success(let message):
                     if case .string(let text) = message {
                         self.handle(text)
                     }
-                    self.receive()
+                    self.receive(task: socketTask, generation: generation)
                 case .failure:
-                    self.scheduleReconnect()
+                    self.scheduleReconnect(generation: generation)
                 }
             }
         }
@@ -344,13 +363,16 @@ final class PriceStore: ObservableObject {
         if favorites.contains(p.code) { syncWidget() }
     }
 
-    private func scheduleReconnect() {
+    private func scheduleReconnect(generation: Int) {
         connected = false
-        guard shouldRun else { return }
+        guard shouldRun, generation == socketGeneration else { return }
         reconnectAttempts += 1
         let delay = min(Double(reconnectAttempts) * 1.5, 15)
         DispatchQueue.main.asyncAfter(deadline: .now() + delay) { [weak self] in
-            self?.openSocket()
+            guard let self,
+                  self.shouldRun,
+                  generation == self.socketGeneration else { return }
+            self.openSocket()
         }
     }
 }

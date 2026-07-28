@@ -12,11 +12,12 @@ import (
 	gormlogger "gorm.io/gorm/logger"
 
 	"github.com/tsc-forex/tsc_forex/internal/config"
+	"github.com/tsc-forex/tsc_forex/internal/localization"
 	"github.com/tsc-forex/tsc_forex/internal/models"
 )
 
 const (
-	currentSchemaVersion          int64 = 2026072705
+	currentSchemaVersion          int64 = 2026072801
 	clientPlatformBackfillVersion int64 = 2026072705
 )
 
@@ -92,6 +93,9 @@ func migrateSchema(db *gorm.DB) error {
 		&models.ManagerSession{},
 		&models.PriceTick{},
 		&models.Candle{},
+		&models.SupportedLocale{},
+		&models.InstrumentDefinition{},
+		&models.InstrumentTranslation{},
 		&models.WatchlistItem{},
 		&models.PriceAlert{},
 		&models.Notification{},
@@ -133,6 +137,9 @@ func migrateSchema(db *gorm.DB) error {
 		&models.AdminAuditLog{},
 	); err != nil {
 		return err
+	}
+	if err := localization.SeedCatalog(db.Statement.Context, db); err != nil {
+		return fmt.Errorf("instrument localization seed: %w", err)
 	}
 	if err := contractManagerRealmColumns(db); err != nil {
 		return fmt.Errorf("manager realm cleanup: %w", err)
@@ -242,6 +249,8 @@ func addProductionIndexes(db *gorm.DB) error {
 
 		// Pre-aggregated candles: charts read by (code, resolution, bucket range).
 		`CREATE INDEX IF NOT EXISTS idx_candles_code_res_bucket ON candles (code, resolution, bucket DESC)`,
+		`CREATE INDEX IF NOT EXISTS idx_instruments_active_kind ON instruments (active, kind, code)`,
+		`CREATE INDEX IF NOT EXISTS idx_instrument_translations_locale_code ON instrument_translations (locale_code, instrument_code)`,
 
 		// Per-user, newest-first reads.
 		`CREATE INDEX IF NOT EXISTS idx_notifications_user_created ON notifications (user_id, created_at DESC)`,

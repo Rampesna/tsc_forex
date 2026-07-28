@@ -9,8 +9,10 @@ import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
 import org.json.JSONObject
+import java.util.Locale
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * Live price WebSocket with automatic reconnect and exponential backoff.
@@ -28,6 +30,7 @@ class PriceSocket(
 
     private var ws: WebSocket? = null
     private val closed = AtomicBoolean(false)
+    private val generation = AtomicLong(0)
     private var token: String? = null
     private var backoffMs = 1_000L
 
@@ -51,50 +54,60 @@ class PriceSocket(
 
     fun disconnect() {
         closed.set(true)
+        generation.incrementAndGet()
         ws?.close(1000, "bye")
         ws = null
         onState(false)
     }
 
     private fun open() {
+        val connectionGeneration = generation.incrementAndGet()
+        ws?.cancel()
+        val locale = Locale.getDefault().toLanguageTag().take(16)
         val url = AppConfig.wsUrl.toHttpUrl().newBuilder()
             .addQueryParameter("platform", "android")
+            .addQueryParameter("locale", locale)
             .apply { token?.takeIf(String::isNotEmpty)?.let { addQueryParameter("token", it) } }
             .build()
         val req = Request.Builder()
             .url(url)
             .header("X-TSC-Client-Platform", "android")
+            .header("X-TSC-Client-Locale", locale)
             .header("X-TSC-App-Version", BuildConfig.VERSION_NAME)
             .build()
         ws = client.newWebSocket(req, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
+                if (connectionGeneration != generation.get()) return
                 backoffMs = 1_000L
                 onState(true)
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
+                if (connectionGeneration != generation.get()) return
                 handle(text)
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                if (connectionGeneration != generation.get()) return
                 onState(false)
-                scheduleReconnect()
+                scheduleReconnect(connectionGeneration)
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                if (connectionGeneration != generation.get()) return
                 onState(false)
-                if (!closed.get()) scheduleReconnect()
+                if (!closed.get()) scheduleReconnect(connectionGeneration)
             }
         })
     }
 
-    private fun scheduleReconnect() {
-        if (closed.get()) return
+    private fun scheduleReconnect(connectionGeneration: Long) {
+        if (closed.get() || connectionGeneration != generation.get()) return
         val delay = backoffMs
         backoffMs = (backoffMs * 2).coerceAtMost(15_000L)
         Thread {
             Thread.sleep(delay)
-            if (!closed.get()) open()
+            if (!closed.get() && connectionGeneration == generation.get()) open()
         }.apply { isDaemon = true }.start()
     }
 

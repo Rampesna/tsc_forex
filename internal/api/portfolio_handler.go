@@ -11,6 +11,7 @@ import (
 	"github.com/google/uuid"
 	"github.com/shopspring/decimal"
 
+	"github.com/tsc-forex/tsc_forex/internal/localization"
 	"github.com/tsc-forex/tsc_forex/internal/models"
 	"github.com/tsc-forex/tsc_forex/internal/repository"
 	"github.com/tsc-forex/tsc_forex/internal/service"
@@ -18,10 +19,16 @@ import (
 
 type PortfolioHandler struct {
 	service *service.PortfolioService
+	names   *localization.InstrumentLocalizer
 }
 
 func NewPortfolioHandler(portfolios *service.PortfolioService) *PortfolioHandler {
 	return &PortfolioHandler{service: portfolios}
+}
+
+func (h *PortfolioHandler) WithLocalizer(names *localization.InstrumentLocalizer) *PortfolioHandler {
+	h.names = names
+	return h
 }
 
 type portfolioRequest struct {
@@ -72,6 +79,9 @@ func (h *PortfolioHandler) List(c *gin.Context) {
 		writePortfolioError(c, err)
 		return
 	}
+	for index := range rows {
+		h.localizeOverview(&rows[index], localization.RequestLocale(c.Request))
+	}
 	c.JSON(http.StatusOK, gin.H{"count": len(rows), "portfolios": rows})
 }
 
@@ -103,6 +113,7 @@ func (h *PortfolioHandler) Get(c *gin.Context) {
 		writePortfolioError(c, err)
 		return
 	}
+	h.localizeOverview(&overview, localization.RequestLocale(c.Request))
 	c.JSON(http.StatusOK, overview)
 }
 
@@ -151,7 +162,23 @@ func (h *PortfolioHandler) Position(c *gin.Context) {
 		writePortfolioError(c, err)
 		return
 	}
+	if h.names != nil {
+		detail.Position.DisplayName = h.names.DisplayName(
+			detail.Position.Code,
+			localization.RequestLocale(c.Request),
+		)
+	}
 	c.JSON(http.StatusOK, detail)
+}
+
+func (h *PortfolioHandler) localizeOverview(overview *service.PortfolioOverview, locale string) {
+	if h == nil || h.names == nil || overview == nil {
+		return
+	}
+	for index := range overview.Positions {
+		position := &overview.Positions[index]
+		position.DisplayName = h.names.DisplayName(position.Code, locale)
+	}
 }
 
 func (h *PortfolioHandler) Transactions(c *gin.Context) {
