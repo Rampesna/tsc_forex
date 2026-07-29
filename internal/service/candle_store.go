@@ -230,11 +230,9 @@ func (s *CandleStore) flush(ctx context.Context) {
 	if len(batch) == 0 {
 		return
 	}
-	// Every replica observes largely the same market stream and flushes the
-	// same rows. Go map iteration is random, so without a canonical order each
-	// transaction acquires PostgreSQL conflict-row locks differently and can
-	// deadlock another replica. A total key order makes lock acquisition
-	// deterministic cluster-wide.
+	// Keep a canonical order even though normal operation has one persistence
+	// leader. It preserves deterministic lock acquisition during the brief,
+	// safe overlap possible at a leader handoff.
 	sort.Slice(batch, func(i, j int) bool {
 		if batch[i].Code != batch[j].Code {
 			return batch[i].Code < batch[j].Code

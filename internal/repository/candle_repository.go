@@ -238,6 +238,7 @@ WITH doomed AS (
 	SELECT ctid
 	FROM candles
 	WHERE resolution = ? AND bucket < ?
+	ORDER BY bucket
 	LIMIT ?
 )
 DELETE FROM candles AS c
