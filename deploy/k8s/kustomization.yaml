@@ -5,6 +5,7 @@ resources:
   - 00-namespace.yaml
   - 10-config.yaml
   - 20-postgres.yaml
+  - 22-postgres-backup.yaml
   - 25-minio.yaml
   - 30-redis.yaml
   - 40-app.yaml

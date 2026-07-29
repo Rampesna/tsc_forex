@@ -1,0 +1,96 @@
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: postgres-backup
+  namespace: tsc-forex
+spec:
+  schedule: "30 4 * * *"
+  timeZone: Europe/Istanbul
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 1800
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      activeDeadlineSeconds: 7200
+      ttlSecondsAfterFinished: 86400
+      template:
+        metadata:
+          labels:
+            app: postgres-backup
+        spec:
+          restartPolicy: Never
+          securityContext:
+            runAsUser: 0
+            runAsGroup: 0
+            seccompProfile:
+              type: RuntimeDefault
+          containers:
+            - name: pg-dump
+              image: pgvector/pgvector:pg16
+              imagePullPolicy: IfNotPresent
+              command: ["/bin/sh", "-ec"]
+              args:
+                - |
+                  umask 077
+                  stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+                  final="/backup/tsc_forex_${stamp}.dump"
+                  partial="${final}.partial"
+                  trap 'rm -f "$partial"' EXIT INT TERM
+
+                  pg_dump \
+                    --host=postgres \
+                    --username="$POSTGRES_USER" \
+                    --dbname="$POSTGRES_DB" \
+                    --format=custom \
+                    --compress=3 \
+                    --no-owner \
+                    --no-acl \
+                    --file="$partial"
+
+                  mv "$partial" "$final"
+                  sha256sum "$final" > "${final}.sha256"
+                  find /backup -maxdepth 1 -type f \
+                    \( -name 'tsc_forex_*.dump' -o -name 'tsc_forex_*.dump.sha256' \) \
+                    -mtime +6 -delete
+              env:
+                - name: POSTGRES_DB
+                  value: tsc_forex
+                - name: POSTGRES_USER
+                  valueFrom:
+                    secretKeyRef:
+                      name: tsc-forex-secrets
+                      key: APP_DATABASE_USER
+                - name: PGPASSWORD
+                  valueFrom:
+                    secretKeyRef:
+                      name: tsc-forex-secrets
+                      key: APP_DATABASE_PASSWORD
+                - name: PGAPPNAME
+                  value: tsc-forex-backup
+              resources:
+                requests:
+                  cpu: "100m"
+                  memory: "128Mi"
+                limits:
+                  cpu: "1"
+                  memory: "512Mi"
+              securityContext:
+                allowPrivilegeEscalation: false
+                readOnlyRootFilesystem: true
+                capabilities:
+                  drop: ["ALL"]
+              volumeMounts:
+                - name: backups
+                  mountPath: /backup
+                - name: tmp
+                  mountPath: /tmp
+          volumes:
+            - name: backups
+              hostPath:
+                path: /www/backups/tscforex
+                type: DirectoryOrCreate
+            - name: tmp
+              emptyDir:
+                sizeLimit: 128Mi
