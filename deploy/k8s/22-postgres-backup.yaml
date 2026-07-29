@@ -50,7 +50,10 @@ spec:
                     --file="$partial"
 
                   mv "$partial" "$final"
-                  sha256sum "$final" > "${final}.sha256"
+                  (
+                    cd /backup
+                    sha256sum "$(basename "$final")" > "$(basename "$final").sha256"
+                  )
                   find /backup -maxdepth 1 -type f \
                     \( -name 'tsc_forex_*.dump' -o -name 'tsc_forex_*.dump.sha256' \) \
                     -mtime +6 -delete
