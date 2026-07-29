@@ -237,6 +237,29 @@ func TestCandleFlushUsesDeterministicLockOrder(t *testing.T) {
 	}
 }
 
+func TestCandleFlushFollowerDoesNotWriteOrAccumulatePending(t *testing.T) {
+	t.Parallel()
+
+	repo := &recordingCandleRepository{}
+	s := NewCandleStore(nil, repo, nil)
+	s.SetWriteGate(func() bool { return false })
+	s.pending = []models.Candle{{
+		Code: "USDTRY", Resolution: "1m",
+		Bucket: time.Date(2026, 7, 27, 10, 4, 0, 0, time.UTC),
+	}}
+
+	s.flush(context.Background())
+
+	if batches := repo.snapshot(); len(batches) != 0 {
+		t.Fatalf("follower persisted %d batches, want 0", len(batches))
+	}
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	if len(s.pending) != 0 {
+		t.Fatalf("follower retained %d closed candles, want 0", len(s.pending))
+	}
+}
+
 func TestCandleFlushRequeuesClosedCandlesAfterFailure(t *testing.T) {
 	t.Parallel()
 

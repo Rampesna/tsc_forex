@@ -19,6 +19,9 @@ type GoldRepository interface {
 	History(ctx context.Context, symbol string, from, to time.Time, limit int) ([]models.GoldPrice, error)
 	Aggregate(ctx context.Context, symbol, interval string, from, to time.Time) ([]models.OHLC, error)
 	Latest(ctx context.Context, symbol string) (models.GoldPrice, error)
+	// PruneOlderThan bounds the legacy raw gold stream. Long-range charts use
+	// the generalized candle table; this table only needs a recent safety window.
+	PruneOlderThan(ctx context.Context, before time.Time) (int64, error)
 }
 
 type goldRepository struct {
@@ -92,6 +95,36 @@ func (r *goldRepository) Latest(ctx context.Context, symbol string) (models.Gold
 	err := q.Order("created_at DESC").First(&rec).Error
 	r.observe(start, err)
 	return rec, err
+}
+
+func (r *goldRepository) PruneOlderThan(ctx context.Context, before time.Time) (int64, error) {
+	start := time.Now()
+	var total int64
+	for {
+		res := r.db.WithContext(ctx).Exec(`
+WITH doomed AS (
+	SELECT ctid
+	FROM gold_prices
+	WHERE created_at < ?
+	LIMIT ?
+)
+DELETE FROM gold_prices AS p
+USING doomed
+WHERE p.ctid = doomed.ctid;`, before, timeSeriesPruneBatchSize)
+		if res.Error != nil {
+			r.observe(start, res.Error)
+			return total, res.Error
+		}
+		total += res.RowsAffected
+		if res.RowsAffected < timeSeriesPruneBatchSize {
+			r.observe(start, nil)
+			return total, nil
+		}
+		if err := ctx.Err(); err != nil {
+			r.observe(start, err)
+			return total, err
+		}
+	}
 }
 
 // intervalToSeconds maps supported aggregation intervals to seconds. The weekly

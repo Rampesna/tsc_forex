@@ -167,6 +167,7 @@ func run() error {
 		instrWriter     *service.InstrumentWriter
 		alertEngine     *service.AlertEngine
 		instrumentNames *localization.InstrumentLocalizer
+		persistenceLead *database.AdvisoryLeader
 	)
 	if gdb, err := database.New(ctx, cfg.Database); err != nil {
 		dbStartupErr = fmt.Errorf("postgres startup: %w", err)
@@ -184,9 +185,20 @@ func run() error {
 		goldRepo = repository.NewGoldRepository(db, m)
 		priceRepo = repository.NewPriceRepository(db, m)
 		instrRepo = priceRepo
+		persistenceLead, err = database.NewAdvisoryLeader(
+			db,
+			database.PersistenceLeaderLockKey,
+			log,
+		)
+		if err != nil {
+			return fmt.Errorf("persistence leader: %w", err)
+		}
+		persistenceLead.Start(ctx)
+
 		// Attach the candle DB and bootstrap chart history from existing ticks.
 		candleRepo := repository.NewCandleRepository(db, m)
 		candleStore.SetRepo(candleRepo)
+		candleStore.SetWriteGate(persistenceLead.IsLeader)
 		candleStore.Bootstrap(ctx)
 		// Seed day-open baselines from the compact candles table (fast: one
 		// indexed row per instrument) so change % is correct right after a
@@ -195,36 +207,13 @@ func run() error {
 			engine.SeedDayOpen(opens, engine.DayKey())
 			log.Info("seeded day-open baselines", zap.Int("instruments", len(opens)))
 		}
-		// Retention: keep price_ticks bounded (72h of live ticks) so any residual
-		// tick queries stay fast. Historical backfill rows are preserved.
-		go func(repo repository.PriceRepository) {
-			// Delay the first prune so the one-time candle bootstrap (which
-			// aggregates existing ticks into candles) finishes first — otherwise
-			// we could delete live ticks before their history is captured.
-			select {
-			case <-ctx.Done():
-				return
-			case <-time.After(30 * time.Minute):
-			}
-			t := time.NewTicker(6 * time.Hour)
-			defer t.Stop()
-			prune := func() {
-				cctx, cancel := context.WithTimeout(ctx, 5*time.Minute)
-				defer cancel()
-				if n, err := repo.PruneOlderThan(cctx, time.Now().Add(-72*time.Hour)); err == nil && n > 0 {
-					log.Info("pruned old price_ticks", zap.Int64("rows", n))
-				}
-			}
-			prune()
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case <-t.C:
-					prune()
-				}
-			}
-		}(priceRepo)
+		startTimeSeriesRetention(
+			ctx,
+			priceRepo,
+			goldRepo,
+			persistenceLead.IsLeader,
+			log,
+		)
 		userRepo := repository.NewUserRepository(db, m)
 		refreshRepo := repository.NewRefreshTokenRepository(db, m)
 		watchRepo := repository.NewWatchlistRepository(db, m)
@@ -303,7 +292,8 @@ func run() error {
 			log.Warn("fcm push disabled", zap.Error(err))
 		}
 		notifier = service.NewNotifier(notifRepo, deviceRepo, hub, senders, log)
-		alertEngine = service.NewAlertEngine(bus, alertRepo, notifier, cfg.Notify.AlertCooldown, log)
+		alertEngine = service.NewAlertEngine(bus, alertRepo, notifier, cfg.Notify.AlertCooldown, log).
+			WithWriteGate(persistenceLead.IsLeader)
 		alertEngine.Start(ctx)
 
 		// Gamification: streaks, XP/levels, badges, weekly leaderboard. Reuses
@@ -333,9 +323,11 @@ func run() error {
 		}
 
 		if cfg.Gold.PersistEvery {
-			histWriter = service.NewHistoryWriter(bus, goldRepo, cfg.Gold.HistoryWorkers, cfg.Gold.HistoryQueueSize, log)
+			histWriter = service.NewHistoryWriter(bus, goldRepo, cfg.Gold.HistoryWorkers, cfg.Gold.HistoryQueueSize, log).
+				WithWriteGate(persistenceLead.IsLeader)
 			histWriter.Start(ctx)
-			instrWriter = service.NewInstrumentWriter(bus, priceRepo, cfg.Gold.HistoryWorkers, cfg.Gold.HistoryQueueSize*2, log)
+			instrWriter = service.NewInstrumentWriter(bus, priceRepo, cfg.Gold.HistoryWorkers, cfg.Gold.HistoryQueueSize*2, log).
+				WithWriteGate(persistenceLead.IsLeader)
 			instrWriter.Start(ctx)
 		}
 		log.Info("postgres connected", zap.String("host", cfg.Database.Host))
@@ -506,6 +498,12 @@ func run() error {
 		log.Error("candle workers did not stop before cleanup deadline", zap.Error(err))
 		shutdownErr = errors.Join(shutdownErr, fmt.Errorf("candle shutdown: %w", err))
 	}
+	if persistenceLead != nil {
+		if err := persistenceLead.Wait(cleanupCtx); err != nil {
+			log.Error("persistence leader did not stop before cleanup deadline", zap.Error(err))
+			shutdownErr = errors.Join(shutdownErr, fmt.Errorf("persistence leader shutdown: %w", err))
+		}
+	}
 	cleanupCancel()
 	if db != nil {
 		if err := database.Close(db); err != nil {
@@ -519,6 +517,67 @@ func run() error {
 		zap.Int64("gold_publishes", calc.PublishCount()),
 	)
 	return errors.Join(serverErr, shutdownErr)
+}
+
+const (
+	liveTickRetention = 72 * time.Hour
+	goldRawRetention  = 30 * 24 * time.Hour
+	retentionInterval = 30 * time.Minute
+)
+
+// startTimeSeriesRetention smooths deletion work into bounded, frequent batches.
+// Only the elected persistence leader performs it, so five API replicas never
+// launch competing multi-million-row DELETE transactions.
+func startTimeSeriesRetention(
+	ctx context.Context,
+	prices repository.PriceRepository,
+	gold repository.GoldRepository,
+	canWrite func() bool,
+	log *zap.Logger,
+) {
+	if prices == nil || gold == nil || canWrite == nil {
+		return
+	}
+	go func() {
+		// Give candle bootstrap and the initial readiness wave priority.
+		timer := time.NewTimer(30 * time.Minute)
+		defer timer.Stop()
+		select {
+		case <-ctx.Done():
+			return
+		case <-timer.C:
+		}
+
+		ticker := time.NewTicker(retentionInterval)
+		defer ticker.Stop()
+		run := func() {
+			if !canWrite() {
+				return
+			}
+			cctx, cancel := context.WithTimeout(ctx, 10*time.Minute)
+			defer cancel()
+			if n, err := prices.PruneOlderThan(cctx, time.Now().Add(-liveTickRetention)); err != nil {
+				log.Warn("price tick retention failed", zap.Error(err))
+			} else if n > 0 {
+				log.Info("pruned old price ticks", zap.Int64("rows", n))
+			}
+			if n, err := gold.PruneOlderThan(cctx, time.Now().Add(-goldRawRetention)); err != nil {
+				log.Warn("gold history retention failed", zap.Error(err))
+			} else if n > 0 {
+				log.Info("pruned old gold prices", zap.Int64("rows", n))
+			}
+		}
+
+		run()
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case <-ticker.C:
+				run()
+			}
+		}
+	}()
 }
 
 // fanInRedis applies price updates published by OTHER instances to this hub.

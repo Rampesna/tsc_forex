@@ -17,7 +17,7 @@ import (
 )
 
 const (
-	currentSchemaVersion          int64 = 2026072801
+	currentSchemaVersion          int64 = 2026073001
 	clientPlatformBackfillVersion int64 = 2026072705
 )
 
@@ -243,12 +243,33 @@ func addProductionIndexes(db *gorm.DB) error {
 	stmts := []string{
 		// Time-series range scans (charts, stats, retention cleanup).
 		`CREATE INDEX IF NOT EXISTS idx_price_ticks_created_brin ON price_ticks USING BRIN (created_at)`,
-		`CREATE INDEX IF NOT EXISTS idx_price_ticks_code_created ON price_ticks (code, created_at DESC)`,
 		`CREATE INDEX IF NOT EXISTS idx_gold_prices_created_brin ON gold_prices USING BRIN (created_at)`,
 		`CREATE INDEX IF NOT EXISTS idx_gold_prices_symbol_created ON gold_prices (symbol, created_at DESC)`,
 
-		// Pre-aggregated candles: charts read by (code, resolution, bucket range).
-		`CREATE INDEX IF NOT EXISTS idx_candles_code_res_bucket ON candles (code, resolution, bucket DESC)`,
+		// uq_candle already covers chart reads by (code, resolution, bucket).
+		// Retention needs the inverse leading order so it can prune one compact
+		// resolution without scanning the whole candle table.
+		`CREATE INDEX IF NOT EXISTS idx_candles_resolution_bucket ON candles (resolution, bucket)`,
+
+		// High-churn time-series tables need vacuum thresholds based on absolute
+		// churn, not the default 20% of tens of millions of rows.
+		`ALTER TABLE price_ticks SET (
+			autovacuum_vacuum_scale_factor = 0.01,
+			autovacuum_vacuum_threshold = 10000,
+			autovacuum_analyze_scale_factor = 0.02,
+			autovacuum_analyze_threshold = 10000
+		)`,
+		`ALTER TABLE candles SET (
+			autovacuum_vacuum_scale_factor = 0.02,
+			autovacuum_vacuum_threshold = 5000,
+			autovacuum_analyze_scale_factor = 0.02,
+			autovacuum_analyze_threshold = 5000
+		)`,
+		`ALTER TABLE gold_prices SET (
+			autovacuum_vacuum_scale_factor = 0.02,
+			autovacuum_vacuum_threshold = 5000
+		)`,
+
 		`CREATE INDEX IF NOT EXISTS idx_instruments_active_kind ON instruments (active, kind, code)`,
 		`CREATE INDEX IF NOT EXISTS idx_instrument_translations_locale_code ON instrument_translations (locale_code, instrument_code)`,
 

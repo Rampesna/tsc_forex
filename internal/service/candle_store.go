@@ -53,6 +53,7 @@ var intervalToBase = map[string]struct {
 }
 
 const sparkCap = 40
+const candleFlushInterval = 15 * time.Second
 
 type candleAgg struct {
 	bucket time.Time
@@ -83,9 +84,10 @@ func (a *candleAgg) toOHLC() models.OHLC {
 // It degrades gracefully: with no DB it still serves live in-memory candles,
 // sparklines and stats (just without deep history).
 type CandleStore struct {
-	repo repository.CandleRepository // may be nil (minimal mode)
-	log  *zap.Logger
-	loc  *time.Location
+	repo     repository.CandleRepository // may be nil (minimal mode)
+	log      *zap.Logger
+	loc      *time.Location
+	canWrite func() bool
 
 	startOnce     sync.Once
 	bootstrapOnce sync.Once
@@ -107,11 +109,12 @@ func NewCandleStore(bus *eventbus.Bus, repo repository.CandleRepository, log *za
 		loc = time.UTC
 	}
 	s := &CandleStore{
-		repo:    repo,
-		log:     log,
-		loc:     loc,
-		current: make(map[string]*candleAgg, 1024),
-		spark:   make(map[string][]float64, 128),
+		repo:     repo,
+		log:      log,
+		loc:      loc,
+		canWrite: func() bool { return true },
+		current:  make(map[string]*candleAgg, 1024),
+		spark:    make(map[string][]float64, 128),
 	}
 	if bus != nil {
 		bus.Subscribe(eventbus.TopicInstrumentUpdated, s.onUpdate)
@@ -186,9 +189,11 @@ func (s *CandleStore) Start(ctx context.Context) {
 }
 
 // flushLoop persists closed candles (immediately queued on rollover) and the
-// in-progress candles (so a restart keeps the forming bar) every few seconds.
+// in-progress candles (so a restart keeps the forming bar) on a short interval.
+// Fifteen seconds keeps recovery loss negligible while avoiding hundreds of
+// redundant UPSERTs per second across the instrument catalog.
 func (s *CandleStore) flushLoop(ctx context.Context) {
-	t := time.NewTicker(5 * time.Second)
+	t := time.NewTicker(candleFlushInterval)
 	defer t.Stop()
 	for {
 		select {
@@ -202,6 +207,16 @@ func (s *CandleStore) flushLoop(ctx context.Context) {
 }
 
 func (s *CandleStore) flush(ctx context.Context) {
+	if !s.canWrite() {
+		// Followers still aggregate live candles for their own HTTP/WS clients,
+		// but the leader already persists the same stream. Drop follower-only
+		// closed work so it cannot grow without bound while leadership is held
+		// elsewhere.
+		s.mu.Lock()
+		s.pending = nil
+		s.mu.Unlock()
+		return
+	}
 	s.mu.Lock()
 	closed := s.pending
 	s.pending = nil
@@ -259,6 +274,9 @@ func (s *CandleStore) retentionLoop(ctx context.Context) {
 	t := time.NewTicker(6 * time.Hour)
 	defer t.Stop()
 	run := func() {
+		if !s.canWrite() {
+			return
+		}
 		cctx, cancel := context.WithTimeout(ctx, 2*time.Minute)
 		defer cancel()
 		if n, err := s.repo.Prune(cctx, "1m", time.Now().Add(-14*24*time.Hour)); err == nil && n > 0 {
@@ -281,6 +299,13 @@ func (s *CandleStore) retentionLoop(ctx context.Context) {
 
 // SetRepo attaches the DB repository. Call once at startup before Start().
 func (s *CandleStore) SetRepo(r repository.CandleRepository) { s.repo = r }
+
+// SetWriteGate limits flush and retention work to the persistence leader.
+func (s *CandleStore) SetWriteGate(canWrite func() bool) {
+	if canWrite != nil {
+		s.canWrite = canWrite
+	}
+}
 
 // bootstrapLookback bounds how far back each resolution is aggregated from ticks.
 // Fine resolutions stay recent (huge tick counts); coarse ones go back far to

@@ -14,13 +14,14 @@ import (
 // HistoryWriter persists every calculated price asynchronously using a
 // worker pool so the hot path (calculation → broadcast) is never blocked.
 type HistoryWriter struct {
-	repo    repository.GoldRepository
-	log     *zap.Logger
-	queue   chan domain.GramGold
-	workers int
-	wg      sync.WaitGroup
-	dropped int64
-	mu      sync.Mutex
+	repo     repository.GoldRepository
+	log      *zap.Logger
+	queue    chan domain.GramGold
+	workers  int
+	canWrite func() bool
+	wg       sync.WaitGroup
+	dropped  int64
+	mu       sync.Mutex
 }
 
 // NewHistoryWriter subscribes to gram-gold updates and buffers them.
@@ -35,18 +36,27 @@ func NewHistoryWriter(bus *eventbus.Bus, repo repository.GoldRepository, workers
 		queueSize = 4096
 	}
 	h := &HistoryWriter{
-		repo:    repo,
-		log:     log,
-		queue:   make(chan domain.GramGold, queueSize),
-		workers: workers,
+		repo:     repo,
+		log:      log,
+		queue:    make(chan domain.GramGold, queueSize),
+		workers:  workers,
+		canWrite: func() bool { return true },
 	}
 	bus.Subscribe(eventbus.TopicGramGoldUpdated, h.onUpdate)
 	return h
 }
 
+// WithWriteGate limits durable writes to the cluster persistence leader.
+func (h *HistoryWriter) WithWriteGate(canWrite func() bool) *HistoryWriter {
+	if canWrite != nil {
+		h.canWrite = canWrite
+	}
+	return h
+}
+
 func (h *HistoryWriter) onUpdate(ev eventbus.Event) {
 	g, ok := ev.Payload.(domain.GramGold)
-	if !ok {
+	if !ok || !h.canWrite() {
 		return
 	}
 	select {
@@ -80,6 +90,9 @@ func (h *HistoryWriter) worker(ctx context.Context) {
 		case g, ok := <-h.queue:
 			if !ok {
 				return
+			}
+			if !h.canWrite() {
+				continue
 			}
 			if err := h.repo.Save(ctx, g); err != nil {
 				h.log.Warn("persist gold price failed", zap.Error(err), zap.String("symbol", g.Symbol))

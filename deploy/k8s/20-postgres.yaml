@@ -17,6 +17,34 @@ spec:
       containers:
         - name: postgres
           image: pgvector/pgvector:pg16
+          args:
+            - postgres
+            - -c
+            - max_connections=160
+            - -c
+            - shared_buffers=512MB
+            - -c
+            - effective_cache_size=3GB
+            - -c
+            - work_mem=4MB
+            - -c
+            - maintenance_work_mem=256MB
+            - -c
+            - autovacuum_work_mem=128MB
+            - -c
+            - checkpoint_completion_target=0.9
+            - -c
+            - max_wal_size=2GB
+            - -c
+            - min_wal_size=256MB
+            - -c
+            - wal_compression=on
+            - -c
+            - track_io_timing=on
+            - -c
+            - idle_in_transaction_session_timeout=60s
+            - -c
+            - log_min_duration_statement=1000
           ports:
             - containerPort: 5432
           env:
@@ -42,11 +70,11 @@ spec:
               mountPath: /var/lib/postgresql/data
           resources:
             requests:
-              cpu: "250m"
-              memory: "256Mi"
-            limits:
-              cpu: "1"
+              cpu: "500m"
               memory: "1Gi"
+            limits:
+              cpu: "2"
+              memory: "4Gi"
   volumeClaimTemplates:
     - metadata:
         name: pgdata

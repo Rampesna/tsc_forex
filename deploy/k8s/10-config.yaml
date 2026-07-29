@@ -16,6 +16,13 @@ data:
   APP_DATABASE_PORT: "5432"
   APP_DATABASE_NAME: "tsc_forex"
   APP_DATABASE_SSL_MODE: "disable"
+  # Five HTTP replicas share one PostgreSQL instance. Keep the aggregate pool
+  # comfortably below max_connections and avoid dozens of idle prepared-stmt
+  # sessions retaining backend memory.
+  APP_DATABASE_MAX_OPEN_CONNS: "6"
+  APP_DATABASE_MAX_IDLE_CONNS: "2"
+  APP_DATABASE_CONN_MAX_LIFETIME: "30m"
+  APP_DATABASE_CONN_MAX_IDLE_TIME: "5m"
   APP_REDIS_ADDR: "redis:6379"
   APP_REDIS_PUBSUB_CHANNEL: "gold:gram:updates"
   # Real-time market data via Yahoo Finance with real external REST feeds as

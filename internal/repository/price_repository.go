@@ -31,6 +31,8 @@ type priceRepository struct {
 	metrics *metrics.Metrics
 }
 
+const timeSeriesPruneBatchSize = 50_000
+
 // NewPriceRepository builds a GORM-backed instrument price repository.
 func NewPriceRepository(db *gorm.DB, m *metrics.Metrics) PriceRepository {
 	return &priceRepository{db: db, metrics: m}
@@ -185,11 +187,32 @@ ORDER BY code, created_at ASC;`
 // rows are kept so long-range chart candles can always be rebuilt.
 func (r *priceRepository) PruneOlderThan(ctx context.Context, before time.Time) (int64, error) {
 	start := time.Now()
-	res := r.db.WithContext(ctx).
-		Where("created_at < ? AND provider <> ?", before, "backfill").
-		Delete(&models.PriceTick{})
-	r.observe(start, res.Error)
-	return res.RowsAffected, res.Error
+	var total int64
+	for {
+		res := r.db.WithContext(ctx).Exec(`
+WITH doomed AS (
+	SELECT ctid
+	FROM price_ticks
+	WHERE created_at < ? AND provider <> ?
+	LIMIT ?
+)
+DELETE FROM price_ticks AS p
+USING doomed
+WHERE p.ctid = doomed.ctid;`, before, "backfill", timeSeriesPruneBatchSize)
+		if res.Error != nil {
+			r.observe(start, res.Error)
+			return total, res.Error
+		}
+		total += res.RowsAffected
+		if res.RowsAffected < timeSeriesPruneBatchSize {
+			r.observe(start, nil)
+			return total, nil
+		}
+		if err := ctx.Err(); err != nil {
+			r.observe(start, err)
+			return total, err
+		}
+	}
 }
 
 // Aggregate builds OHLC candles for an instrument using epoch-second bucketing.

@@ -231,9 +231,30 @@ func (r *candleRepository) TryLockBootstrap(ctx context.Context) (bool, func(), 
 
 func (r *candleRepository) Prune(ctx context.Context, resolution string, before time.Time) (int64, error) {
 	start := time.Now()
-	res := r.db.WithContext(ctx).
-		Where("resolution = ? AND bucket < ?", resolution, before).
-		Delete(&models.Candle{})
-	r.observe(start, res.Error)
-	return res.RowsAffected, res.Error
+	var total int64
+	for {
+		res := r.db.WithContext(ctx).Exec(`
+WITH doomed AS (
+	SELECT ctid
+	FROM candles
+	WHERE resolution = ? AND bucket < ?
+	LIMIT ?
+)
+DELETE FROM candles AS c
+USING doomed
+WHERE c.ctid = doomed.ctid;`, resolution, before, timeSeriesPruneBatchSize)
+		if res.Error != nil {
+			r.observe(start, res.Error)
+			return total, res.Error
+		}
+		total += res.RowsAffected
+		if res.RowsAffected < timeSeriesPruneBatchSize {
+			r.observe(start, nil)
+			return total, nil
+		}
+		if err := ctx.Err(); err != nil {
+			r.observe(start, err)
+			return total, err
+		}
+	}
 }

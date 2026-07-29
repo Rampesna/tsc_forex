@@ -22,11 +22,12 @@ const tickThrottle = 3 * time.Second
 // InstrumentWriter persists throttled instrument updates asynchronously for
 // recent fine-grained history. Uses a worker pool to protect the hot path.
 type InstrumentWriter struct {
-	repo    repository.PriceRepository
-	log     *zap.Logger
-	queue   chan domain.InstrumentPrice
-	workers int
-	wg      sync.WaitGroup
+	repo     repository.PriceRepository
+	log      *zap.Logger
+	queue    chan domain.InstrumentPrice
+	workers  int
+	canWrite func() bool
+	wg       sync.WaitGroup
 
 	mu        sync.Mutex
 	dropped   int64
@@ -49,15 +50,26 @@ func NewInstrumentWriter(bus *eventbus.Bus, repo repository.PriceRepository, wor
 		log:       log,
 		queue:     make(chan domain.InstrumentPrice, queueSize),
 		workers:   workers,
+		canWrite:  func() bool { return true },
 		lastSaved: make(map[string]time.Time, 256),
 	}
 	bus.Subscribe(eventbus.TopicInstrumentUpdated, w.onUpdate)
 	return w
 }
 
+// WithWriteGate limits durable writes to the replica that owns cluster-wide
+// persistence leadership. Live calculation and broadcasting still run on every
+// API pod.
+func (w *InstrumentWriter) WithWriteGate(canWrite func() bool) *InstrumentWriter {
+	if canWrite != nil {
+		w.canWrite = canWrite
+	}
+	return w
+}
+
 func (w *InstrumentWriter) onUpdate(ev eventbus.Event) {
 	ip, ok := ev.Payload.(domain.InstrumentPrice)
-	if !ok {
+	if !ok || !w.canWrite() {
 		return
 	}
 	// Per-code throttle: drop updates that arrive within tickThrottle of the last
@@ -101,6 +113,9 @@ func (w *InstrumentWriter) worker(ctx context.Context) {
 		case ip, ok := <-w.queue:
 			if !ok {
 				return
+			}
+			if !w.canWrite() {
+				continue
 			}
 			if err := w.repo.Save(ctx, ip); err != nil {
 				w.log.Warn("persist instrument failed", zap.Error(err), zap.String("code", ip.Code))

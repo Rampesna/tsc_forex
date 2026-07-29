@@ -40,6 +40,9 @@ func (f *fakeRepo) Latest(context.Context, string) (models.GoldPrice, error) {
 	}
 	return f.rows[0], nil
 }
+func (f *fakeRepo) PruneOlderThan(context.Context, time.Time) (int64, error) {
+	return 0, nil
+}
 
 func TestHistoryRawAndAggregate(t *testing.T) {
 	gin.SetMode(gin.TestMode)

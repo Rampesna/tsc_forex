@@ -24,6 +24,7 @@ type AlertEngine struct {
 	alerts   repository.AlertRepository
 	notifier *Notifier
 	log      *zap.Logger
+	canWrite func() bool
 
 	queue chan domain.InstrumentPrice
 	wg    sync.WaitGroup
@@ -39,15 +40,25 @@ func NewAlertEngine(bus *eventbus.Bus, alerts repository.AlertRepository, notifi
 		alerts:   alerts,
 		notifier: notifier,
 		log:      log,
+		canWrite: func() bool { return true },
 		queue:    make(chan domain.InstrumentPrice, 2048),
 	}
 	bus.Subscribe(eventbus.TopicInstrumentUpdated, e.onUpdate)
 	return e
 }
 
+// WithWriteGate makes alert evaluation a single-replica responsibility. Claiming
+// remains transactional as a final deduplication boundary during leader handoff.
+func (e *AlertEngine) WithWriteGate(canWrite func() bool) *AlertEngine {
+	if canWrite != nil {
+		e.canWrite = canWrite
+	}
+	return e
+}
+
 func (e *AlertEngine) onUpdate(ev eventbus.Event) {
 	ip, ok := ev.Payload.(domain.InstrumentPrice)
-	if !ok {
+	if !ok || !e.canWrite() {
 		return
 	}
 	select {
@@ -80,7 +91,7 @@ func (e *AlertEngine) Start(ctx context.Context) {
 func (e *AlertEngine) Stop() { e.wg.Wait() }
 
 func (e *AlertEngine) evaluate(ctx context.Context, ip domain.InstrumentPrice) {
-	if e.alerts == nil || e.notifier == nil {
+	if e.alerts == nil || e.notifier == nil || !e.canWrite() {
 		return
 	}
 	active, err := e.alerts.ActiveByCode(ctx, ip.Code)

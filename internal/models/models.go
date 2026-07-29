@@ -14,14 +14,14 @@ import (
 // GoldPrice is the persisted history record for each calculated gram-gold price.
 type GoldPrice struct {
 	ID        uuid.UUID `gorm:"type:uuid;primaryKey" json:"id"`
-	Symbol    string    `gorm:"type:varchar(32);index;not null" json:"symbol"`
+	Symbol    string    `gorm:"type:varchar(32);not null;index:idx_gold_prices_symbol_created,priority:1" json:"symbol"`
 	Price     float64   `gorm:"not null" json:"price"`
 	MidPrice  float64   `gorm:"not null" json:"mid_price"`
 	Spread    float64   `gorm:"not null" json:"spread"`
 	XAUUSD    float64   `gorm:"column:xauusd;not null" json:"xauusd"`
 	USDTRY    float64   `gorm:"column:usdtry;not null" json:"usdtry"`
 	Provider  string    `gorm:"type:varchar(64)" json:"provider"`
-	CreatedAt time.Time `gorm:"index;not null" json:"created_at"`
+	CreatedAt time.Time `gorm:"not null;index:idx_gold_prices_symbol_created,priority:2,sort:desc" json:"created_at"`
 }
 
 // TableName pins the table name.
@@ -110,8 +110,8 @@ type PriceStats struct {
 // (code, resolution, bucket) is unique so rollovers upsert idempotently.
 type Candle struct {
 	Code       string    `gorm:"type:varchar(32);not null;uniqueIndex:uq_candle,priority:1" json:"code"`
-	Resolution string    `gorm:"type:varchar(8);not null;uniqueIndex:uq_candle,priority:2" json:"resolution"`
-	Bucket     time.Time `gorm:"not null;uniqueIndex:uq_candle,priority:3;index:idx_candle_res_bucket,priority:2" json:"bucket"`
+	Resolution string    `gorm:"type:varchar(8);not null;uniqueIndex:uq_candle,priority:2;index:idx_candles_resolution_bucket,priority:1" json:"resolution"`
+	Bucket     time.Time `gorm:"not null;uniqueIndex:uq_candle,priority:3;index:idx_candles_resolution_bucket,priority:2" json:"bucket"`
 	Open       float64   `gorm:"not null" json:"open"`
 	High       float64   `gorm:"not null" json:"high"`
 	Low        float64   `gorm:"not null" json:"low"`

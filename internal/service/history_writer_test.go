@@ -37,6 +37,10 @@ func (r *recordingRepo) Latest(context.Context, string) (models.GoldPrice, error
 	return models.GoldPrice{}, nil
 }
 
+func (r *recordingRepo) PruneOlderThan(context.Context, time.Time) (int64, error) {
+	return 0, nil
+}
+
 func (r *recordingRepo) count() int {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -73,4 +77,28 @@ func TestHistoryWriterPersists(t *testing.T) {
 
 	cancel()
 	hw.Stop()
+}
+
+func TestHistoryWriterFollowerDoesNotPersist(t *testing.T) {
+	t.Parallel()
+
+	bus := eventbus.New()
+	defer bus.Close()
+
+	repo := &recordingRepo{}
+	hw := service.NewHistoryWriter(bus, repo, 1, 8, nil).
+		WithWriteGate(func() bool { return false })
+
+	ctx, cancel := context.WithCancel(context.Background())
+	hw.Start(ctx)
+	bus.Publish(eventbus.TopicGramGoldUpdated, domain.GramGold{
+		Symbol: domain.SymbolGramGoldTRY, Price: 2500, Timestamp: time.Now().UTC(),
+	})
+	time.Sleep(20 * time.Millisecond)
+	cancel()
+	hw.Stop()
+
+	if got := repo.count(); got != 0 {
+		t.Fatalf("follower persisted %d rows, want 0", got)
+	}
 }
