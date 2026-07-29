@@ -310,6 +310,10 @@ func (m *Manager) activate(ctx context.Context, p MarketProvider) error {
 
 func (m *Manager) forward(ctx context.Context, p MarketProvider) {
 	ch := p.PriceChannel()
+	// Staleness is scoped to the current upstream session. Reusing the last
+	// tick timestamp from a previous session would make a fresh connection
+	// look stale at its first health check and cause a reconnect loop.
+	lastReceivedAt := time.Now()
 
 	var healthC <-chan time.Time
 	if m.cfg.HealthInterval > 0 {
@@ -326,6 +330,7 @@ func (m *Manager) forward(ctx context.Context, p MarketProvider) {
 			if !ok {
 				return
 			}
+			lastReceivedAt = time.Now()
 			m.lastTickAt.Store(tick.Timestamp.UnixNano())
 			if m.bus != nil {
 				m.bus.Publish(eventbus.TopicTickReceived, tick)
@@ -345,15 +350,13 @@ func (m *Manager) forward(ctx context.Context, p MarketProvider) {
 			m.publishHealth(p.Health())
 			// Stale stream: force reconnect so failover can engage.
 			if m.cfg.StaleThreshold > 0 {
-				if ns := m.lastTickAt.Load(); ns > 0 {
-					if time.Since(time.Unix(0, ns)) > m.cfg.StaleThreshold {
-						m.log.Warn("provider stale, forcing reconnect",
-							zap.String("provider", p.Name()),
-							zap.Duration("stale_threshold", m.cfg.StaleThreshold),
-						)
-						_ = p.Close()
-						return
-					}
+				if time.Since(lastReceivedAt) > m.cfg.StaleThreshold {
+					m.log.Warn("provider stale, forcing reconnect",
+						zap.String("provider", p.Name()),
+						zap.Duration("stale_threshold", m.cfg.StaleThreshold),
+					)
+					_ = p.Close()
+					return
 				}
 			}
 		}
