@@ -1,7 +1,9 @@
 package com.example.tsc.forex.data
 
+import android.util.Log
 import com.example.tsc.forex.AppConfig
 import com.example.tsc.forex.BuildConfig
+import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrl
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -64,17 +66,25 @@ class PriceSocket(
         val connectionGeneration = generation.incrementAndGet()
         ws?.cancel()
         val locale = Locale.getDefault().toLanguageTag().take(16)
-        val url = AppConfig.wsUrl.toHttpUrl().newBuilder()
-            .addQueryParameter("platform", "android")
-            .addQueryParameter("locale", locale)
-            .apply { token?.takeIf(String::isNotEmpty)?.let { addQueryParameter("token", it) } }
-            .build()
-        val req = Request.Builder()
-            .url(url)
-            .header("X-TSC-Client-Platform", "android")
-            .header("X-TSC-Client-Locale", locale)
-            .header("X-TSC-App-Version", BuildConfig.VERSION_NAME)
-            .build()
+        val req = try {
+            val url = websocketHttpUrl(AppConfig.wsUrl).newBuilder()
+                .addQueryParameter("platform", "android")
+                .addQueryParameter("locale", locale)
+                .apply { token?.takeIf(String::isNotEmpty)?.let { addQueryParameter("token", it) } }
+                .build()
+            Request.Builder()
+                .url(url)
+                .header("X-TSC-Client-Platform", "android")
+                .header("X-TSC-Client-Locale", locale)
+                .header("X-TSC-App-Version", BuildConfig.VERSION_NAME)
+                .build()
+        } catch (error: IllegalArgumentException) {
+            // REST bootstrap remains usable even if a debug host override is
+            // malformed. Never let transport configuration terminate startup.
+            Log.e("TSC.PriceSocket", "Invalid WebSocket endpoint", error)
+            onState(false)
+            return
+        }
         ws = client.newWebSocket(req, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
                 if (connectionGeneration != generation.get()) return
@@ -125,4 +135,20 @@ class PriceSocket(
             "notification", "alert" -> onNotification(AppNotification.from(payload))
         }
     }
+}
+
+/**
+ * OkHttp's HttpUrl intentionally accepts only HTTP(S), while its WebSocket
+ * client upgrades those requests internally. Normalize WS(S) before adding
+ * query parameters so application startup can never fail on a valid socket URL.
+ */
+internal fun websocketHttpUrl(rawUrl: String): HttpUrl {
+    val normalized = when {
+        rawUrl.startsWith("wss://", ignoreCase = true) ->
+            "https://${rawUrl.substring(6)}"
+        rawUrl.startsWith("ws://", ignoreCase = true) ->
+            "http://${rawUrl.substring(5)}"
+        else -> rawUrl
+    }
+    return normalized.toHttpUrl()
 }
