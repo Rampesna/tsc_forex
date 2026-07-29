@@ -22,9 +22,9 @@ spec:
             - -c
             - max_connections=160
             - -c
-            - shared_buffers=512MB
+            - shared_buffers=2GB
             - -c
-            - effective_cache_size=3GB
+            - effective_cache_size=9GB
             - -c
             - work_mem=4MB
             - -c
@@ -71,10 +71,10 @@ spec:
           resources:
             requests:
               cpu: "500m"
-              memory: "1Gi"
+              memory: "2Gi"
             limits:
               cpu: "2"
-              memory: "4Gi"
+              memory: "12Gi"
   volumeClaimTemplates:
     - metadata:
         name: pgdata
