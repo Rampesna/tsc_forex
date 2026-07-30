@@ -4,6 +4,7 @@
 //  interactive Swift Charts (line/candle + timeframes), and alert creation.
 //
 
+import StoreKit
 import SwiftUI
 
 private struct Timeframe: Hashable { let key: String; let interval: String; let label: String; let days: Int }
@@ -15,6 +16,7 @@ struct AssetDetailView: View {
     @EnvironmentObject var billing: BillingStore
     @Environment(\.dismiss) private var dismiss
     @Environment(\.requestAuthentication) private var requestAuthentication
+    @Environment(\.requestReview) private var requestReview
 
     @State private var candles: [Candle] = []
     @State private var stats: InstrumentStats?
@@ -91,7 +93,13 @@ struct AssetDetailView: View {
                 HStack(spacing: 18) {
                     Button {
                         Haptics.tap()
-                        if auth.isLoggedIn { prices.toggleFavorite(code) }
+                        if auth.isLoggedIn {
+                            let wasFavorite = prices.isFavorite(code)
+                            prices.toggleFavorite(code)
+                            if !wasFavorite, ReviewPromptPolicy.recordMeaningfulAction() {
+                                requestReview()
+                            }
+                        }
                         else { requestAuthentication() }
                     } label: {
                         Image(systemName: prices.isFavorite(code) ? "star.fill" : "star")
@@ -711,6 +719,9 @@ struct AssetDetailView: View {
             aiInsight = try await APIClient(token: auth.accessToken).marketInsight(
                 code: code, userID: userID
             )
+            if ReviewPromptPolicy.recordMeaningfulAction() {
+                requestReview()
+            }
         } catch let error as APIError where error.statusCode == 402 {
             aiError = "Bu dönem için AI araştırma hakkınız doldu. Bir plan seçerek devam edebilirsiniz."
             showPaywall = true
@@ -883,6 +894,7 @@ struct AlertSheet: View {
     let current: Double
     @EnvironmentObject var auth: AuthStore
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.requestReview) private var requestReview
 
     @State private var direction = "above"
     @State private var threshold = ""
@@ -934,6 +946,9 @@ struct AlertSheet: View {
                 .createAlert(code: code, direction: direction, threshold: value)
             PushManager.shared.requestPermission()
             status = "Alarm oluşturuldu ✅"
+            if ReviewPromptPolicy.recordMeaningfulAction() {
+                requestReview()
+            }
             try? await Task.sleep(nanoseconds: 700_000_000)
             dismiss()
         } catch {

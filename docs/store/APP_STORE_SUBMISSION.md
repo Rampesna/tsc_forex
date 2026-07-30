@@ -1,10 +1,17 @@
 # TSC Forex — App Store Yayın Dokümanı (iOS)
 
-Bu doküman TSC Forex'in güncel iOS sürümünü App Store Connect'e hazırlamak, otomatik yenilenen abonelikleri göndermek ve App Review risklerini en aza indirmek için tek kaynak olarak kullanılmalıdır. Durum bilgileri 26 Temmuz 2026 tarihindeki App Store Connect kaydını yansıtır; Apple ekranında sonradan yapılan her değişiklik bu dokümana da işlenmelidir.
+Bu doküman TSC Forex'in güncel iOS sürümünü App Store Connect'e hazırlamak, otomatik yenilenen abonelikleri göndermek ve App Review risklerini en aza indirmek için tek kaynak olarak kullanılmalıdır. ASO alanlarının authoritative kaynağı `docs/store/aso/metadata.json` dosyasıdır; Apple ekranında sonradan yapılan her değişiklik bu dosyaya da işlenmelidir.
 
 > **Garanti sınırı:** Hiç kimse “sıfır red” garantisi veremez; nihai karar Apple App Review'a aittir ve kurallar değişebilir. Aşağıdaki **Gönderim Kapıları** tamamlanmadan build göndermeyin. Bir kapı doğrulanmadıysa dokümandaki “hazır” ifadesi kanıt sayılmaz.
 
-## 0. Mevcut yayın durumu — 1.0 (6) yayında, 1.1 (7) incelemede
+## 0. Mevcut yayın durumu — 1.1.2 (9) Waiting for Review
+
+- App Store Connect'te Türkçe, İngilizce (ABD), Almanca, İtalyanca, İspanyolca (İspanya) ve Arapça için ad, alt başlık, promosyon metni, açıklama, anahtar kelimeler ve sürüm notları arama niyetine göre güncellendi.
+- Türkçe ana değer önerisi `TSC Forex: Altın & Döviz` ve `Canlı Kur, Alarm ve Portföy` olarak konumlandırıldı; diğer diller birebir çeviri yerine yerel sorgu niyetine göre yazıldı.
+- İlk üç görsel için canlı fiyat, etkileşimli grafik ve alarm sırası belirlendi. Çalışan `Yeni Ekran Görüntüleri` Product Page Optimization testi bitmeden ikinci test açılmadı.
+- Favoriye ekleme, başarılı fiyat alarmı ve başarılı kaynaklı araştırma gibi gerçek değer anlarından sonra Apple'ın yerel değerlendirme penceresini kontrollü isteyen akış eklendi. İstek ödül, ödeme veya olumlu görüş şartına bağlı değildir.
+- `1.1.2 (9)` Release archive başarıyla üretildi, App Store Connect'e yüklendi, processing tamamlandı ve sürüme bağlandı.
+- Build, altı dildeki metadata değişiklikleri ve güncel App Review notları aynı submission içinde 30 Temmuz 2026'da gönderildi. App Store Connect'teki authoritative durum `Waiting for Review`'dur; onay sonrası otomatik yayın seçilidir.
 
 ### App Store Connect'te tamamlananlar
 

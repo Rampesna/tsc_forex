@@ -46,6 +46,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -59,6 +60,7 @@ import com.example.tsc.forex.data.InstrumentDetail
 import com.example.tsc.forex.data.InstrumentStats
 import com.example.tsc.forex.data.MarketInsight
 import com.example.tsc.forex.data.Prefs
+import com.example.tsc.forex.auth.findActivity
 import com.example.tsc.forex.store.AuthStore
 import com.example.tsc.forex.store.BillingStore
 import com.example.tsc.forex.store.PriceStore
@@ -67,6 +69,7 @@ import com.example.tsc.forex.ui.ChartMode
 import com.example.tsc.forex.ui.Fmt
 import com.example.tsc.forex.ui.PriceChart
 import com.example.tsc.forex.ui.PrimaryActionButton
+import com.example.tsc.forex.ui.InAppReviewCoordinator
 import com.example.tsc.forex.ui.SegmentedControl
 import com.example.tsc.forex.ui.StatTile
 import com.example.tsc.forex.ui.ToastOnChange
@@ -131,6 +134,7 @@ fun AssetDetailScreen(
     onRequestAuth: () -> Unit = {},
 ) {
     val scope = rememberCoroutineScope()
+    val context = LocalContext.current
     val uriHandler = LocalUriHandler.current
     val ip = store.prices[code]
     var rangeKey by remember { mutableStateOf("1G") }
@@ -187,6 +191,7 @@ fun AssetDetailScreen(
             )
             prefs.clearPendingRequestId(userId, op, resource)
             billing.refreshNow()
+            context.findActivity()?.let(InAppReviewCoordinator::recordMeaningfulAction)
         } catch (e: ApiException) {
             if (!e.shouldRetainRequestId) prefs.clearPendingRequestId(userId, op, resource)
             when {
@@ -342,8 +347,14 @@ fun AssetDetailScreen(
                 IconButton(onClick = {
                     if (!auth.isLoggedIn) onRequestAuth()
                     else {
+                        val wasFavorite = store.isFavorite(code)
                         store.toggleFavorite(code)
                         isFav = store.isFavorite(code)
+                        if (!wasFavorite) {
+                            context.findActivity()?.let(
+                                InAppReviewCoordinator::recordMeaningfulAction,
+                            )
+                        }
                     }
                 }) {
                     Icon(
@@ -662,6 +673,11 @@ fun AssetDetailScreen(
                     val ok = runCatching {
                         auth.newApiClient().createAlert(code, threshold, direction)
                     }.isSuccess
+                    if (ok) {
+                        context.findActivity()?.let(
+                            InAppReviewCoordinator::recordMeaningfulAction,
+                        )
+                    }
                     toast = if (ok) "Alarm oluşturuldu." else "Alarm oluşturulamadı."
                 }
             },

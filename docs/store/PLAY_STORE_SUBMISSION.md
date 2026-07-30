@@ -6,7 +6,14 @@ Bu doküman, TSC Forex Android uygulamasını Google Play'e **ilk seferde, red/a
 
 ---
 
-## 0. Güncel yayın durumu — 1.2.0 (5) kapalı Alpha incelemesinde
+## 0. Güncel yayın durumu — 1.2.3 (8) incelemede
+
+- Varsayılan mağaza girişine Türkçe, İngilizce (ABD), Almanca, İtalyanca, İspanyolca (İspanya) ve Arapça yerelleştirmeleri eklendi.
+- Her dil için 30 karakter ad, 80 karakter kısa açıklama ve 4.000 karakter tam açıklama sınırlarına uygun, doğal arama niyetli metinler kaydedildi. Authoritative metinler `docs/store/aso/metadata.json` içindedir.
+- Favoriye ekleme, başarılı fiyat alarmı ve başarılı kaynaklı araştırma gibi gerçek değer anlarından sonra Google Play'in yerel In-App Review akışını kontrollü isteyen politika eklendi.
+- Release AAB `versionCode 8` / `versionName 1.2.3`, target SDK 36, Google Play Billing 9.1.0 ve Play Review `2.0.2` ile üretildi; `test` ve `bundleRelease` görevleri başarıyla tamamlandı.
+- `1.2.3 (8) – ASO ve Değerlendirme` kapalı Alpha kanalına %100 sunumla eklendi; AAB ve altı dildeki mağaza değişiklikleri 30 Temmuz 2026'da birlikte incelemeye gönderildi. Play Console authoritative durumu `İncelenmekte olan değişiklikler` olarak gösterir.
+- Üretim erişimi Google'ın kapalı test şartı tamamlanana kadar açılamaz; bu gönderim güncel kapalı test kanalındadır.
 
 - Release AAB `versionCode 5` / `versionName 1.2.0`, target SDK 36 ve Google Play Billing 9.1.0 ile üretildi; lint ve release bundle görevleri başarıyla tamamlandı.
 - AAB, Google Play Console tarafından `5 (1.2.0)` olarak kabul edildi. Türkçe, İngilizce, Arapça, Almanca, İtalyanca ve İspanyolca için altı ayrı mağaza sürüm notu kaydedildi.

@@ -1,0 +1,113 @@
+{
+  "version": "2026-07-30",
+  "locales": {
+    "tr": {
+      "appleLocale": "tr",
+      "playLocale": "tr-TR",
+      "name": "TSC Forex: Altın & Döviz",
+      "subtitle": "Canlı Kur, Alarm ve Portföy",
+      "shortDescription": "Canlı altın ve döviz kurları; kripto, BIST, alarm ve portföy tek ekranda.",
+      "promotionalText": "Canlı altın ve döviz kurlarını izle; alarm kur, portföyünü yönet ve seçili varlıklar için kaynaklı yapay zekâ araştırması al.",
+      "keywords": "dolar,euro,gram,çeyrek,borsa,bist,hisse,bitcoin,kripto,ons,fiyat,çevirici,piyasa,analiz,takip",
+      "description": "TSC Forex ile canlı altın fiyatlarını, döviz kurlarını, kripto paraları ve BIST hisselerini tek ekrandan takip edin.\n\nGram altın, çeyrek altın, yarım altın, tam altın ve ons altın fiyatlarını; dolar, euro ve diğer döviz kurlarını hızlıca görüntüleyin. Favorilerinizi oluşturun, fiyat alarmı kurun ve portföyünüzün güncel değerini, dağılımını ve kâr/zararını izleyin.\n\nÖNE ÇIKAN ÖZELLİKLER\n\n• Canlı piyasa takibi: Altın, döviz, kripto ve BIST verileri\n• Altın fiyatları: Gram, çeyrek, yarım, tam, ons ve ayarlı altınlar\n• Döviz kurları: Dolar, euro ve çok sayıda para birimi\n• Etkileşimli grafikler: Farklı dönemlerde yakınlaştırın ve geçmiş hareketleri inceleyin\n• Akıllı fiyat alarmları: Belirlediğiniz seviyeye ulaşıldığında bildirim alın\n• Favoriler: Sık takip ettiğiniz varlıklara tek dokunuşla erişin\n• Portföy takibi: Toplam değer, varlık dağılımı ve kâr/zarar görünümü\n• Piyasa özeti: Günün yükselen ve düşen varlıklarını keşfedin\n• Yapay zekâ destekli araştırma: Seçili varlığı piyasa verileri ve açık web kaynaklarıyla daha geniş bağlamda inceleyin\n• Güvenli hesap: E-posta, Google, Apple veya geçiş anahtarıyla oturum açın\n\nTSC Forex; altın, döviz ve kripto piyasalarını daha düzenli takip etmek isteyenler için tasarlanmış bağımsız bir finans bilgi uygulamasıdır.\n\nÖNEMLİ BİLGİ\nTSC Forex alım-satım, aracılık veya kişiye özel yatırım danışmanlığı sunmaz. Veriler üçüncü taraf kaynaklardan alınabilir; gecikme veya hata içerebilir. Sunulan bilgiler yatırım tavsiyesi değildir. Yatırım kararları ve sonuçları kullanıcıya aittir.\n\nGİZLİLİK\nHizmeti sunmak için gerekli asgari veriler kullanılır. Reklam kimliği kullanılmaz ve kişisel veriler satılmaz. Hesap ve ilişkili veriler uygulama içinden silinebilir.\n\nKullanım Şartları: https://tsc.talhacan.com/terms\nGizlilik Politikası: https://tsc.talhacan.com/privacy",
+      "whatsNew": "• Piyasa, alarm ve portföy akışlarında kullanılabilirlik iyileştirmeleri\n• Altı dil için yerelleştirme düzeltmeleri\n• Performans ve kararlılık geliştirmeleri",
+      "screenshotHeadlines": [
+        "Canlı Altın ve Döviz",
+        "Piyasayı Grafikte İncele",
+        "Akıllı Fiyat Alarmı Kur",
+        "Portföyünü Tek Ekranda Gör",
+        "Kaynaklı Araştırmayla Derinleş"
+      ]
+    },
+    "en": {
+      "appleLocale": "en-US",
+      "playLocale": "en-US",
+      "name": "TSC Forex: Gold & FX Rates",
+      "subtitle": "Live Rates, Alerts & Portfolio",
+      "shortDescription": "Live gold and FX rates, crypto, BIST, price alerts and portfolio tracking.",
+      "promotionalText": "Track live gold and FX rates, set price alerts, manage portfolios and explore selected assets with source-linked AI research.",
+      "keywords": "currency,dollar,euro,bitcoin,crypto,stocks,BIST,market,price,tracker,exchange,chart,analysis",
+      "description": "Track live gold prices, foreign exchange rates, crypto assets and BIST stocks in one place with TSC Forex.\n\nCheck gram gold, quarter gold, half gold, full gold and ounce prices alongside the US dollar, euro and many other currencies. Build a watchlist, set price alerts and monitor your portfolio value, allocation and profit/loss.\n\nKEY FEATURES\n\n• Live market tracking for gold, currencies, crypto and BIST stocks\n• Gold prices including gram, quarter, half, full, ounce and purity-based products\n• Foreign exchange rates for the dollar, euro and many other currencies\n• Interactive charts with multiple periods, zoom and historical movement\n• Smart price alerts when an asset reaches the level you choose\n• Favorites for quick access to the assets you follow most\n• Portfolio tracking with total value, allocation and profit/loss\n• Daily market overview to discover rising and falling assets\n• AI-assisted research that reviews selected assets using market data and open web sources\n• Secure sign-in with email, Google, Apple or passkeys\n\nTSC Forex is an independent financial information app built for people who want a clearer way to follow gold, foreign exchange and crypto markets.\n\nIMPORTANT\nTSC Forex does not provide trading, brokerage or personalized investment advice. Data may come from third-party sources and may contain delays or errors. Nothing in the app is investment advice. You remain responsible for your decisions and outcomes.\n\nPRIVACY\nWe use only the minimum data needed to provide the service. We do not use advertising identifiers or sell personal data. You can delete your account and related data from within the app.\n\nTerms: https://tsc.talhacan.com/terms\nPrivacy: https://tsc.talhacan.com/privacy",
+      "whatsNew": "• Usability improvements across markets, alerts and portfolios\n• Localization refinements for all six supported languages\n• Performance and stability improvements",
+      "screenshotHeadlines": [
+        "Live Gold & FX Rates",
+        "Explore Interactive Charts",
+        "Set Smart Price Alerts",
+        "See Your Portfolio Clearly",
+        "Go Deeper With Sources"
+      ]
+    },
+    "de": {
+      "appleLocale": "de-DE",
+      "playLocale": "de-DE",
+      "name": "TSC Forex: Gold & Devisen",
+      "subtitle": "Live-Kurse, Alarm & Portfolio",
+      "shortDescription": "Gold- und Devisenkurse live, Krypto, BIST, Preisalarme und Portfolio.",
+      "promotionalText": "Gold- und Devisenkurse live verfolgen, Preisalarme setzen, Portfolios verwalten und ausgewählte Werte mit Quellen analysieren.",
+      "keywords": "währung,dollar,euro,bitcoin,krypto,aktien,börse,BIST,preis,markt,wechselkurs,chart,analyse",
+      "description": "Verfolgen Sie mit TSC Forex Goldpreise, Devisenkurse, Kryptowährungen und BIST-Aktien übersichtlich in einer App.\n\nPrüfen Sie Gram-, Viertel-, Halb-, Voll- und Unzengold sowie US-Dollar, Euro und viele weitere Währungen. Erstellen Sie eine Watchlist, setzen Sie Preisalarme und beobachten Sie Portfoliowert, Verteilung und Gewinn/Verlust.\n\nWICHTIGE FUNKTIONEN\n\n• Live-Marktübersicht für Gold, Devisen, Krypto und BIST-Aktien\n• Goldpreise für Gram-, Viertel-, Halb-, Voll-, Unzen- und Feingehaltsprodukte\n• Wechselkurse für Dollar, Euro und viele weitere Währungen\n• Interaktive Charts mit mehreren Zeiträumen, Zoom und historischen Bewegungen\n• Intelligente Preisalarme bei einem von Ihnen festgelegten Kurs\n• Favoriten für schnellen Zugriff auf häufig beobachtete Werte\n• Portfolio-Tracking mit Gesamtwert, Verteilung und Gewinn/Verlust\n• Tagesübersicht der steigenden und fallenden Werte\n• KI-gestützte Recherche zu ausgewählten Werten mit Marktdaten und offenen Webquellen\n• Sichere Anmeldung per E-Mail, Google, Apple oder Passkey\n\nTSC Forex ist eine unabhängige Finanzinformations-App für alle, die Gold-, Devisen- und Kryptomärkte strukturiert verfolgen möchten.\n\nWICHTIGER HINWEIS\nTSC Forex bietet keinen Handel, keine Vermittlung und keine persönliche Anlageberatung. Daten können von Drittanbietern stammen und Verzögerungen oder Fehler enthalten. Sämtliche Inhalte dienen nur der Information und sind keine Anlageberatung. Für Entscheidungen und Ergebnisse sind Sie selbst verantwortlich.\n\nDATENSCHUTZ\nWir verwenden nur die für den Dienst erforderlichen Daten. Werbe-IDs werden nicht genutzt und persönliche Daten nicht verkauft. Konto und zugehörige Daten können in der App gelöscht werden.\n\nNutzungsbedingungen: https://tsc.talhacan.com/terms\nDatenschutz: https://tsc.talhacan.com/privacy",
+      "whatsNew": "• Bessere Bedienung in Markt-, Alarm- und Portfoliofunktionen\n• Verbesserte Übersetzungen für alle sechs Sprachen\n• Mehr Leistung und Stabilität",
+      "screenshotHeadlines": [
+        "Gold & Devisen live",
+        "Interaktive Charts",
+        "Intelligente Preisalarme",
+        "Portfolio klar im Blick",
+        "Recherche mit Quellen"
+      ]
+    },
+    "it": {
+      "appleLocale": "it",
+      "playLocale": "it-IT",
+      "name": "TSC Forex: Oro e Valute",
+      "subtitle": "Prezzi, Avvisi e Portafoglio",
+      "shortDescription": "Oro e cambi in tempo reale, crypto, BIST, avvisi prezzo e portafoglio.",
+      "promotionalText": "Segui oro e cambi in tempo reale, crea avvisi, gestisci portafogli e approfondisci gli asset con una ricerca basata su fonti.",
+      "keywords": "cambio,dollaro,euro,bitcoin,cripto,azioni,BIST,mercato,quotazioni,finanza,grafici,analisi",
+      "description": "Con TSC Forex segui in un'unica app i prezzi dell'oro, i tassi di cambio, le criptovalute e le azioni BIST.\n\nControlla oro al grammo, quarto, mezzo, intero e oncia insieme a dollaro USA, euro e molte altre valute. Crea la tua lista preferiti, imposta avvisi di prezzo e monitora valore, allocazione e profitti/perdite del portafoglio.\n\nFUNZIONI PRINCIPALI\n\n• Mercati in tempo reale: oro, valute, crypto e azioni BIST\n• Prezzi dell'oro: grammo, quarto, mezzo, intero, oncia e diverse carature\n• Tassi di cambio per dollaro, euro e molte altre valute\n• Grafici interattivi con più periodi, zoom e movimenti storici\n• Avvisi intelligenti quando un asset raggiunge il livello scelto\n• Preferiti per accedere rapidamente agli asset più seguiti\n• Portafoglio con valore totale, allocazione e profitti/perdite\n• Panoramica giornaliera degli asset in rialzo e in ribasso\n• Ricerca assistita dall'IA su asset selezionati con dati di mercato e fonti web aperte\n• Accesso sicuro con email, Google, Apple o passkey\n\nTSC Forex è un'app indipendente di informazione finanziaria per seguire con maggiore chiarezza i mercati dell'oro, delle valute e delle criptovalute.\n\nIMPORTANTE\nTSC Forex non offre trading, intermediazione o consulenza finanziaria personalizzata. I dati possono provenire da terze parti e contenere ritardi o errori. I contenuti non costituiscono una raccomandazione di investimento. Decisioni e risultati restano sotto la responsabilità dell'utente.\n\nPRIVACY\nUtilizziamo solo i dati minimi necessari al servizio. Non usiamo identificatori pubblicitari e non vendiamo dati personali. L'account e i dati associati possono essere eliminati dall'app.\n\nTermini: https://tsc.talhacan.com/terms\nPrivacy: https://tsc.talhacan.com/privacy",
+      "whatsNew": "• Migliore usabilità per mercati, avvisi e portafogli\n• Localizzazione perfezionata in tutte le sei lingue\n• Miglioramenti di prestazioni e stabilità",
+      "screenshotHeadlines": [
+        "Oro e cambi in tempo reale",
+        "Grafici interattivi",
+        "Avvisi di prezzo intelligenti",
+        "Il portafoglio, più chiaro",
+        "Ricerca basata su fonti"
+      ]
+    },
+    "es": {
+      "appleLocale": "es-ES",
+      "playLocale": "es-ES",
+      "name": "TSC Forex: Oro y Divisas",
+      "subtitle": "Precios, Alertas y Cartera",
+      "shortDescription": "Oro y divisas en directo, cripto, BIST, alertas de precio y cartera.",
+      "promotionalText": "Sigue oro y divisas en directo, crea alertas, controla tus carteras y analiza activos seleccionados con fuentes enlazadas.",
+      "keywords": "cambio,dólar,euro,bitcoin,cripto,bolsa,acciones,BIST,mercado,cotización,finanzas,gráfico,análisis",
+      "description": "Con TSC Forex consulta en una sola app los precios del oro, los tipos de cambio, las criptomonedas y las acciones BIST.\n\nRevisa el oro por gramo, cuarto, medio, completo y onza junto con el dólar estadounidense, el euro y muchas otras divisas. Crea favoritos, configura alertas de precio y controla el valor, la distribución y las ganancias o pérdidas de tu cartera.\n\nFUNCIONES PRINCIPALES\n\n• Mercados en directo: oro, divisas, cripto y acciones BIST\n• Precios del oro por gramo, cuarto, medio, completo, onza y pureza\n• Tipos de cambio del dólar, euro y muchas otras monedas\n• Gráficos interactivos con varios periodos, zoom e historial\n• Alertas inteligentes cuando un activo alcanza el nivel elegido\n• Favoritos para acceder rápidamente a los activos que más sigues\n• Seguimiento de cartera con valor total, distribución y ganancias/pérdidas\n• Resumen diario de activos al alza y a la baja\n• Investigación asistida por IA sobre activos seleccionados con datos de mercado y fuentes web abiertas\n• Acceso seguro con correo, Google, Apple o passkey\n\nTSC Forex es una app independiente de información financiera para seguir con más claridad los mercados del oro, las divisas y las criptomonedas.\n\nIMPORTANTE\nTSC Forex no ofrece compraventa, intermediación ni asesoramiento de inversión personalizado. Los datos pueden proceder de terceros y contener retrasos o errores. El contenido no constituye una recomendación de inversión. Las decisiones y sus resultados son responsabilidad del usuario.\n\nPRIVACIDAD\nSolo usamos los datos mínimos necesarios para prestar el servicio. No utilizamos identificadores publicitarios ni vendemos datos personales. Puedes eliminar la cuenta y los datos asociados desde la app.\n\nTérminos: https://tsc.talhacan.com/terms\nPrivacidad: https://tsc.talhacan.com/privacy",
+      "whatsNew": "• Mejoras de uso en mercados, alertas y carteras\n• Localización revisada para los seis idiomas\n• Mejoras de rendimiento y estabilidad",
+      "screenshotHeadlines": [
+        "Oro y divisas en directo",
+        "Gráficos interactivos",
+        "Alertas de precio inteligentes",
+        "Tu cartera, más clara",
+        "Investigación con fuentes"
+      ]
+    },
+    "ar": {
+      "appleLocale": "ar-SA",
+      "playLocale": "ar",
+      "name": "TSC Forex: الذهب والعملات",
+      "subtitle": "أسعار وتنبيهات ومحفظة",
+      "shortDescription": "أسعار الذهب والعملات مباشرة، مع العملات الرقمية والتنبيهات وتتبع المحفظة.",
+      "promotionalText": "تابع الذهب والعملات مباشرة، وأنشئ تنبيهات للأسعار، وأدر محافظك، وابحث في الأصول المحددة بالاستناد إلى مصادر.",
+      "keywords": "دولار,يورو,بيتكوين,كريبتو,بورصة,أسهم,سوق,صرف,تحويل,رسم,تحليل,استثمار,BIST",
+      "description": "تابع مع TSC Forex أسعار الذهب المباشرة وأسعار صرف العملات والعملات الرقمية وأسهم BIST في تطبيق واحد.\n\nاطّلع على أسعار الذهب بالغرام والربع والنصف والكامل والأونصة، إلى جانب الدولار الأمريكي واليورو والعديد من العملات الأخرى. أنشئ قائمة مفضلة، واضبط تنبيهات للأسعار، وتابع قيمة محفظتك وتوزيعها والأرباح أو الخسائر.\n\nأهم الميزات\n\n• متابعة مباشرة لأسواق الذهب والعملات والعملات الرقمية وأسهم BIST\n• أسعار الذهب بالغرام والربع والنصف والكامل والأونصة ودرجات النقاء المختلفة\n• أسعار صرف الدولار واليورو والعديد من العملات الأخرى\n• رسوم بيانية تفاعلية بفترات زمنية متعددة مع التكبير ومراجعة الحركة السابقة\n• تنبيهات ذكية عند وصول الأصل إلى المستوى الذي تحدده\n• قائمة مفضلة للوصول السريع إلى الأصول التي تتابعها\n• متابعة المحفظة مع القيمة الإجمالية والتوزيع والأرباح أو الخسائر\n• ملخص يومي للأصول الصاعدة والهابطة\n• بحث بمساعدة الذكاء الاصطناعي حول أصول محددة باستخدام بيانات السوق ومصادر الويب المفتوحة\n• تسجيل دخول آمن عبر البريد الإلكتروني أو Google أو Apple أو مفتاح المرور\n\nTSC Forex تطبيق مستقل للمعلومات المالية صُمم لمساعدة من يريد متابعة أسواق الذهب والعملات والعملات الرقمية بوضوح أكبر.\n\nتنبيه مهم\nلا يقدم TSC Forex خدمات التداول أو الوساطة أو الاستشارات الاستثمارية الشخصية. قد تأتي البيانات من مصادر خارجية وقد تتضمن تأخيرًا أو أخطاء. لا تمثل المعلومات توصية استثمارية، وتبقى القرارات ونتائجها مسؤولية المستخدم.\n\nالخصوصية\nنستخدم الحد الأدنى من البيانات اللازمة لتقديم الخدمة. لا نستخدم معرّفات الإعلانات ولا نبيع البيانات الشخصية. يمكنك حذف حسابك والبيانات المرتبطة به من داخل التطبيق.\n\nالشروط: https://tsc.talhacan.com/terms\nالخصوصية: https://tsc.talhacan.com/privacy",
+      "whatsNew": "• تحسين سهولة استخدام الأسواق والتنبيهات والمحافظ\n• تحسين الترجمة للغات الست المدعومة\n• تحسينات في الأداء والاستقرار",
+      "screenshotHeadlines": [
+        "الذهب والعملات مباشرة",
+        "رسوم بيانية تفاعلية",
+        "تنبيهات أسعار ذكية",
+        "محفظتك بصورة أوضح",
+        "بحث مدعوم بالمصادر"
+      ]
+    }
+  }
+}
