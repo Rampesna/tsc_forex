@@ -44,13 +44,11 @@ nats:
   subject: gold.gram.updates
 
 provider:
-  # yahoo: REAL-TIME market data (no API key) via Yahoo Finance chart API.
-  # Polls GC=F (gold USD/oz), USDTRY=X, EURTRY=X, GBPTRY=X, JPYTRY=X every 2s.
-  # Yahoo quotes TRY pairs directly, so no cross-rate math is needed. Reachable
-  # from networks where Binance is blocked/reset. rest (er-api+gold-api) and
-  # synthetic are fallbacks so the stream never stops.
+  # yahoo: FX + equities via Yahoo Finance; XAUUSD prefers Binance PAXGUSDT
+  # (24/7) because Yahoo GC=F is rate-limited and often closed. rest/binance
+  # remain failover so the stream never stops.
   primary: yahoo
-  fallbacks: [rest, synthetic]
+  fallbacks: [rest, binance, synthetic]
   reconnect_initial: 1s
   reconnect_max: 30s
   health_interval: 5s
@@ -72,10 +70,10 @@ provider:
     jitter_percent: 0.03
   rest:
     enabled: true
-    poll_interval: 2s          # also controls the binance provider poll cadence
+    poll_interval: 5s          # also controls the binance/yahoo provider poll cadence
     fx_base_url: "https://open.er-api.com/v6/latest/USD"
-    gold_url: "https://api.gold-api.com/price/XAU"   # XAU USD/oz, returns {"price": <usd>}
-    # Crypto: Binance batch price endpoint (deepest/most real-time source).
+    gold_url: "https://api.gold-api.com/price/XAU"   # XAU USD/oz; Binance PAXG is fallback
+    # Crypto + gold (PAXG): Binance batch/ticker endpoints (deepest/most real-time).
     # Symbols are <SYM>USDT, converted to TRY via the live USD/TRY leg.
     crypto_base_url: "https://api.binance.com/api/v3/ticker/price"
     timeout: 4s

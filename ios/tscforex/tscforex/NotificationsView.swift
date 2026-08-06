@@ -165,7 +165,9 @@ struct NotificationsView: View {
             history = try await APIClient(token: auth.accessToken).notifications()
             loadError = nil
         } catch {
-            loadError = error.localizedDescription
+            if !error.isRequestCancellation {
+                loadError = error.localizedDescription
+            }
         }
     }
 

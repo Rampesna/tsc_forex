@@ -25,16 +25,17 @@ data:
   APP_DATABASE_CONN_MAX_IDLE_TIME: "5m"
   APP_REDIS_ADDR: "redis:6379"
   APP_REDIS_PUBSUB_CHANNEL: "gold:gram:updates"
-  # Real-time market data via Yahoo Finance with real external REST feeds as
-  # the only production fallback. Synthetic prices are reserved for local/CI.
+  # Real-time market data via Yahoo Finance for FX/equities, with Binance
+  # PAXGUSDT as the durable 24/7 gold source (Yahoo GC=F is rate-limited).
+  # REST (er-api + gold-api, also with Binance PAXG fallback) is the failover.
   APP_PROVIDER_PRIMARY: "yahoo"
-  APP_PROVIDER_FALLBACKS: "rest"
+  APP_PROVIDER_FALLBACKS: "rest,binance"
   APP_PROVIDER_REST_ENABLED: "true"
-  APP_PROVIDER_REST_POLL_INTERVAL: "2s"
+  APP_PROVIDER_REST_POLL_INTERVAL: "5s"
   APP_PROVIDER_REST_FX_BASE_URL: "https://open.er-api.com/v6/latest/USD"
   APP_PROVIDER_REST_GOLD_URL: "https://api.gold-api.com/price/XAU"
-  # Crypto priced from Binance (deepest/most real-time), converted to TRY via
-  # the live USD/TRY leg. Public market data needs no API key.
+  # Crypto + gold (PAXG) priced from Binance (deepest/most real-time), converted
+  # to TRY via the live USD/TRY leg. Public market data needs no API key.
   APP_PROVIDER_REST_CRYPTO_BASE_URL: "https://api.binance.com/api/v3/ticker/price"
   # AI market commentary. The API key is injected through tsc-forex-secrets;
   # client applications never receive it.

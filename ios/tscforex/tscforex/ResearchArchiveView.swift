@@ -120,8 +120,13 @@ struct ResearchArchiveView: View {
         }
         loading = true
         errorMessage = nil
-        do { items = try await APIClient(token: token).researchHistory() }
-        catch { errorMessage = error.localizedDescription }
+        do {
+            items = try await APIClient(token: token).researchHistory()
+        } catch {
+            if !error.isRequestCancellation {
+                errorMessage = error.localizedDescription
+            }
+        }
         loading = false
     }
 }

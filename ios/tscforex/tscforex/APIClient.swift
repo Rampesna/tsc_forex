@@ -68,10 +68,32 @@ enum APIError: Error, LocalizedError {
                 return "Bağlantı zaman aşımına uğradı. İnternet bağlantınızı kontrol edip tekrar deneyin. (\(host))"
             case .cannotConnectToHost, .cannotFindHost, .networkConnectionLost, .notConnectedToInternet:
                 return "Hizmete ulaşılamadı. İnternet bağlantınızı kontrol edip tekrar deneyin. (\(host))"
+            case .cancelled:
+                // Pull-to-refresh / view teardown cancels in-flight requests
+                // (URLError -999). Never surface this as a user-facing failure.
+                return nil
             default:
                 return "Ağ hatası (\(code.rawValue)): \(host)"
             }
         }
+    }
+
+    /// True when the failure is an intentional cancellation (SwiftUI refresh,
+    /// navigation pop, Task cancel) rather than a real network outage.
+    var isCancellation: Bool {
+        if case .network(let code, _) = self, code == .cancelled { return true }
+        return false
+    }
+}
+
+extension Error {
+    /// Pull-to-refresh cancels the previous `.task` load; treating that as a
+    /// visible "Ağ hatası (-999)" confuses users. Callers should ignore these.
+    var isRequestCancellation: Bool {
+        if self is CancellationError { return true }
+        if let api = self as? APIError { return api.isCancellation }
+        if let url = self as? URLError { return url.code == .cancelled }
+        return false
     }
 }
 

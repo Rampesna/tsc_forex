@@ -35,11 +35,13 @@ const name = "yahoo"
 var yahooChartBase = "https://query1.finance.yahoo.com/v8/finance/chart/"
 
 // symbolMap maps our canonical base symbols to Yahoo tickers.
+// XAUUSD is intentionally omitted: COMEX GC=F is rate-limited and closed for
+// long windows, while Binance PAXGUSDT tracks fine gold 24/7. Yahoo remains
+// the FX + equities source; gold is layered in via fetchBinancePAXG.
 var symbolMap = []struct {
 	canonical string
 	yahoo     string
 }{
-	{domain.SymbolXAUUSD, "GC=F"},
 	{domain.SymbolUSDTRY, "USDTRY=X"},
 	{domain.SymbolEURTRY, "EURTRY=X"},
 	{domain.SymbolGBPTRY, "GBPTRY=X"},
@@ -67,8 +69,10 @@ type Provider struct {
 	pollSeq atomic.Int64
 }
 
-// slowEvery: crypto & equities are fetched every Nth poll (larger universe).
-const slowEvery = 5
+// slowEvery: equities are fetched every Nth poll. Five API replicas share one
+// egress IP, so a tight cadence quickly trips Yahoo's 429 ceiling and freezes
+// the FX legs even while Binance crypto keeps the provider "healthy".
+const slowEvery = 20
 
 // yahooChart is the minimal shape we parse from the chart endpoint.
 type yahooChart struct {
@@ -249,6 +253,7 @@ func (p *Provider) Fetch(ctx context.Context) ([]domain.Tick, error) {
 
 	var firstErr error
 	var usdtry float64
+	var hasXAU bool
 	for r := range results {
 		if r.err != nil {
 			if firstErr == nil {
@@ -263,6 +268,18 @@ func (p *Provider) Fetch(ctx context.Context) ([]domain.Tick, error) {
 			usdtry = r.price
 		}
 		add(r.canonical, r.price)
+	}
+
+	// Prefer Binance PAXG for XAUUSD (24/7, no Yahoo 429). Fall back to Yahoo
+	// GC=F only when Binance is unreachable from this network.
+	if xau, err := p.fetchBinancePAXG(ctx); err == nil {
+		add(domain.SymbolXAUUSD, xau)
+		hasXAU = true
+	} else if xau, err := p.fetchSymbol(ctx, "GC=F"); err == nil {
+		add(domain.SymbolXAUUSD, xau)
+		hasXAU = true
+	} else if firstErr == nil && err != nil {
+		firstErr = err
 	}
 
 	// Global breadth: derive every other world currency vs TRY from one FX call
@@ -307,7 +324,46 @@ func (p *Provider) Fetch(ctx context.Context) ([]domain.Tick, error) {
 		}
 		return nil, fmt.Errorf("no prices parsed from yahoo response")
 	}
+	// Core gold missing → treat as failure so Manager health/failover engage
+	// instead of looking "healthy" on crypto-only ticks while gold freezes.
+	if !hasXAU {
+		if firstErr != nil {
+			return nil, fmt.Errorf("xauusd unavailable: %w", firstErr)
+		}
+		return nil, fmt.Errorf("xauusd unavailable from binance and yahoo")
+	}
 	return out, nil
+}
+
+// fetchBinancePAXG returns the live USD/oz gold price from Binance PAXGUSDT.
+func (p *Provider) fetchBinancePAXG(ctx context.Context) (float64, error) {
+	base := p.cfg.CryptoBaseURL
+	if base == "" {
+		base = "https://api.binance.com/api/v3/ticker/price"
+	}
+	reqURL := base + "?symbol=PAXGUSDT"
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, reqURL, nil)
+	if err != nil {
+		return 0, err
+	}
+	req.Header.Set("Accept", "application/json")
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return 0, fmt.Errorf("binance paxg http %d", resp.StatusCode)
+	}
+	var t binanceTicker
+	if err := json.NewDecoder(resp.Body).Decode(&t); err != nil {
+		return 0, err
+	}
+	price, err := strconv.ParseFloat(t.Price, 64)
+	if err != nil || price <= 0 {
+		return 0, fmt.Errorf("binance paxg invalid price")
+	}
+	return price, nil
 }
 
 // erAPIResponse matches the open.er-api.com "latest" shape (USD base).
@@ -449,9 +505,9 @@ func (p *Provider) fetchCryptoYahoo(ctx context.Context, usdtry float64) map[str
 }
 
 // stockFetchConcurrency bounds simultaneous Yahoo calls for equities. The egress
-// IP is shared with the 2s FX/gold poll, so we cap the burst to stay well under
-// Yahoo's 429 ceiling even with the full BIST 100 + global universe (~150 symbols).
-const stockFetchConcurrency = 4
+// IP is shared across five replicas + the FX poll, so we keep the burst tiny
+// under Yahoo's 429 ceiling for the full BIST 100 + global universe (~150 symbols).
+const stockFetchConcurrency = 2
 
 // fetchStocks pulls equity prices from Yahoo — BIST natively in TRY, global
 // names in USD — using a bounded worker pool so the burst stays gentle.

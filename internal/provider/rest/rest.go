@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -215,16 +216,61 @@ func (p *Provider) Fetch(ctx context.Context) ([]domain.Tick, error) {
 		}
 	}
 
+	var hasXAU bool
 	if p.cfg.GoldURL != "" {
 		if xau, err := p.fetchGold(ctx); err == nil {
 			add(domain.SymbolXAUUSD, xau)
+			hasXAU = true
 		}
+	}
+	// gold-api.com (and similar) occasionally NXDOMAIN / timeout from the
+	// cluster. Binance PAXGUSDT is the durable 24/7 USD/oz fallback.
+	if !hasXAU {
+		if xau, err := p.fetchBinancePAXG(ctx); err == nil {
+			add(domain.SymbolXAUUSD, xau)
+			hasXAU = true
+		}
+	}
+	if !hasXAU {
+		return nil, fmt.Errorf("xauusd unavailable from gold url and binance")
 	}
 
 	if len(out) == 0 {
 		return nil, fmt.Errorf("no rates parsed from FX response")
 	}
 	return out, nil
+}
+
+// fetchBinancePAXG returns the live USD/oz gold price from Binance PAXGUSDT.
+func (p *Provider) fetchBinancePAXG(ctx context.Context) (float64, error) {
+	base := p.cfg.CryptoBaseURL
+	if base == "" {
+		base = "https://api.binance.com/api/v3/ticker/price"
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"?symbol=PAXGUSDT", nil)
+	if err != nil {
+		return 0, err
+	}
+	req.Header.Set("Accept", "application/json")
+	resp, err := p.client.Do(req)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = resp.Body.Close() }()
+	if resp.StatusCode != http.StatusOK {
+		return 0, fmt.Errorf("binance paxg http %d", resp.StatusCode)
+	}
+	var t struct {
+		Price string `json:"price"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&t); err != nil {
+		return 0, err
+	}
+	price, err := strconv.ParseFloat(t.Price, 64)
+	if err != nil || price <= 0 {
+		return 0, fmt.Errorf("binance paxg invalid price")
+	}
+	return price, nil
 }
 
 func (p *Provider) fetchFX(ctx context.Context) (map[string]float64, error) {

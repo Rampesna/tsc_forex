@@ -163,7 +163,9 @@ struct AlertsView: View {
             alerts = try await APIClient(token: auth.accessToken).alerts().filter { $0.active }
             errorMessage = nil
         } catch {
-            errorMessage = error.localizedDescription
+            if !error.isRequestCancellation {
+                errorMessage = error.localizedDescription
+            }
         }
     }
 

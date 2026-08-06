@@ -314,7 +314,9 @@ final class PortfolioStore: ObservableObject {
             }
             _ = await loadPerformance(client: client, portfolioID: next.portfolio.id, range: range)
         } catch {
-            errorMessage = error.localizedDescription
+            if !error.isRequestCancellation {
+                errorMessage = error.localizedDescription
+            }
         }
     }
 
